@@ -117,6 +117,7 @@ Feature: Trade Validation Process
     Given a trade is submitted for validation
     When the system performs automated risk and compliance checks
     Then the trade should be confirmed and moved to the settlement stage
+```
 
 ## Specifications
 
