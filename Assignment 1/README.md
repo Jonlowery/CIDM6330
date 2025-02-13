@@ -201,7 +201,23 @@ The Trade Execution and Management Platform is designed to streamline and automa
   - **Sequence Diagram:**  
     ![Trade Capture Module Sequence](https://github.com/Jonlowery/CIDM6330/blob/main/Assignment%201/Images/TradeCaptureModuleSequence.png)
 
-#### Feature Package B: Back Office Settlement
+#### Feature Package B: Middle Office Validation
+- **Components:**
+  - **Trade Validation Engine:** Automatically validates trade details against compliance and risk requirements.
+  - **Risk Management Checks:** Ensures trades adhere to credit limits, counterparty restrictions, and market regulations.
+  - **Exception Handling:** Flags non-compliant trades for manual review.
+- **Behavior:**
+  - Runs compliance and risk checks on every captured trade.
+  - Flags any trades that require further review before execution.
+  - Sends validated trades to the Back Office Settlement process.
+  - Notifies traders and compliance officers if a trade is rejected or requires modification.
+- **Diagrams:**
+  - **Class Diagram:**  
+    ![Middle Office Validation Module](./images/MiddleOfficeValidationModule.png)
+  - **Sequence Diagram:**  
+    ![Middle Office Validation Module Sequence](./images/MiddleOfficeValidationModuleSequence.png)
+
+#### Feature Package C: Back Office Settlement
 - **Components:**
   - **Settlement Engine:** Automates clearing, settlement, and ledger updates.
   - **Data Integration Layer:** Consolidates data from external market feeds and legacy systems.
@@ -211,6 +227,6 @@ The Trade Execution and Management Platform is designed to streamline and automa
   - Aggregates and synchronizes data to maintain consistency across all systems.
 - **Diagrams:**
   - **Class Diagram:**  
-    ![Back Office Settlement Module](https://github.com/Jonlowery/CIDM6330/blob/main/Assignment%201/Images/BackOfficeSettlementModule.png)
+    ![Back Office Settlement Module](./images/BackOfficeSettlementModule.png)
   - **Sequence Diagram:**  
-    ![Back Office Settlement Module Sequence](https://github.com/Jonlowery/CIDM6330/blob/main/Assignment%201/Images/BackOfficeSettlementModuleSequence.png)
+    ![Back Office Settlement Module Sequence](./images/BackOfficeSettlementModuleSequence.png)
