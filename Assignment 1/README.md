@@ -160,10 +160,10 @@ The Trade Execution and Management Platform is designed to streamline and automa
 
 ### Non-Functional Requirements / Design Considerations
 - **Performance:** The system must handle high transaction volumes with minimal latency, ensuring that real-time dashboards and trade statuses update promptly.
-- **Scalability:** The architecture should support horizontal scaling to accommodate peak trading periods without performance degradation.
+- **Scalability:** The architecture should scale to accommodate peak trading periods without performance degradation.
 - **Security & Access Control:** Implement robust authentication (including multi-factor) and role-based permissions to protect sensitive data.
 - **Auditability & Compliance:** Maintain comprehensive audit logs for all trade-related actions and support reporting that meets regulatory standards.
-- **Integration & Interoperability:** Seamlessly integrate with external market data feeds and legacy systems (e.g., Bloomberg, SWIFT) through well-defined APIs.
+- **Integration & Interoperability:** Seamlessly integrate with external market data feeds and legacy systems (Bloomberg) through well-defined APIs.
 - **Reliability & Availability:** Design for high availability with appropriate failover and disaster recovery mechanisms.
 
 ### UX Notes
