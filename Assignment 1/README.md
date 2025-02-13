@@ -36,6 +36,7 @@ The proposed system is a Trade Execution and Management Platform that:
    - [Gherkin Validation](#gherkin-validation)
 3. [Specifications](#specifications)
    - [Concept](#concept)
+   - [Non-Functional Requirements / Design Considerations](#non-functional-requirements--design-considerations)
    - [UX Notes](#ux-notes)
    - [Interfaces (Controls)](#interfaces-controls)
    - [Behaviors](#behaviors)
@@ -124,6 +125,14 @@ Feature: Trade Validation Process
 ### Concept
 The Trade Execution and Management Platform is designed to streamline and automate the trade lifecycle—from initial trade capture to final settlement. By integrating workflows from the front office, middle office, and back office, the platform offers real-time visibility, reduces manual errors, and ensures compliance with industry regulations. It leverages automation for risk assessment, data validation, and settlement processing to enhance overall operational efficiency.
 
+### Non-Functional Requirements / Design Considerations
+- **Performance:** The system must handle high transaction volumes with minimal latency, ensuring that real-time dashboards and trade statuses update promptly.
+- **Scalability:** The architecture should support horizontal scaling to accommodate peak trading periods without performance degradation.
+- **Security & Access Control:** Implement robust authentication (including multi-factor) and role-based permissions to protect sensitive data.
+- **Auditability & Compliance:** Maintain comprehensive audit logs for all trade-related actions and support reporting that meets regulatory standards.
+- **Integration & Interoperability:** Seamlessly integrate with external market data feeds and legacy systems (e.g., Bloomberg, SWIFT) through well-defined APIs.
+- **Reliability & Availability:** Design for high availability with appropriate failover and disaster recovery mechanisms.
+
 ### UX Notes
 - **User-Centric Design:** Interfaces are tailored for different user roles (traders, compliance officers, operations analysts).
 - **Dashboard Views:** Customizable dashboards provide real-time insights into trade status, alerts, and performance metrics.
@@ -141,6 +150,7 @@ The Trade Execution and Management Platform is designed to streamline and automa
 - **Error Handling:** Clear, instructive error messages guide users through resolving data entry or validation issues.
 - **Audit Logging:** Comprehensive logging of all actions ensures traceability and regulatory compliance.
 - **Scalability:** Built to support high transaction volumes and adapt to peak trading periods without performance degradation.
+
 
 ### Feature Packages
 
