@@ -200,7 +200,7 @@ The Trade Execution and Management Platform is designed to streamline and automa
     ![Trade Capture Module](https://github.com/Jonlowery/CIDM6330/blob/main/Assignment%201/Images/TradeCaptureModule.png)
   - **Sequence Diagram:**  
     ![Trade Capture Module Sequence](https://github.com/Jonlowery/CIDM6330/blob/main/Assignment%201/Images/TradeCaptureModuleSequence.png)
-
+    
 #### Feature Package B: Middle Office Validation
 - **Components:**
   - **Trade Validation Engine:** Automatically validates trade details against compliance and risk requirements.
@@ -213,9 +213,9 @@ The Trade Execution and Management Platform is designed to streamline and automa
   - Notifies traders and compliance officers if a trade is rejected or requires modification.
 - **Diagrams:**
   - **Class Diagram:**  
-    ![Middle Office Validation Module](./images/MiddleOfficeValidationModule.png)
+    ![Middle Office Validation Module](https://github.com/Jonlowery/CIDM6330/blob/main/Assignment%201/Images/MiddleOfficeValidationModule.png)
   - **Sequence Diagram:**  
-    ![Middle Office Validation Module Sequence](./images/MiddleOfficeValidationModuleSequence.png)
+    ![Middle Office Validation Module Sequence](https://github.com/Jonlowery/CIDM6330/blob/main/Assignment%201/Images/MiddleOfficeValidationModuleSequence.png)
 
 #### Feature Package C: Back Office Settlement
 - **Components:**
@@ -227,6 +227,6 @@ The Trade Execution and Management Platform is designed to streamline and automa
   - Aggregates and synchronizes data to maintain consistency across all systems.
 - **Diagrams:**
   - **Class Diagram:**  
-    ![Back Office Settlement Module](./images/BackOfficeSettlementModule.png)
+    ![Back Office Settlement Module](https://github.com/Jonlowery/CIDM6330/blob/main/Assignment%201/Images/BackOfficeSettlementModule.png)
   - **Sequence Diagram:**  
-    ![Back Office Settlement Module Sequence](./images/BackOfficeSettlementModuleSequence.png)
+    ![Back Office Settlement Module Sequence](https://github.com/Jonlowery/CIDM6330/blob/main/Assignment%201/Images/BackOfficeSettlementModuleSequence.png)
