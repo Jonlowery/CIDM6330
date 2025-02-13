@@ -118,6 +118,14 @@ Feature: Trade Validation Process
     Given a trade is submitted for validation
     When the system performs automated risk and compliance checks
     Then the trade should be confirmed and moved to the settlement stage
+
+Feature: Back Office Settlement Process
+  Scenario: Successful Settlement of a Confirmed Trade
+    Given a trade has been validated by the Trade Validation Process
+    When the settlement engine initiates the settlement process
+    Then the trade should be cleared and the ledger updated
+    And a settlement confirmation should be sent to the relevant back office systems
+
 ```
 
 ## Specifications
