@@ -85,6 +85,31 @@ The proposed system is a Trade Execution and Management Platform that:
 - **Alternate Flow:**  
   - If the trade fails automated checks, a manual review process is initiated.
 
+#### Use Case 3: Back Office Settlement Process
+- **Primary Actor:** Settlement Engine
+- **Secondary Actors:** Back Office Operator, External Systems
+- **Description:** The system processes validated trades and updates the ledger upon successful settlement.
+- **Preconditions:** 
+  - The trade has been validated and confirmed by the Trade Validation process.
+  - All necessary trade data is available and accurate.
+- **Postconditions:** 
+  - The trade is successfully settled, and all systems are updated accordingly.
+  - Audit logs are updated to reflect the settlement process for compliance purposes.
+- **Basic Flow:**
+  1. The Settlement Engine detects a new confirmed trade ready for settlement.
+  2. The system retrieves necessary data from external market feeds and legacy systems.
+  3. The Settlement Engine processes the trade, updating internal ledgers.
+  4. A settlement confirmation is sent to the Back Office Operator and relevant external systems.
+- **Alternate Flow:**
+  - **Data Discrepancy:**
+    - If inconsistent or missing data is detected, the system alerts the Back Office Operator.
+    - The operator reviews and resolves the issue before reinitiating settlement.
+  - **Settlement Failure:**
+    - If settlement fails due to system errors or external factors, the system logs the error.
+    - The system notifies the Back Office Operator and retries the settlement process.
+- **Exceptions:**
+  - If external systems are unavailable during data retrieval, the system queues the settlement process and retries periodically until successful.
+
 ### Features
 - **Feature 1: Trade Capture Module:**  
   Real-time entry of trade data by front office personnel.
