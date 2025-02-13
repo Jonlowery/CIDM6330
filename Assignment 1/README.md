@@ -154,9 +154,9 @@ The Trade Execution and Management Platform is designed to streamline and automa
   - Notifies traders and middle office operators if any issues arise, allowing prompt corrective actions.
 - **Diagrams:**
   - **Class Diagram:**  
-    ![Trade Capture Module](https://raw.githubusercontent.com/Jonlowery/CIDM6330/main/Assignment%201/images/TradeCaptureModule.png)
+    ![Trade Capture Module](https://github.com/Jonlowery/CIDM6330/blob/main/Assignment%201/Images/TradeCaptureModule.png)
   - **Sequence Diagram:**  
-    ![Trade Capture Module Sequence](https://raw.githubusercontent.com/Jonlowery/CIDM6330/main/Assignment%201/images/TradeCaptureModuleSequence.png)
+    ![Trade Capture Module Sequence](https://github.com/Jonlowery/CIDM6330/blob/main/Assignment%201/Images/TradeCaptureModuleSequence.png)
 
 #### Feature Package B: Back Office Settlement
 - **Components:**
@@ -168,6 +168,6 @@ The Trade Execution and Management Platform is designed to streamline and automa
   - Aggregates and synchronizes data to maintain consistency across all systems.
 - **Diagrams:**
   - **Class Diagram:**  
-    ![Back Office Settlement Module](https://raw.githubusercontent.com/Jonlowery/CIDM6330/main/Assignment%201/images/BackOfficeSettlementModule.png)
+    ![Back Office Settlement Module](https://github.com/Jonlowery/CIDM6330/blob/main/Assignment%201/Images/BackOfficeSettlementModule.png)
   - **Sequence Diagram:**  
-    ![Back Office Settlement Module Sequence](https://raw.githubusercontent.com/Jonlowery/CIDM6330/main/Assignment%201/images/BackOfficeSettlementModuleSequence.png)
+    ![Back Office Settlement Module Sequence](https://github.com/Jonlowery/CIDM6330/blob/main/Assignment%201/Images/BackOfficeSettlementModuleSequence.png)
