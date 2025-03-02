@@ -51,21 +51,6 @@ This FastAPI application is built with Python and leverages Pydantic for data va
      ```
      (You should see `(venv)` at the beginning of your prompt.)
 
-   **macOS/Linux:**
-   - Open a terminal and navigate to your project folder:
-     ```
-     cd /path/to/Assignment2
-     ```
-   - Create the virtual environment:
-     ```
-     python3 -m venv venv
-     ```
-   - Activate the virtual environment:
-     ```
-     source venv/bin/activate
-     ```
-     (Your prompt should now show `(venv)`.)
-
 2. **Install Dependencies:**
    With the virtual environment activated, run:
 	pip install -r requirements.txt
