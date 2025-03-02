@@ -54,7 +54,7 @@ This FastAPI application is built with Python and leverages Pydantic for data va
 2. **Install Dependencies:**
    With the virtual environment activated, run:
 	```
-pip install -r requirements.txt
+	pip install -r requirements.txt
 	```
 3. **Run the Server:**
 Start the FastAPI server by running:
