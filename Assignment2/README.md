@@ -15,8 +15,7 @@ The project is organized as follows:
 - **README.md**: This file, which explains the project details.
 
 ## ERD Diagram
-Below is the ERD diagram for the project.  
-*Note: Ensure the ERD image is uploaded in the repository (for example, in an `images` folder) and adjust the path if needed.*
+Below is the ERD diagram for the project. 
 
 ![ERD Diagram](images/ERD.png)
 
