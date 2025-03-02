@@ -53,12 +53,14 @@ This FastAPI application is built with Python and leverages Pydantic for data va
 
 2. **Install Dependencies:**
    With the virtual environment activated, run:
-	pip install -r requirements.txt
-
+	```
+pip install -r requirements.txt
+	```
 3. **Run the Server:**
 Start the FastAPI server by running:
+	```
 	uvicorn app.main:app --reload
-
+	```
 The server will be accessible at [http://127.0.0.1:8000](http://127.0.0.1:8000).
 
 4. **Test the API:**
