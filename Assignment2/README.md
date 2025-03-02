@@ -101,6 +101,7 @@ if __name__ == "__main__":
  uvicorn.run(app, host="127.0.0.1", port=8000)
 
 ### models.py
+'''python
 from pydantic import BaseModel, Field
 from typing import Optional
 
@@ -110,8 +111,10 @@ class Customer(BaseModel):
     email: str = Field(..., description="Customer email address")
     address: str = Field(..., description="Customer's physical address")
     phone: str = Field(..., description="Customer's phone number")
+'''
 
 ### routes.py
+```python
 from fastapi import APIRouter, HTTPException
 from typing import List
 from app.models import Customer
@@ -159,6 +162,7 @@ def delete_customer(customer_id: int):
         raise HTTPException(status_code=404, detail="Customer not found")
     del customers_db[customer_id]
     return {"detail": "Customer deleted"}
+'''
 
 ## Conclusion
 In this project, a detailed specification was successfully transformed into a functional API using FastAPI. The implementation of CRUD operations for the Customer entity, along with data validation through Pydantic models, demonstrates the project's core capabilities. While the current version focuses on a single entity, the architecture lays a solid foundation for future enhancements—such as adding additional entities, incorporating persistent storage, and integrating more complex business logic—to create a comprehensive and scalable API.
