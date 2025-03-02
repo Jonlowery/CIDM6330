@@ -6,7 +6,7 @@ In this assignment, I developed a basic FastAPI application that demonstrates ho
 ## Project Structure
 The project is organized as follows:
 
-- **app/**: Contains the FastAPI application code.
+- **app**: Contains the FastAPI application code.
   - `main.py`: The entry point for the API.
   - `models.py`: Contains the Pydantic models.
   - `routes.py`: Implements the CRUD endpoints.
