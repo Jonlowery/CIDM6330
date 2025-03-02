@@ -1,5 +1,5 @@
 # Assignment 2: From Specification to API
-
+ 
 ## Overview
 In this assignment, I developed a basic FastAPI application that demonstrates how to transform my project specification into a working API. The project uses Pydantic models for data validation and implements simple CRUD (Create, Read, Update, Delete) operations for a "Customer" entity. This serves as a foundation for future enhancements, such as adding more entities and integrating a persistent database to be used for the trading application.
 
