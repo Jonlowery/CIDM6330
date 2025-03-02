@@ -112,7 +112,7 @@ class Customer(BaseModel):
     email: str = Field(..., description="Customer email address")
     address: str = Field(..., description="Customer's physical address")
     phone: str = Field(..., description="Customer's phone number")
-'''
+```
 
 ### routes.py
 ```python
