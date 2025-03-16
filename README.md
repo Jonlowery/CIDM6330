@@ -1,62 +1,96 @@
-# A Software Solution for Streamlining Trade Settlement and Execution Between Front and Back Office
+# Assignment 3: Extended API with Multiple Entities and Data Retention
 
-## 1. Introduction & Problem Statement
+## Overview
+In this assignment, I developed an extended FastAPI application that builds on my previous work by implementing a complete API with persistence for multiple entities. The project supports CRUD (Create, Read, Update, Delete) operations for five entities: **Customer**, **Account**, **RiskAssessment**, **Transaction**, and **Branch**. It introduces three repository patterns—**In-Memory**, **CSV**, and **SQLModel (SQLite)**—to demonstrate flexible data retention. This serves as a foundation for a trading application, inspired by the SQLModel "Heroes" FastAPI/Pydantic tutorial.
 
-In modern banking and financial services—particularly within capital markets—**trade execution** involves multiple steps and stakeholders, from initial client engagement in the front office to post-trade reconciliation in the back office. Despite advances in trading technologies, **gaps in communication and data flow** often lead to:
+## Project Structure
+The project is organized as follows:
 
-- **Delays in trade confirmation** that can result in missed opportunities.
-- **Compliance risks** due to inconsistent record-keeping or slow reporting.
-- **Increased operational overhead** as teams manually reconcile data across disparate systems.
+- **app**: Contains the FastAPI application code.
+  - **main.py**: The entry point for the API.
+  - **models.py**: Contains the Pydantic and SQLModel definitions for all entities.
+  - **routes.py**: Implements the CRUD endpoints for all entities.
+  - **repository.py**: Defines the In-Memory, CSV, and SQLModel repository implementations.
+  - **database.py**: Sets up the SQLite database and engine for SQLModel.
+- **requirements.txt**: Lists all Python packages required for the project.
+- **ERD.pdf**: The Entity Relationship Diagram for the project.
+- **README.md**: This file, which explains the project details.
 
-A well-designed software system can **minimize these inefficiencies**, streamline trade processing, and ensure constant communication across all stages of the trade lifecycle. 
+## FastAPI Application Details
 
----
+### Overview
+This FastAPI application is built with Python and leverages Pydantic for data validation and SQLModel for database integration. It provides endpoints for CRUD operations across multiple entities, with configurable persistence options.
 
-## 2. Domain of Practice/Interest
+### Key Endpoints
+- `GET /`: Returns a welcome message.
+- `POST /{entity}/`: Creates a new entity (e.g., `/customers/`, `/accounts/`).
+- `GET /{entity}/`: Retrieves all entities (e.g., `/customers/`, `/accounts/`).
+- `GET /{entity}/{id}`: Retrieves a specific entity by ID (e.g., `/customers/1`).
+- `PUT /{entity}/{id}`: Updates an existing entity (e.g., `/customers/1`).
+- `DELETE /{entity}/{id}`: Deletes an entity (e.g., `/customers/1`).
 
-This project aims to improve the **banking and financial services** domain, with a focus on **capital markets and institutional trading**. Key characteristics of this domain include:
+Entities supported: `customers`, `accounts`, `riskassessments`, `transactions`, `branches`.
 
-- **Regulatory Complexity**: Markets are governed by strict regulatory bodies (SEC, FINRA, MSRB) that require thorough documentation, accurate reporting, and robust risk controls.
-- **High Transaction Volume and Velocity**: Real-time or near-real-time processing is crucial for both **front office** (traders, sales) and **back office** ( settlement, clearing, accounting).
-- **Global Reach**: Trades often span multiple asset classes (equities, fixed income, derivatives, etc.) and geographical markets, complicating settlement processes and compliance requirements.
+### Persistence Options
+The application supports three repository types, defined in `repository.py`:
 
----
+- **In-Memory**: Temporary storage during runtime.
+- **CSV**: File-based storage in CSV files.
+- **SQLModel**: Persistent storage in an SQLite database (configured in `database.py`).
 
-## 3. Personal/Professional Interest
+For customers, set the `REPOSITORY_TYPE` environment variable (e.g., `set REPOSITORY_TYPE=sqlmodel` on Windows) to choose the repository.
 
-My personal and professional interest in this area stems from my active role in the **capital markets industry** as an **investment strategies analyst** along with my former roles as a **settlements clearance manager** and **investment systems analyst**. My daily responsibilities involve analyzing real-time market data, evaluating risk profiles, and orchestrating the execution of investment strategies. Through firsthand experience, I have seen how inefficiencies in trade execution workflows—especially between front and back office—can translate into operational risks and missed opportunities. By designing a robust, data-driven solution that coordinates these critical functions, I hope to improve overall efficiency, reduce errors, and enable more informed decision-making in pursuit of optimal client and organizational outcomes.
+## How to Run the Application
 
+### 1. Set Up and Activate a Virtual Environment
 
-## 4. Proposed Software System
+**Windows:** Open Command Prompt and navigate to your project folder:
 
-### Objective
+```shell
+cd C:\Users\Owner\OneDrive\Documents\GitHub\CIDM6330\Assignment3
+python -m venv venv
+venv\Scripts\activate
+```
 
-The primary goal is to develop a **Trade Execution and Management Platform** that **seamlessly coordinates** front and back office workflows. Specifically, the system aims to:
+(You should see `(venv)` at the beginning of your prompt.)
 
-1. **Enhance Real-Time Visibility**: Provide a unified view of trade status, from initiation to settlement, enabling faster decision-making.
-2. **Automate Key Processes**: Reduce manual tasks (e.g., trade capture, reconciliation) through integrated data pipelines and workflow automation.
-3. **Ensure Compliance**: Implement audit trails, validation checks, and reporting modules that adhere to relevant regulations.
-4. **Improve Collaboration**: Facilitate communication and data sharing between trading desks, risk management, and settlement teams.
+### 2. Install Dependencies
+With the virtual environment activated, run:
 
-### Key Features and Components
+```shell
+pip install -r requirements.txt
+```
 
-- **Trade Capture Module**: Allows front office personnel to record trade details (instrument type, price, quantity) in real-time through an intuitive interface.
-- **Middle Office Validation**: Conducts risk checks (credit limits, regulatory compliance) before trades are officially confirmed.
-- **Back Office Settlement Engine**: Automates post-trade activities (clearing, settlement, ledger updates), reducing manual intervention.
-- **Data Integration Layer**: Aggregates data from external sources (market data feeds, custodian banks) to maintain data consistency and accuracy.
-- **Analytics & Reporting**: Provides dashboards for trade performance, operational metrics, and compliance reporting, all in **real-time** or scheduled intervals.
-- **Alerting and Notifications**: Sends proactive alerts to stakeholders (traders, salespersons, operations analysts, etc.) when exceptions or anomalies occur.
+### 3. Run the Server
+Start the FastAPI server by running:
 
-### Potential Design Considerations
+```shell
+uvicorn app.main:app --reload
+```
 
-- **Scalability & Performance**: Must handle **high transaction throughput** while maintaining low-latency updates for front office activities.
-- **Security & Access Control**: Enforce robust user authentication and role-based permissions to prevent unauthorized trade modifications or data access.
-- **Auditability**: Maintain detailed **audit logs** for all trade-related events, essential for regulatory compliance and internal oversight.
-- **Integration with Legacy Systems**: Provide APIs or middleware solutions to **bridge older in-house systems** (Bloomberg, Intrader, Swift) and data warehouses, ensuring a smooth digital transformation.
+The server will be accessible at `http://127.0.0.1:8000`.
 
----
+### 4. Test the API
+Open your browser and navigate to `http://127.0.0.1:8000/docs` to access the interactive API documentation provided by FastAPI.
 
-## 5. Conclusion
+## Code Snippets
 
-By focusing on **real-time trade coordination** between front and back office systems, this proposed system aims to **streamline trade execution and settlement**—from traders seeking rapid execution to operations teams responsible for timely settlement and compliance. By **reducing manual processes**, **increasing transparency**, and **enforcing consistent data standards**, the platform can significantly cut operational risk and cost.
+### database.py
+
+```python
+from sqlmodel import create_engine, SQLModel
+
+sqlite_file_name = "database.db"
+sqlite_url = f"sqlite:///{sqlite_file_name}"
+engine = create_engine(sqlite_url)
+
+def create_db_and_tables():
+    SQLModel.metadata.create_all(engine)
+```
+
+## Dependencies
+Specified in `requirements.txt`:
+
+## Conclusion
+This project expanded my initial API into a robust FastAPI application, providing flexible persistence and CRUD operations across multiple entities. It serves as a scalable foundation for future expansion of the trading application.
 
