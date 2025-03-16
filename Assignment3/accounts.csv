@@ -1,0 +1,2 @@
+account_id,customer_id,account_type,balance,open_date,branch_id
+3,4,savings,1000000.0,10/5/2024,0
