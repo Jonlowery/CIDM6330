@@ -4,26 +4,6 @@
 
 This assignment involves migrating an existing FastAPI project to Django using the Django REST Framework. The project leverages Django's ORM for data persistence and provides API endpoints for managing various entities such as Customer, Account, RiskAssessment, Transaction, and Branch.
 
-## Project Structure
-
-- `CIDM6330/`
-  - `Assignment01/`
-  - `Assignment2/`
-  - `Assignment3/`
-  - `Assignment04/`
-    - `manage.py`
-    - `trade_project/`
-      - `settings.py`
-      - `urls.py`
-      - `...`
-    - `api/`
-      - `models.py`
-      - `serializers.py`
-      - `views.py`
-      - `urls.py`
-    - `venv/`
-    - `Readme.md`
-
 ## Setup Instructions
 
 ### Clone the Repository
