@@ -8,28 +8,34 @@ This assignment involves migrating an existing FastAPI project to Django using t
 
 ### Clone the Repository
 
-
+```bash
 git clone https://github.com/Jonlowery/CIDM6330.git
-
+```
 
 ### Navigate to the Assignment04 Directory
 
-
+```bash
 cd CIDM6330/Assignment04
-
+```
 
 ### Activate the Virtual Environment
 
+  ```bash
   venv\Scripts\activate
+  ```
 
 ### Run Migrations
 
+```bash
 python manage.py makemigrations
 python manage.py migrate
+```
 
 ### Run the Development Server
 
+```bash
 python manage.py runserver
+```
 
 ### Access the API
 
@@ -47,4 +53,4 @@ Open your browser and navigate to [http://127.0.0.1:8000/api/](http://127.0.0.1:
 
 - Add filtering and pagination for API endpoints.
 - Enhance business logic and event-driven paradigms.
-
+```
