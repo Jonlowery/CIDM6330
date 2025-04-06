@@ -6,23 +6,23 @@ This assignment involves migrating an existing FastAPI project to Django using t
 
 ## Project Structure
 
-CIDM6330/
-├── Assignment01/
-├── Assignment2/
-├── Assignment3/
-└── Assignment04/
-    ├── manage.py
-    ├── trade_project/
-    │   ├── settings.py
-    │   ├── urls.py
-    │   └── ...
-    ├── api/
-    │   ├── models.py
-    │   ├── serializers.py
-    │   ├── views.py
-    │   └── urls.py
-    ├── venv/
-    └── README.md
+- `CIDM6330/`
+  - `Assignment01/`
+  - `Assignment2/`
+  - `Assignment3/`
+  - `Assignment04/`
+    - `manage.py`
+    - `trade_project/`
+      - `settings.py`
+      - `urls.py`
+      - `...`
+    - `api/`
+      - `models.py`
+      - `serializers.py`
+      - `views.py`
+      - `urls.py`
+    - `venv/`
+    - `Readme.md`
 
 ## Setup Instructions
 
