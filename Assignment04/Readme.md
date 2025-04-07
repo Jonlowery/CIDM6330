@@ -24,6 +24,14 @@ cd CIDM6330/Assignment04
   venv\Scripts\activate
   ```
 
+### Install Dependencies
+
+After activating your virtual environment, install the required packages using:
+
+  ```bash
+ pip install -r requirements.txt
+  ```
+
 ### Run Migrations
 
 ```bash
