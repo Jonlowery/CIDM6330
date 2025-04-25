@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+
+  web:
+    build: .
+    container_name: web
+    command: >
+      sh -c "
+        python manage.py migrate --noinput &&
+        python manage.py runserver 0.0.0.0:8000
+      "
+    volumes:
+      - ./api:/app
+      - ./api/data/imports:/app/data/imports
+      - ./frontend:/app/frontend
+    ports:
+      - "8000:8000"
+    environment:
+      DJANGO_SETTINGS_MODULE: bondsystem.settings
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      - redis
+
+  worker:
+    build: .
+    container_name: worker
+    command: celery -A bondsystem worker --loglevel=info
+    volumes:
+      - ./api:/app
+      - ./api/data/imports:/app/data/imports
+    environment:
+      DJANGO_SETTINGS_MODULE: bondsystem.settings
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      - redis
+      - web
+
+  beat:
+    build: .
+    container_name: beat
+    command: celery -A bondsystem beat --loglevel=info
+    volumes:
+      - ./api:/app
+      - ./api/data/imports:/app/data/imports
+    environment:
+      DJANGO_SETTINGS_MODULE: bondsystem.settings
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      - redis
+      - web

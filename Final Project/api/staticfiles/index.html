@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Portfolio Viewer</title>
+  <!-- Chart.js from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: sans-serif; margin: 2em; }
+    #filter { margin-bottom: 1em; }
+    table { border-collapse: collapse; width: 100%; margin-bottom: 2em; }
+    th, td { border: 1px solid #ccc; padding: 0.5em; text-align: left; }
+  </style>
+</head>
+<body>
+
+  <h1>Portfolio Viewer</h1>
+  <label for="filter">Filter by CUSIP:</label>
+  <input id="filter" placeholder="enter cusip…" />
+
+  <h2 id="portfolio-name">Loading…</h2>
+  <table id="holdings-table">
+    <thead>
+      <tr>
+        <th>CUSIP</th>
+        <th>Face Amount</th>
+        <th>Book Price</th>
+        <th>Book Yield</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <canvas id="faceChart" width="600" height="300"></canvas>
+
+  <script>
+    const apiRoot = 'http://localhost:8000/api';
+    let allHoldings = [];
+    let chart;
+
+    async function loadPortfolio() {
+      // fetch portfolios
+      const pr = await fetch(`${apiRoot}/portfolios/`);
+      const portfolios = await pr.json();
+      if (!portfolios.length) {
+        document.getElementById('portfolio-name').textContent = 'No portfolios found';
+        return;
+      }
+      const p = portfolios[0];
+      document.getElementById('portfolio-name').textContent = p.name;
+
+      // fetch holdings filtered by portfolio
+      const hr = await fetch(`${apiRoot}/holdings/?portfolio=${p.id}`);
+      const holdings = await hr.json();
+      allHoldings = holdings;
+      renderTable(holdings);
+      renderChart(holdings);
+    }
+
+    function renderTable(holdings) {
+      const tbody = document.querySelector('#holdings-table tbody');
+      tbody.innerHTML = '';
+      holdings.forEach(h => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${h.security_cusip}</td>
+          <td>${parseFloat(h.original_face_amount).toFixed(2)}</td>
+          <td>${h.book_price || ''}</td>
+          <td>${h.book_yield || ''}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderChart(holdings) {
+      const ctx = document.getElementById('faceChart').getContext('2d');
+      const labels = holdings.map(h => h.security_cusip);
+      const data = holdings.map(h => parseFloat(h.original_face_amount));
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: 'bar',
+        data: { labels, datasets: [{ label: 'Face Amount', data }] },
+        options: { scales: { y: { beginAtZero: true } } }
+      });
+    }
+
+    // live filter
+    document.getElementById('filter').addEventListener('input', e => {
+      const term = e.target.value.toUpperCase();
+      const filtered = allHoldings.filter(h => h.security_cusip.includes(term));
+      renderTable(filtered);
+      renderChart(filtered);
+    });
+
+    // start
+    loadPortfolio();
+  </script>
+
+</body>
+</html>
