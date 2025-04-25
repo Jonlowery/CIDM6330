@@ -5,7 +5,7 @@
 
 ## Overview
 
-This project fulfills **Assignment 05** requirements for **CIDM6330**. It implements a banking API using Django and Django REST Framework, with background task processing via Celery and Redis. It supports customer and account management, transactions, and risk assessments.
+This project implements a banking API using Django and Django REST Framework, with background task processing via Celery and Redis. It supports customer and account management, transactions, and risk assessments.
 
 ## Features
 
