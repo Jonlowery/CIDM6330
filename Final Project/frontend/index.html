@@ -1,79 +1,16 @@
-<!DOCTYPE html>
+{% load static %} <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Portfolio Analyzer</title>
+    <link rel="stylesheet" href="{% static 'style.css' %}">
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-trendline"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
-
-    <style>
-        /* --- CSS (No changes from previous version) --- */
-        :root {
-            --bg-color: #f8f9fa; --text-color: #333; --container-bg: #fff; --header-color: #0056b3; --header-bg: #e9ecef; --header-text-color: var(--header-color); --table-border-color: #dee2e6; --table-header-bg: #e9ecef; --table-header-text: #495057; --table-odd-row-bg: #f8f9fa; --table-hover-bg: #e2e6ea; --input-border-color: #ccc; --input-bg-color: #fff; --button-primary-bg: #007bff; --button-primary-text: white; --button-secondary-bg: #6c757d; --button-secondary-text: white; --button-danger-bg: #dc3545; --button-danger-text: white; --button-info-bg: #17a2b8; --button-info-text: white; --header-height: 60px; --pdf-header-bg: '#e9ecef'; --pdf-header-text: '#495057'; --pdf-table-border: '#dee2e6'; --pdf-text-color: '#333333';
-        }
-        body.dark-mode {
-            --bg-color: #1a1a1a; --text-color: #f1f1f1; --container-bg: #2c2c2c; --header-color: #4dabf7; --header-bg: #343a40; --table-border-color: #444; --table-header-bg: #3a3a3a; --table-header-text: #e0e0e0; --table-odd-row-bg: #2c2c2c; --table-hover-bg: #454545; --input-border-color: #555; --input-bg-color: #333; --button-primary-bg: #0d6efd; --button-primary-text: white; --button-secondary-bg: #5c636a; --button-secondary-text: white; --button-danger-bg: #dc3545; --button-danger-text: white; --button-info-bg: #20c997; --button-info-text: white; --pdf-header-bg: '#3a3a3a'; --pdf-header-text: '#e0e0e0'; --pdf-table-border: '#444444'; --pdf-text-color: '#f1f1f1';
-        }
-        html { scroll-behavior: smooth; }
-        body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; margin: 0; padding: 0; background-color: var(--bg-color); color: var(--text-color); min-height: 100vh; transition: background-color 0.3s, color 0.3s; padding-top: var(--header-height); }
-        header.app-header { position: fixed; top: 0; left: 0; width: 100%; height: var(--header-height); background-color: var(--header-bg); color: var(--header-text-color); display: flex; align-items: center; justify-content: space-between; padding: 0 1.5em; box-shadow: 0 2px 4px rgba(0,0,0,0.1); z-index: 1000; box-sizing: border-box; }
-         body.dark-mode header.app-header { box-shadow: 0 2px 4px rgba(255,255,255,0.05); }
-         header.app-header .header-left { display: flex; align-items: center; }
-         header.app-header .header-right { display: flex; align-items: center; gap: 1em; }
-         header.app-header a { color: inherit; text-decoration: none; display: flex; align-items: center; }
-         header.app-header a:hover, header.app-header a:focus { text-decoration: underline; outline: none; }
-         header.app-header h1 { margin: 0; font-size: 1.5em; }
-         header.app-header button { height: auto; padding: 0.5em 1em; border-radius: 6px; border: none; cursor: pointer; font-weight: bold; transition: background-color 0.2s ease; font-size: 0.9em; }
-         #dark-mode-toggle { background-color: var(--button-secondary-bg); color: var(--button-secondary-text); }
-         #dark-mode-toggle:hover { background-color: color-mix(in srgb, var(--button-secondary-bg) 80%, black); }
-         #export-pdf-btn { background-color: var(--button-info-bg); color: var(--button-info-text); }
-         #export-pdf-btn:hover { background-color: color-mix(in srgb, var(--button-info-bg) 80%, black); }
-        .container { max-width: 1600px; margin: 0 auto; padding: 1.5em 1em; box-sizing: border-box; }
-        h2#portfolio-name { color: var(--header-text-color); text-align: center; margin-top: 0; margin-bottom: 1em; min-height: 1.2em; }
-        .controls { display: flex; flex-direction: column; gap: 1em; margin-bottom: 1.5em; padding: 1em; background-color: var(--container-bg); border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); box-sizing: border-box; }
-         body.dark-mode .controls { box-shadow: 0 1px 3px rgba(255,255,255,0.05); }
-        .portfolio-selector { display: flex; flex-wrap: wrap; align-items: center; gap: 0.8em; }
-        #filters-container { display: flex; flex-direction: column; gap: 0.8em; border-top: 1px solid var(--table-border-color); padding-top: 1em; }
-        .filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.8em; }
-        label { margin-right: 0.5em; font-weight: bold; white-space: nowrap; color: var(--text-color); }
-        select, input[type="text"], input[type="number"], input[type="date"] { padding: 0.6em 0.8em; border-radius: 6px; border: 1px solid var(--input-border-color); background-color: var(--input-bg-color); color: var(--text-color); flex-grow: 1; min-width: 100px; height: 38px; box-sizing: border-box; }
-        body.dark-mode input::placeholder { color: #bbb; opacity: 1; } body.dark-mode input::-ms-input-placeholder { color: #bbb; }
-        #portfolio-select { flex-grow: 2; }
-        .filter-row select, .filter-row input { flex-basis: 150px; }
-        .filter-row label:first-child { flex-basis: 60px; text-align: right; }
-         button.filter-action-btn, button.remove-filter-btn { padding: 0.6em 1em; border-radius: 6px; border: none; cursor: pointer; font-weight: bold; transition: background-color 0.2s ease; height: 38px; box-sizing: border-box; color: var(--button-primary-text); }
-         #add-filter-btn { background-color: var(--button-primary-bg); color: var(--button-primary-text); align-self: flex-start; margin-top: 0.5em; }
-         #add-filter-btn:hover { background-color: color-mix(in srgb, var(--button-primary-bg) 80%, black); }
-         #clear-all-filters-btn { background-color: var(--button-secondary-bg); color: var(--button-secondary-text); align-self: flex-start; margin-top: 0.5em; }
-         #clear-all-filters-btn:hover { background-color: color-mix(in srgb, var(--button-secondary-bg) 80%, black); }
-         button.remove-filter-btn { background-color: var(--button-danger-bg); color: var(--button-danger-text); padding: 0.4em 0.8em; font-size: 0.9em; height: auto; flex-grow: 0; flex-basis: auto; }
-         button.remove-filter-btn:hover { background-color: color-mix(in srgb, var(--button-danger-bg) 80%, black); }
-         .filter-buttons-container { display: flex; gap: 0.8em; margin-top: 1em; border-top: 1px solid var(--table-border-color); padding-top: 1em; }
-        .table-container { overflow-x: auto; margin-bottom: 2em; background-color: var(--container-bg); border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); box-sizing: border-box; }
-         body.dark-mode .table-container { box-shadow: 0 2px 4px rgba(255,255,255,0.05); }
-        table { border-collapse: collapse; width: 100%; table-layout: auto; }
-        th, td { border: 1px solid var(--table-border-color); padding: 0.6em 0.8em; text-align: center; white-space: nowrap; vertical-align: middle; font-size: 0.95em; color: var(--text-color); }
-        th { background-color: var(--table-header-bg); color: var(--table-header-text); cursor: pointer; position: relative; user-select: none; }
-        th:hover { background-color: color-mix(in srgb, var(--table-header-bg) 85%, var(--text-color) 15%); }
-        th .sort-arrow { font-size: 0.8em; margin-left: 5px; display: inline-block; opacity: 0.5; min-width: 1em; text-align: left; }
-        th.sorted .sort-arrow { opacity: 1; }
-        td:nth-child(1), td:nth-child(2) { text-align: left; } td:nth-child(3), td:nth-child(4), td:nth-child(5), td:nth-child(6), td:nth-child(7) { text-align: right; } td:nth-child(8), td:nth-child(9), td:nth-child(10) { text-align: center; }
-        tbody tr:nth-child(odd) { background-color: var(--table-odd-row-bg); } tbody tr:hover { background-color: var(--table-hover-bg); }
-        tfoot { font-weight: bold; background-color: var(--table-header-bg); } tfoot td { text-align: right; color: var(--text-color); } tfoot td:nth-child(1) { text-align: left; }
-        .charts-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5em; align-items: start; margin-bottom: 2em; padding: 0; box-sizing: border-box; }
-        .chart-container { width: 100%; height: 350px; background-color: var(--container-bg); padding: 1em; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); box-sizing: border-box; }
-         body.dark-mode .chart-container { box-shadow: 0 2px 4px rgba(255,255,255,0.05); }
-
-        /* --- Responsive adjustments --- */
-        @media (max-width: 1650px) { .container { max-width: 95%; } }
-        @media (max-width: 992px) { .filter-row { flex-direction: column; align-items: stretch; } .filter-row select, .filter-row input, button.remove-filter-btn { width: 100%; flex-basis: auto; } .filter-row label:first-child { text-align: left; margin-bottom: 0.2em; } header.app-header { padding: 0 1em; } .container { padding: 1.5em 1em; max-width: 100%; } .charts-grid { grid-template-columns: 1fr; } }
-        @media (max-width: 768px) { body { padding-top: calc(var(--header-height) + 0.5em); } header.app-header { padding: 0 0.5em; } header.app-header .header-right { gap: 0.5em; } header.app-header h1 { font-size: 1.2em; } header.app-header button { padding: 0.4em 0.6em; font-size: 0.8em;} .controls { gap: 1em; } .portfolio-selector { flex-direction: column; align-items: stretch; } select, input, button.filter-action-btn { width: 100%; max-width: none; } th, td { font-size: 0.9em; padding: 0.5em 0.6em; } .chart-container { height: 300px; } }
-        @media (max-width: 480px) { header.app-header h1 { font-size: 1.0em; } th, td { font-size: 0.85em; padding: 0.4em 0.5em; } }
-    </style>
 </head>
 <body id="top">
 
@@ -84,110 +21,98 @@
 
 <div class="container" id="main-content">
     <div class="controls">
-        <div class="portfolio-selector"> <label for="portfolio-select">Customer:</label> <select id="portfolio-select"></select> </div>
+        <div class="control-row">
+             <label for="customer-select">Customer:</label>
+             <select id="customer-select"></select>
+        </div>
+        <div class="control-row hidden" id="portfolio-filter-container">
+            <label for="portfolio-filter-select">Portfolio:</label>
+            <select id="portfolio-filter-select">
+                <option value="">-- Select Portfolio --</option>
+            </select>
+        </div>
         <div id="filters-container"></div>
-        <div class="filter-buttons-container"> <button id="add-filter-btn" class="filter-action-btn">Add Filter</button> <button id="clear-all-filters-btn" class="filter-action-btn">Clear All Filters</button> </div>
+        <div class="filter-buttons-container">
+            <button id="add-filter-btn" class="filter-action-btn">Add Filter</button>
+            <button id="clear-all-filters-btn" class="filter-action-btn">Clear All Filters</button>
+            <button id="create-portfolio-btn" class="control-action-btn">Create Sub-Portfolio</button>
+        </div>
     </div>
+
     <h2 id="portfolio-name">Loading…</h2>
+
     <div class="charts-grid">
         <div class="chart-container"><canvas id="yieldVsMaturityChart"></canvas></div>
         <div class="chart-container"><canvas id="parByMaturityYearChart"></canvas></div>
         <div class="chart-container"><canvas id="couponPieChart"></canvas></div>
         <div class="chart-container"><canvas id="priceVsYieldChart"></canvas></div>
     </div>
+
     <div class="table-container">
         <table id="holdings-table">
-            <thead> <tr> <th data-key="security_cusip" data-type="string">CUSIP<span class="sort-arrow"></span></th> <th data-key="description" data-type="string">Description<span class="sort-arrow"></span></th> <th data-key="par" data-type="number">Par<span class="sort-arrow"></span></th> <th data-key="settlement_price" data-type="number">Price<span class="sort-arrow"></span></th> <th data-key="coupon" data-type="number">Coupon<span class="sort-arrow"></span></th> <th data-key="yield" data-type="number">Yield<span class="sort-arrow"></span></th> <th data-key="wal" data-type="number">WAL<span class="sort-arrow"></span></th> <th data-key="estimated_maturity_date" data-type="number">Est. Maturity Year<span class="sort-arrow"></span></th> <th data-key="maturity_date" data-type="date">Maturity Date<span class="sort-arrow"></span></th> <th data-key="call_date" data-type="date">Call Date<span class="sort-arrow"></span></th> </tr> </thead>
+            <thead>
+                <tr>
+                    <th data-key="security_cusip" data-type="string">CUSIP<span class="sort-arrow"></span></th>
+                    <th data-key="description" data-type="string">Description<span class="sort-arrow"></span></th>
+                    <th data-key="par" data-type="number">Par<span class="sort-arrow"></span></th>
+                    <th data-key="settlement_price" data-type="number">Price<span class="sort-arrow"></span></th>
+                    <th data-key="coupon" data-type="number">Coupon<span class="sort-arrow"></span></th>
+                    <th data-key="yield" data-type="number">Yield<span class="sort-arrow"></span></th>
+                    <th data-key="wal" data-type="number">WAL<span class="sort-arrow"></span></th>
+                    <th data-key="estimated_maturity_date" data-type="number">Est. Maturity Year<span class="sort-arrow"></span></th>
+                    <th data-key="maturity_date" data-type="date">Maturity Date<span class="sort-arrow"></span></th>
+                    <th data-key="call_date" data-type="date">Call Date<span class="sort-arrow"></span></th>
+                </tr>
+            </thead>
             <tbody></tbody>
-            <tfoot> <tr> <td colspan="2">Totals</td> <td id="totals-par">0</td> <td></td> <td></td> <td id="totals-yield">0</td> <td id="totals-wal">0</td> <td colspan="3"></td> </tr> </tfoot>
+            <tfoot>
+                <tr>
+                    <td colspan="2">Totals</td>
+                    <td id="totals-par">0</td>
+                    <td></td> <td></td> <td id="totals-yield">0</td>
+                    <td id="totals-wal">0</td>
+                    <td colspan="3"></td> </tr>
+            </tfoot>
         </table>
     </div>
-</div> <script>
-    // --- JAVASCRIPT ---
-    const { jsPDF } = window.jspdf;
+</div>
 
-    // --- Constants & Variables ---
-    const apiRoot = '/api'; let portfolios = []; let allHoldings = []; let filteredHoldings = []; let chartInstances = {}; let columnOptionsHtml = ''; let currentSortKey = 'security_cusip'; let currentSortDir = 'asc'; let activeFilters = []; let nextFilterId = 0;
+<div id="create-portfolio-modal" class="modal-overlay">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Create New Sub-Portfolio</h3>
+            <button class="modal-close-btn" id="modal-close-btn">&times;</button>
+        </div>
+        <form id="create-portfolio-form">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="new-portfolio-name">Portfolio Name:</label>
+                    <input type="text" id="new-portfolio-name" name="name" required placeholder="e.g., Q3 High Yield">
+                </div>
+                <div class="form-group hidden" id="admin-customer-select-group">
+                    <label for="admin-customer-select">Assign to Customer:</label>
+                    <select id="admin-customer-select" name="customer_select_input">
+                        <option value="">Loading customers...</option>
+                    </select>
+                </div>
+                <div id="modal-error-message" class="modal-error-message"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" id="modal-cancel-btn">Cancel</button>
+                <button type="submit" class="btn-primary">Create Portfolio</button>
+            </div>
+        </form>
+    </div>
+</div>
 
-    // --- DOM Elements ---
-    const portfolioSelect = document.getElementById('portfolio-select'); const portfolioNameEl = document.getElementById('portfolio-name'); const tableBody = document.querySelector('#holdings-table tbody'); const tableHeaders = document.querySelectorAll('#holdings-table th[data-key]'); const tableElement = document.getElementById('holdings-table'); const filtersContainer = document.getElementById('filters-container'); const addFilterBtn = document.getElementById('add-filter-btn'); const clearAllFiltersBtn = document.getElementById('clear-all-filters-btn'); const darkModeToggle = document.getElementById('dark-mode-toggle'); const exportPdfBtn = document.getElementById('export-pdf-btn');
-
-    // --- Core Functions ---
-    function generateColumnOptions() { /* ... (same as before) ... */ columnOptionsHtml = ''; tableHeaders.forEach(th => { const key = th.dataset.key; const type = th.dataset.type || 'string'; const text = th.textContent.replace('▲', '').replace('▼', '').trim(); if (key) { columnOptionsHtml += `<option value="${key}" data-type="${type}">${text}</option>`; } }); }
-    function addFilterRow(initialFilter = null) { /* ... (same as before) ... */ const filterId = nextFilterId++; const filterRow = document.createElement('div'); filterRow.className = 'filter-row'; filterRow.dataset.filterId = filterId; filterRow.innerHTML = `<label for="filter-column-${filterId}">Filter by:</label><select class="filter-column" id="filter-column-${filterId}">${columnOptionsHtml}</select><select class="filter-operator" id="filter-operator-${filterId}"></select><input type="text" class="filter-value" id="filter-value-${filterId}" placeholder="Value..."><button class="remove-filter-btn" title="Remove this filter">X</button>`; filtersContainer.appendChild(filterRow); const columnSelect = filterRow.querySelector('.filter-column'); const operatorSelect = filterRow.querySelector('.filter-operator'); const valueInput = filterRow.querySelector('.filter-value'); const removeBtn = filterRow.querySelector('.remove-filter-btn'); columnSelect.addEventListener('change', handleFilterDropdownChange); operatorSelect.addEventListener('change', handleFilterDropdownChange); valueInput.addEventListener('input', handleFilterValueChange); removeBtn.addEventListener('click', handleRemoveFilter); const newFilter = { id: filterId, column: initialFilter?.column || columnSelect.value, operator: initialFilter?.operator, value: initialFilter?.value || '', type: initialFilter?.type || columnSelect.options[columnSelect.selectedIndex]?.dataset.type || 'string' }; activeFilters.push(newFilter); if (initialFilter) { columnSelect.value = initialFilter.column; valueInput.value = initialFilter.value; } updateOperatorOptionsForRow(filterRow, newFilter.operator); if (newFilter.value) { triggerFullUpdate(); } }
-    function updateOperatorOptionsForRow(filterRow, preferredOperator = null) { /* ... (same as before) ... */ const columnSelect = filterRow.querySelector('.filter-column'); const operatorSelect = filterRow.querySelector('.filter-operator'); const valueInput = filterRow.querySelector('.filter-value'); const selectedOption = columnSelect.options[columnSelect.selectedIndex]; const columnType = selectedOption ? selectedOption.dataset.type : 'string'; const numberOperators = ['=', '!=', '>', '<', '>=', '<=']; const stringOperators = ['contains', '=', '!=', 'startsWith', 'endsWith']; const dateOperators = ['=', '!=', '>', '<', '>=', '<=']; let availableOperators; let defaultOperator; switch (columnType) { case 'number': availableOperators = numberOperators; valueInput.type = 'number'; valueInput.step = 'any'; defaultOperator = '='; break; case 'date': availableOperators = dateOperators; valueInput.type = 'date'; valueInput.step = ''; defaultOperator = '='; break; case 'string': default: availableOperators = stringOperators; valueInput.type = 'text'; valueInput.step = ''; defaultOperator = 'contains'; break; } const currentOperatorValue = operatorSelect.value; operatorSelect.innerHTML = ''; availableOperators.forEach(op => { const option = document.createElement('option'); option.value = op; option.textContent = op.replace('>=', '≥').replace('<=', '≤').replace('!=', '≠'); operatorSelect.appendChild(option); }); if (preferredOperator && availableOperators.includes(preferredOperator)) { operatorSelect.value = preferredOperator; } else if (availableOperators.includes(currentOperatorValue)) { operatorSelect.value = currentOperatorValue; } else { operatorSelect.value = defaultOperator; } }
-    function updateFilterState(filterRow) { /* ... (same as before) ... */ const filterId = parseInt(filterRow.dataset.filterId, 10); const filterIndex = activeFilters.findIndex(f => f.id === filterId); if (filterIndex === -1) { console.error("Filter state not found for ID:", filterId); return false; } const columnSelect = filterRow.querySelector('.filter-column'); const operatorSelect = filterRow.querySelector('.filter-operator'); const valueInput = filterRow.querySelector('.filter-value'); activeFilters[filterIndex] = { id: filterId, column: columnSelect.value, operator: operatorSelect.value, value: valueInput.value.trim(), type: columnSelect.options[columnSelect.selectedIndex]?.dataset.type || 'string' }; return true; }
-    function handleFilterDropdownChange(event) { /* ... (same as before) ... */ const filterRow = event.target.closest('.filter-row'); if (!filterRow) return; if (event.target.classList.contains('filter-column')) { updateOperatorOptionsForRow(filterRow); } if (updateFilterState(filterRow)) { triggerTableUpdate(); } }
-    function handleFilterValueChange(event) { /* ... (same as before) ... */ const filterRow = event.target.closest('.filter-row'); if (!filterRow) return; if (updateFilterState(filterRow)) { triggerFullUpdate(); } }
-
-    /** Handler for REMOVE filter button - MODIFIED */
-     function handleRemoveFilter(event) {
-         const filterRow = event.target.closest('.filter-row'); if (!filterRow) return;
-
-         // *** ADDED CHECK: Only allow removal if more than one filter row exists ***
-         const currentFilterRows = filtersContainer.querySelectorAll('.filter-row');
-         if (currentFilterRows.length <= 1) {
-             // Maybe provide user feedback here later (e.g., visual cue, alert)
-             console.log("Cannot remove the last filter row.");
-             return; // Stop the function
-         }
-
-         // --- Proceed with removal if not the last row ---
-         const filterIdToRemove = parseInt(filterRow.dataset.filterId, 10);
-         activeFilters = activeFilters.filter(f => f.id !== filterIdToRemove);
-         filterRow.remove();
-         triggerFullUpdate(); // Removing filter updates everything
-     }
-
-     /** Handler for CLEAR ALL button */
-     function handleClearAllFilters() { // Removed triggerRender parameter, always trigger full
-         activeFilters = []; filtersContainer.innerHTML = ''; addFilterRow();
-         triggerFullUpdate(); // Clearing all updates everything
-     }
-
-    function applyFilterAndSort() { /* ... (same as before) ... */ const filtersToApply = activeFilters.filter(f => f.value !== null && f.value !== ''); if (filtersToApply.length > 0) { filteredHoldings = allHoldings.filter(holding => { return filtersToApply.every(filter => checkFilter(holding, filter)); }); } else { filteredHoldings = [...allHoldings]; } sortData(filteredHoldings, currentSortKey, currentSortDir); renderTable(filteredHoldings); updateSortIndicators(); }
-    function applySortAndRenderTable() { /* ... (same as before) ... */ sortData(filteredHoldings, currentSortKey, currentSortDir); renderTable(filteredHoldings); renderTotals(filteredHoldings); updateSortIndicators(); }
-    function triggerTableUpdate() { /* ... (same as before) ... */ applyFilterAndSort(); renderTotals(filteredHoldings); }
-    function triggerFullUpdate() { /* ... (same as before) ... */ applyFilterAndSort(); renderTotals(filteredHoldings); renderCharts(filteredHoldings); }
-    async function loadPortfolios() { /* ... (same as before) ... */ try { const res = await fetch(`${apiRoot}/portfolios/`); if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`); portfolios = await res.json(); portfolioSelect.innerHTML = portfolios.map(p => `<option value="${p.id}">${p.owner || p.name || `Portfolio ${p.id}`}</option>`).join(''); if (portfolios.length > 0) { await updatePortfolio(portfolioSelect.value); } else { portfolioNameEl.textContent = "No portfolios available"; clearTableAndCharts(); } } catch (error) { console.error("Failed to load portfolios:", error); portfolioNameEl.textContent = "Error loading portfolios"; clearTableAndCharts(); } }
-    async function updatePortfolio(portfolioId) { /* ... (same as before, calls handleClearAllFilters) ... */ const selectedPortfolio = portfolios.find(p => p.id == portfolioId); if (!selectedPortfolio) return; const displayName = selectedPortfolio.owner ? `${selectedPortfolio.owner} - All Holdings` : `${selectedPortfolio.name || `Portfolio ${selectedPortfolio.id}`} - All Holdings`; portfolioNameEl.textContent = `Loading ${displayName}...`; handleClearAllFilters(false); clearTableAndCharts(); try { const res = await fetch(`${apiRoot}/holdings/?portfolio=${selectedPortfolio.id}`); if (!res.ok) { if (res.status === 404) { allHoldings = []; portfolioNameEl.textContent = `${displayName} (No Holdings)`; tableBody.innerHTML = `<tr><td colspan="${tableHeaders.length}">No holdings found for this portfolio.</td></tr>`; } else { throw new Error(`HTTP error! status: ${res.status}`); } } else { allHoldings = await res.json(); portfolioNameEl.textContent = displayName; } processAndDisplayHoldings(); } catch (error) { console.error("Failed to update portfolio holdings:", error); portfolioNameEl.textContent = `Error loading holdings for ${displayName}`; allHoldings = []; clearTableAndCharts(); tableBody.innerHTML = `<tr><td colspan="${tableHeaders.length}">Error loading holdings.</td></tr>`; } }
-    function processAndDisplayHoldings() { /* ... (same as before) ... */ const today = new Date(); allHoldings.forEach(h => { const wal = parseFloat(h.wal); h.estimated_maturity_date = !isNaN(wal) ? today.getFullYear() + Math.floor(wal) : null; h.par = parseFloat(h.par) || 0; h.settlement_price = parseFloat(h.settlement_price) || 0; h.coupon = parseFloat(h.coupon) || 0; h.book_yield = parseFloat(h.book_yield) || 0; h.yield_val = h.book_yield || parseFloat(h.yield) || 0; h.wal = parseFloat(h.wal) || 0; h.maturity_date_obj = parseDate(h.maturity_date); h.call_date_obj = parseDate(h.call_date); }); triggerFullUpdate(); }
-    function parseDate(dateString) { /* ... (same as before) ... */ if (!dateString) return null; try { const date = new Date(dateString + 'T00:00:00'); return isNaN(date.getTime()) ? null : date; } catch (e) { return null; } }
-    function clearTableAndCharts() { /* ... (same as before) ... */ const colSpan = tableHeaders.length || 10; tableBody.innerHTML = `<tr><td colspan="${colSpan}">Loading...</td></tr>`; renderTotals([]); Object.keys(chartInstances).forEach(destroyChart); chartInstances = {}; }
-    function checkFilter(holding, filter) { /* ... (same as before) ... */ if (!filter || filter.value === null || filter.value === '') return true; const holdingValue = getSortValue(holding, filter.column); let filterValue = filter.value; if (holdingValue === null || holdingValue === undefined) { return false; } try { let compareHolding = holdingValue; let compareFilter = filterValue; if (filter.type === 'string') { compareHolding = String(holdingValue).toLowerCase(); compareFilter = String(filterValue).toLowerCase(); switch (filter.operator) { case 'contains': return compareHolding.includes(compareFilter); case 'startsWith': return compareHolding.startsWith(compareFilter); case 'endsWith': return compareHolding.endsWith(compareFilter); case '=': return compareHolding === compareFilter; case '!=': return compareHolding !== compareFilter; default: return false; } } else if (filter.type === 'number') { compareHolding = parseFloat(holdingValue); compareFilter = parseFloat(filterValue); if (isNaN(compareHolding) || isNaN(compareFilter)) return false; switch (filter.operator) { case '=': return compareHolding === compareFilter; case '!=': return compareHolding !== compareFilter; case '>': return compareHolding > compareFilter; case '<': return compareHolding < compareFilter; case '>=': return compareHolding >= compareFilter; case '<=': return compareHolding <= compareFilter; default: return false; } } else if (filter.type === 'date') { compareHolding = holdingValue instanceof Date ? holdingValue.getTime() : null; compareFilter = parseDate(filterValue)?.getTime(); if (compareHolding === null || compareFilter === null) return false; switch (filter.operator) { case '=': return compareHolding === compareFilter; case '!=': return compareHolding !== compareFilter; case '>': return compareHolding > compareFilter; case '<': return compareHolding < compareFilter; case '>=': return compareHolding >= compareFilter; case '<=': return compareHolding <= compareFilter; default: return false; } } } catch (e) { console.error("Error during filter comparison:", e, { holdingValue, filter }); return false; } return false; }
-    function sortData(data, key, direction) { /* ... (same as before) ... */ data.sort((a, b) => { let valA = getSortValue(a, key); let valB = getSortValue(b, key); const nullOrder = direction === 'asc' ? 1 : -1; if (valA === null || valA === undefined) return (valB === null || valB === undefined) ? 0 : nullOrder; if (valB === null || valB === undefined) return -nullOrder; let comparison = 0; if (valA instanceof Date && valB instanceof Date) { comparison = valA.getTime() - valB.getTime(); } else if (typeof valA === 'number' && typeof valB === 'number') { comparison = valA - valB; } else { valA = String(valA).toUpperCase(); valB = String(valB).toUpperCase(); if (valA < valB) comparison = -1; else if (valA > valB) comparison = 1; } return direction === 'desc' ? (comparison * -1) : comparison; }); }
-    function getSortValue(holding, key) { /* ... (same as before) ... */ switch (key) { case 'yield': return holding.yield_val; case 'maturity_date': return holding.maturity_date_obj; case 'call_date': return holding.call_date_obj; default: return holding[key]; } }
-    function renderTable(holdings) { /* ... (same as before) ... */ const colSpan = tableHeaders.length || 10; if (!holdings || holdings.length === 0) { const hasActiveFilters = activeFilters.some(f => f.value !== ''); tableBody.innerHTML = `<tr><td colspan="${colSpan}">${hasActiveFilters ? 'No holdings match filter criteria.' : 'No holdings to display.'}</td></tr>`; return; } tableBody.innerHTML = holdings.map(h => { const maturityDisplay = h.maturity_date_obj ? h.maturity_date_obj.toLocaleDateString() : (h.maturity_date || ''); const callDisplay = h.call_date_obj ? h.call_date_obj.toLocaleDateString() : (h.call_date || ''); return ` <tr> <td>${h.security_cusip || 'N/A'}</td> <td>${h.description || ''}</td> <td>${h.par.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td> <td>${h.settlement_price.toFixed(2)}</td> <td>${h.coupon.toFixed(3)}</td> <td>${h.yield_val.toFixed(3)}</td> <td>${h.wal.toFixed(2)}</td> <td>${h.estimated_maturity_date ?? 'N/A'}</td> <td>${maturityDisplay}</td> <td>${callDisplay}</td> </tr> `;}).join(''); /* updateSortIndicators called separately */ }
-    function updateSortIndicators() { /* ... (same as before) ... */ tableHeaders.forEach(th => { const key = th.dataset.key; const arrowSpan = th.querySelector('.sort-arrow'); if (!arrowSpan) return; if (key === currentSortKey) { th.classList.add('sorted'); arrowSpan.textContent = currentSortDir === 'asc' ? ' ▲' : ' ▼'; } else { th.classList.remove('sorted'); arrowSpan.textContent = ''; } }); }
-    function renderTotals(holdings) { /* ... (same as before) ... */ const totalPar = holdings.reduce((sum, h) => sum + h.par, 0); const weightedYieldSum = holdings.reduce((sum, h) => sum + (h.par * h.yield_val), 0); const totalYield = totalPar > 0 ? weightedYieldSum / totalPar : 0; const weightedWalSum = holdings.reduce((sum, h) => sum + (h.par * h.wal), 0); const totalWal = totalPar > 0 ? weightedWalSum / totalPar : 0; document.getElementById('totals-par').textContent = totalPar.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); document.getElementById('totals-yield').textContent = totalYield.toFixed(3); document.getElementById('totals-wal').textContent = totalWal.toFixed(2); }
-    function destroyChart(chartId) { /* ... (same as before) ... */ if (chartInstances[chartId]?.destroy) { chartInstances[chartId].destroy(); delete chartInstances[chartId]; } }
-    function renderCharts(holdings) { /* ... (same as before) ... */ Object.keys(chartInstances).forEach(destroyChart); chartInstances = {}; const isDark = document.body.classList.contains('dark-mode'); const gridColor = isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)'; const labelColor = isDark ? '#aaa' : '#666'; const titleColor = isDark ? '#4dabf7' : '#0056b3'; const tooltipBgColor = isDark ? 'rgba(50, 50, 50, 0.9)' : 'rgba(0, 0, 0, 0.8)'; const tooltipColor = isDark ? '#f1f1f1' : '#fff'; const baseChartOptionsStatic = { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: labelColor } }, title: { color: titleColor, display: true }, tooltip: { backgroundColor: tooltipBgColor, titleColor: tooltipColor, bodyColor: tooltipColor, footerColor: tooltipColor } }, scales: { x: { ticks: { color: labelColor }, grid: { color: gridColor, borderColor: gridColor }, title: { color: labelColor, display: true } }, y: { ticks: { color: labelColor }, grid: { color: gridColor, borderColor: gridColor }, title: { color: labelColor, display: true } } }, }; const pdfBackgroundPlugin = { id: 'pdfBackground', beforeDraw: (chart) => { const ctx = chart.canvas.getContext('2d'); ctx.save(); ctx.globalCompositeOperation = 'destination-over'; ctx.fillStyle = 'white'; ctx.fillRect(0, 0, chart.width, chart.height); ctx.restore(); } }; const contexts = { yieldVsMaturityChart: document.getElementById('yieldVsMaturityChart')?.getContext('2d'), parByMaturityYearChart: document.getElementById('parByMaturityYearChart')?.getContext('2d'), couponPieChart: document.getElementById('couponPieChart')?.getContext('2d'), priceVsYieldChart: document.getElementById('priceVsYieldChart')?.getContext('2d'), }; if (Object.values(contexts).some(ctx => !ctx)) { console.error("One or more chart canvas elements not found."); return; } const yieldMaturityPoints = holdings.filter(h => h.estimated_maturity_date !== null && typeof h.yield_val === 'number').map(h => ({ x: h.estimated_maturity_date, y: h.yield_val })); if (yieldMaturityPoints.length > 0 && contexts.yieldVsMaturityChart) { const options1 = structuredClone(baseChartOptionsStatic); options1.plugins.title.text = 'Yield vs. Estimated Maturity Year'; options1.scales.x.type = 'linear'; options1.scales.x.position = 'bottom'; options1.scales.x.title.text = 'Estimated Maturity Year'; options1.scales.x.ticks = { ...options1.scales.x.ticks, stepSize: 1, callback: value => Math.round(value) }; options1.scales.y.beginAtZero = false; options1.scales.y.title.text = 'Yield (%)'; options1.plugins.tooltip.callbacks = { label: ctx => `Year: ${ctx.parsed.x}, Yield: ${ctx.parsed.y.toFixed(3)}` }; options1.plugins.pdfBackground = pdfBackgroundPlugin; const dataset1 = { label: 'Yield vs Est Maturity Year', data: yieldMaturityPoints, backgroundColor: isDark ? 'rgba(66, 135, 245, 0.7)' : 'rgba(0, 123, 255, 0.5)', borderColor: isDark ? 'rgba(86, 155, 255, 1)' : 'rgba(0, 123, 255, 1)', pointRadius: 5, pointHoverRadius: 7, showLine: false}; if (typeof Chart !== 'undefined' && window.pluginTrendlineLinear) { dataset1.trendlineLinear = { style: isDark ? "rgba(255, 80, 80, 0.9)" : "rgba(255, 50, 50, 0.8)", lineStyle: "solid", width: 2, projection: false }; } chartInstances.yieldVsMaturityChart = new Chart(contexts.yieldVsMaturityChart, { type: 'scatter', data: { datasets: [dataset1] }, options: options1 }); } const maturityBuckets = {}; holdings.forEach(h => { const year = h.estimated_maturity_date || (h.maturity_date_obj ? h.maturity_date_obj.getFullYear() : 'Unknown'); if (year !== 'Unknown' && !isNaN(year)) { maturityBuckets[year] = (maturityBuckets[year] || 0) + h.par; } }); const sortedYears = Object.keys(maturityBuckets).map(Number).sort((a, b) => a - b); if (sortedYears.length > 0 && contexts.parByMaturityYearChart) { const options2 = structuredClone(baseChartOptionsStatic); options2.plugins.title.text = 'Total Par by Estimated Maturity Year'; options2.scales.x.title.text = 'Year'; options2.scales.y.beginAtZero = true; options2.scales.y.title.text = 'Total Par Value'; options2.scales.y.ticks = { ...options2.scales.y.ticks, callback: value => value.toLocaleString() }; options2.plugins.tooltip.callbacks = { label: ctx => `Year: ${ctx.label}, Par: ${ctx.parsed.y.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` }; options2.plugins.pdfBackground = pdfBackgroundPlugin; chartInstances.parByMaturityYearChart = new Chart(contexts.parByMaturityYearChart, { type: 'bar', data: { labels: sortedYears, datasets: [{ label: 'Total Par by Est. Maturity Year', data: sortedYears.map(year => maturityBuckets[year]), backgroundColor: isDark ? 'rgba(40, 167, 69, 0.85)' : 'rgba(40, 167, 69, 0.7)', borderColor: isDark ? 'rgba(60, 187, 89, 1)' : 'rgba(40, 167, 69, 1)', borderWidth: 1 }] }, options: options2 }); } const couponBuckets = {}; holdings.forEach(h => { const couponRate = h.coupon.toFixed(3); couponBuckets[couponRate] = (couponBuckets[couponRate] || 0) + h.par; }); const sortedCoupons = Object.keys(couponBuckets).sort((a, b) => parseFloat(a) - parseFloat(b)); if (sortedCoupons.length > 0 && contexts.couponPieChart) { const pieColors = generateDistinctColors(sortedCoupons.length); const options3 = structuredClone(baseChartOptionsStatic); delete options3.scales; options3.plugins.title.text = 'Portfolio Par Distribution by Coupon Rate'; options3.plugins.title.align = 'center'; options3.plugins.legend.position = 'bottom'; options3.plugins.tooltip.callbacks = { label: ctx => { const label = ctx.label || ''; const value = ctx.parsed || 0; const total = ctx.dataset.data.reduce((acc, val) => acc + val, 0); const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0; return `${label}: ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${percentage}%)`; } }; options3.plugins.pdfBackground = pdfBackgroundPlugin; chartInstances.couponPieChart = new Chart(contexts.couponPieChart, { type: 'pie', data: { labels: sortedCoupons.map(c => `${c}% Coupon`), datasets: [{ label: 'Par by Coupon Rate', data: sortedCoupons.map(c => couponBuckets[c]), backgroundColor: pieColors, hoverOffset: 4 }] }, options: options3 }); } const priceYieldPoints = holdings.filter(h => typeof h.settlement_price === 'number' && h.settlement_price > 0 && typeof h.yield_val === 'number').map(h => ({ x: h.settlement_price, y: h.yield_val })); if (priceYieldPoints.length > 0 && contexts.priceVsYieldChart) { const options4 = structuredClone(baseChartOptionsStatic); options4.plugins.title.text = 'Settlement Price vs. Yield'; options4.scales.x.beginAtZero = false; options4.scales.x.title.text = 'Settlement Price'; options4.scales.y.beginAtZero = false; options4.scales.y.title.text = 'Yield (%)'; options4.plugins.tooltip.callbacks = { label: ctx => `Price: ${ctx.parsed.x.toFixed(2)}, Yield: ${ctx.parsed.y.toFixed(3)}` }; options4.plugins.pdfBackground = pdfBackgroundPlugin; chartInstances.priceVsYieldChart = new Chart(contexts.priceVsYieldChart, { type: 'scatter', data: { datasets: [{ label: 'Price vs Yield', data: priceYieldPoints, backgroundColor: isDark ? 'rgba(255, 200, 50, 0.7)' : 'rgba(255, 193, 7, 0.6)', borderColor: isDark ? 'rgba(255, 210, 70, 1)' : 'rgba(255, 193, 7, 1)', pointRadius: 5, pointHoverRadius: 7, showLine: false }] }, options: options4 }); } }
-    function generateDistinctColors(count) { /* ... (same as before) ... */ const colors = []; if (count <= 0) return colors; const hueStep = 360 / count; for (let i = 0; i < count; i++) { colors.push(`hsl(${i * hueStep}, 70%, 60%)`); } return colors; }
-    function applyTheme(theme) { /* ... (same as before) ... */ if (theme === 'dark') { document.body.classList.add('dark-mode'); darkModeToggle.textContent = 'Toggle Light Mode'; } else { document.body.classList.remove('dark-mode'); darkModeToggle.textContent = 'Toggle Dark Mode'; } renderCharts(filteredHoldings); }
-    function toggleTheme() { /* ... (same as before) ... */ const currentTheme = document.body.classList.contains('dark-mode') ? 'light' : 'dark'; try { localStorage.setItem('portfolioTheme', currentTheme); } catch (e) { console.warn("Could not save theme preference to localStorage:", e); } applyTheme(currentTheme); }
-    async function exportToPdf() { /* ... (same as before) ... */ const doc = new jsPDF({ orientation: 'p', unit: 'pt', format: 'a4' }); const isDark = document.body.classList.contains('dark-mode'); const pdfHeaderBg = isDark ? '#3a3a3a' : '#e9ecef'; const pdfHeaderText = isDark ? '#e0e0e0' : '#495057'; const pdfTextColor = isDark ? '#f1f1f1' : '#333333'; const pdfBorderColor = isDark ? '#444444' : '#dee2e6'; const pdfRowBg = isDark ? '#2c2c2c' : '#ffffff'; const pdfAlternateRowBg = isDark ? '#303030' : '#f8f9fa'; const pageHeight = doc.internal.pageSize.getHeight(); const pageWidth = doc.internal.pageSize.getWidth(); const margin = 40; const usableWidth = pageWidth - (2 * margin); const usableHeight = pageHeight - (2 * margin); const chartGap = 25; const chartWidth = ((usableWidth - chartGap) / 2) * 0.95; const chartHeight = ((usableHeight - chartGap - 30) / 2) * 0.95; const chartStartX1 = margin; const chartStartX2 = margin + chartWidth + chartGap; const chartStartY1 = margin + 25; const chartStartY2 = chartStartY1 + chartHeight + chartGap; doc.setFontSize(18); doc.setTextColor(isDark ? 241 : 51); const portfolioTitle = portfolioNameEl.textContent || 'Portfolio Analysis'; doc.text(portfolioTitle + " - Charts", margin, margin + 5); const chartIds = ['yieldVsMaturityChart', 'parByMaturityYearChart', 'couponPieChart', 'priceVsYieldChart']; const chartImages = []; for (const chartId of chartIds) { const chartInstance = chartInstances[chartId]; try { if (chartInstance) { chartImages.push(chartInstance.toBase64Image('image/png', 1.0)); } else { chartImages.push(null); } } catch (e) { console.error(`Error getting image for chart ${chartId}:`, e); chartImages.push(null); } } if (chartImages[0]) doc.addImage(chartImages[0], 'PNG', chartStartX1, chartStartY1, chartWidth, chartHeight); if (chartImages[1]) doc.addImage(chartImages[1], 'PNG', chartStartX2, chartStartY1, chartWidth, chartHeight); if (chartImages[2]) doc.addImage(chartImages[2], 'PNG', chartStartX1, chartStartY2, chartWidth, chartHeight); if (chartImages[3]) doc.addImage(chartImages[3], 'PNG', chartStartX2, chartStartY2, chartWidth, chartHeight); doc.addPage(); doc.setFontSize(18); doc.setTextColor(isDark ? 241 : 51); doc.text(portfolioTitle + " - Holdings Table", margin, margin + 5); doc.autoTable({ html: '#holdings-table', startY: margin + 25, theme: 'grid', styles: { fontSize: 7, cellPadding: 3, overflow: 'linebreak', textColor: pdfTextColor, lineColor: pdfBorderColor, lineWidth: 0.5, }, headStyles: { fillColor: pdfHeaderBg, textColor: pdfHeaderText, fontStyle: 'bold', halign: 'center', lineColor: pdfBorderColor, lineWidth: 0.5, }, bodyStyles: { fillColor: pdfRowBg, textColor: pdfTextColor, lineColor: pdfBorderColor, lineWidth: 0.5, }, alternateRowStyles: { fillColor: pdfAlternateRowBg, }, columnStyles: { 0: { cellWidth: 55, halign: 'left' }, 1: { cellWidth: 'auto', halign: 'left'}, 2: { cellWidth: 60, halign: 'right' }, 3: { cellWidth: 40, halign: 'right' }, 4: { cellWidth: 40, halign: 'right' }, 5: { cellWidth: 40, halign: 'right' }, 6: { cellWidth: 40, halign: 'right' }, 7: { cellWidth: 55, halign: 'center' }, 8: { cellWidth: 55, halign: 'center' }, 9: { cellWidth: 55, halign: 'center' } }, margin: { left: margin, right: margin }, didDrawPage: function (data) { let footerStr = "Page " + doc.internal.getCurrentPageInfo().pageNumber; doc.setFontSize(8); doc.setTextColor(isDark ? 150 : 100); doc.text(footerStr, data.settings.margin.left, pageHeight - 15, { baseline: 'bottom' }); } }); doc.save(`portfolio_${portfolioSelect.options[portfolioSelect.selectedIndex]?.text || 'export'}.pdf`); }
-
-    // --- Event Listeners Setup ---
-    portfolioSelect.addEventListener('change', () => updatePortfolio(portfolioSelect.value));
-    addFilterBtn.addEventListener('click', () => addFilterRow());
-    // MODIFIED: Use specific handler for clear button
-    clearAllFiltersBtn.addEventListener('click', handleClearAllFilters);
-    // Table header click listener calls applySortAndRenderTable
-    tableHeaders.forEach(th => { th.addEventListener('click', () => { const key = th.dataset.key; if (!key) return; if (key === currentSortKey) { currentSortDir = currentSortDir === 'asc' ? 'desc' : 'asc'; } else { currentSortKey = key; currentSortDir = 'asc'; } applySortAndRenderTable(); }); });
-    darkModeToggle.addEventListener('click', toggleTheme);
-    exportPdfBtn.addEventListener('click', exportToPdf);
-
-
-    // --- Initial Load ---
-    document.addEventListener('DOMContentLoaded', () => {
-        generateColumnOptions(); addFilterRow();
-        // Trendline Plugin Registration (with checks)
-        if (typeof Chart !== 'undefined' && window.pluginTrendlineLinear) { try { Chart.register(window.pluginTrendlineLinear); console.log("Trendline plugin registered."); } catch (e) { console.error("Error registering Trendline plugin:", e) } } else if (!window.pluginTrendlineLinear) { console.error("Trendline plugin script not loaded or not available on window!"); } else { console.error("Chart.js object not found before plugin registration attempt."); }
-        // Apply initial theme (with storage check)
-        let preferredTheme = 'light'; try { preferredTheme = localStorage.getItem('portfolioTheme') || 'light'; } catch (e) { console.warn("Could not read theme preference from localStorage:", e); } if (preferredTheme === 'dark') { document.body.classList.add('dark-mode'); darkModeToggle.textContent = 'Toggle Light Mode'; } else { darkModeToggle.textContent = 'Toggle Dark Mode'; }
-        loadPortfolios(); // Load data
-    });
+<script>
+    // Make the admin status available globally in JS
+    // Safer way to assign boolean from Django template tag
+    const IS_ADMIN_USER = {% if is_admin %}true{% else %}false{% endif %};
+    console.log("User admin status (from HTML):", IS_ADMIN_USER); // Debug log
 </script>
+
+<script src="{% static 'script.js' %}"></script>
 
 </body>
 </html>

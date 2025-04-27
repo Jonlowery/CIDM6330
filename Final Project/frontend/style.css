@@ -1,0 +1,677 @@
+/* --- CSS (Includes styles for new modal) --- */
+
+/* Define CSS variables for theming (light and dark modes) */
+:root {
+    --bg-color: #f8f9fa;
+    --text-color: #333;
+    --container-bg: #fff;
+    --header-color: #0056b3;
+    --header-bg: #e9ecef;
+    --header-text-color: var(--header-color);
+    --table-border-color: #dee2e6;
+    --table-header-bg: #e9ecef;
+    --table-header-text: #495057;
+    --table-odd-row-bg: #f8f9fa;
+    --table-hover-bg: #e2e6ea;
+    --input-border-color: #ccc;
+    --input-bg-color: #fff;
+    --button-primary-bg: #007bff;
+    --button-primary-text: white;
+    --button-secondary-bg: #6c757d;
+    --button-secondary-text: white;
+    --button-danger-bg: #dc3545;
+    --button-danger-text: white;
+    --button-info-bg: #17a2b8;
+    --button-info-text: white;
+    --header-height: 60px;
+    /* PDF specific colors (might not be directly used by browser CSS but good for reference) */
+    --pdf-header-bg: '#e9ecef';
+    --pdf-header-text: '#495057';
+    --pdf-table-border: '#dee2e6';
+    --pdf-text-color: '#333333';
+    /* Modal specific colors */
+    --modal-overlay-bg: rgba(0, 0, 0, 0.5);
+    --modal-bg: #fff;
+    --modal-border-color: #ccc;
+    --modal-text-color: #333;
+    --modal-error-color: #dc3545;
+}
+
+body.dark-mode {
+    --bg-color: #1a1a1a;
+    --text-color: #f1f1f1;
+    --container-bg: #2c2c2c;
+    --header-color: #4dabf7;
+    --header-bg: #343a40;
+    --table-border-color: #444;
+    --table-header-bg: #3a3a3a;
+    --table-header-text: #e0e0e0;
+    --table-odd-row-bg: #2c2c2c;
+    --table-hover-bg: #454545;
+    --input-border-color: #555;
+    --input-bg-color: #333;
+    --button-primary-bg: #0d6efd;
+    --button-secondary-bg: #5c636a;
+    --button-danger-bg: #dc3545;
+    --button-info-bg: #20c997;
+    /* PDF specific colors */
+    --pdf-header-bg: '#3a3a3a';
+    --pdf-header-text: '#e0e0e0';
+    --pdf-table-border: '#444444';
+    --pdf-text-color: '#f1f1f1';
+    /* Modal specific colors */
+    --modal-overlay-bg: rgba(0, 0, 0, 0.7);
+    --modal-bg: #2c2c2c;
+    --modal-border-color: #555;
+    --modal-text-color: #f1f1f1;
+    --modal-error-color: #f56565;
+}
+
+/* Basic HTML and Body styling */
+html {
+    scroll-behavior: smooth; /* Smooth scrolling for anchor links */
+}
+
+body {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    min-height: 100vh;
+    transition: background-color 0.3s, color 0.3s; /* Smooth theme transition */
+    padding-top: var(--header-height); /* Add padding to prevent content from hiding under fixed header */
+}
+
+/* Header styling */
+header.app-header {
+    position: fixed; /* Keep header fixed at the top */
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: var(--header-height);
+    background-color: var(--header-bg);
+    color: var(--header-text-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between; /* Space out left and right sections */
+    padding: 0 1.5em;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* Subtle shadow */
+    z-index: 1000; /* Ensure header stays on top */
+    box-sizing: border-box; /* Include padding in width/height */
+}
+
+body.dark-mode header.app-header {
+    box-shadow: 0 2px 4px rgba(255,255,255,0.05); /* Lighter shadow for dark mode */
+}
+
+header.app-header .header-left {
+    display: flex;
+    align-items: center;
+}
+
+header.app-header .header-right {
+    display: flex;
+    align-items: center;
+    gap: 1em; /* Space between buttons */
+}
+
+header.app-header a {
+    color: inherit; /* Inherit color from header */
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+}
+
+header.app-header a:hover,
+header.app-header a:focus {
+    text-decoration: underline;
+    outline: none; /* Remove default focus outline */
+}
+
+header.app-header h1 {
+    margin: 0;
+    font-size: 1.5em;
+}
+
+/* Header button styling */
+header.app-header button {
+    height: auto;
+    padding: 0.5em 1em;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.2s ease;
+    font-size: 0.9em;
+}
+
+#dark-mode-toggle {
+    background-color: var(--button-secondary-bg);
+    color: var(--button-secondary-text);
+}
+
+#dark-mode-toggle:hover {
+    /* Slightly darken the button on hover */
+    background-color: color-mix(in srgb, var(--button-secondary-bg) 80%, black);
+}
+
+#export-pdf-btn {
+    background-color: var(--button-info-bg);
+    color: var(--button-info-text);
+}
+
+#export-pdf-btn:hover {
+    background-color: color-mix(in srgb, var(--button-info-bg) 80%, black);
+}
+
+/* Main container styling */
+.container {
+    max-width: 1600px; /* Limit maximum width */
+    margin: 0 auto; /* Center the container */
+    padding: 1.5em 1em;
+    box-sizing: border-box;
+}
+
+/* Portfolio name heading */
+h2#portfolio-name {
+    color: var(--header-text-color); /* Use header text color for consistency */
+    text-align: center;
+    margin-top: 0;
+    margin-bottom: 1em;
+    min-height: 1.2em; /* Prevent layout shift while loading */
+}
+
+/* Controls section styling */
+.controls {
+    display: flex;
+    flex-direction: column;
+    gap: 1em;
+    margin-bottom: 1.5em;
+    padding: 1em;
+    background-color: var(--container-bg);
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    box-sizing: border-box;
+}
+
+body.dark-mode .controls {
+    box-shadow: 0 1px 3px rgba(255,255,255,0.05); /* Lighter shadow for dark mode */
+}
+
+/* Styling for rows within the controls section */
+.control-row {
+    display: flex;
+    flex-wrap: wrap; /* Allow items to wrap on smaller screens */
+    align-items: center;
+    gap: 0.8em;
+}
+
+/* Filters container */
+#filters-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8em;
+    border-top: 1px solid var(--table-border-color);
+    padding-top: 1em;
+    margin-top: 1em; /* Add margin above filters */
+}
+
+/* Individual filter row */
+.filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.8em;
+}
+
+/* Label styling */
+label {
+    margin-right: 0.5em;
+    font-weight: bold;
+    white-space: nowrap; /* Prevent labels from wrapping */
+    color: var(--text-color);
+    flex-basis: 60px; /* Give labels a consistent base width */
+    text-align: right; /* Align label text right */
+    flex-shrink: 0; /* Prevent labels from shrinking */
+}
+
+/* Input and select element styling */
+select,
+input[type="text"],
+input[type="number"],
+input[type="date"] {
+    padding: 0.6em 0.8em;
+    border-radius: 6px;
+    border: 1px solid var(--input-border-color);
+    background-color: var(--input-bg-color);
+    color: var(--text-color);
+    flex-grow: 1; /* Allow inputs to grow */
+    min-width: 100px; /* Minimum width */
+    height: 38px; /* Consistent height */
+    box-sizing: border-box;
+}
+
+/* Placeholder text color for dark mode */
+body.dark-mode input::placeholder { color: #bbb; opacity: 1; }
+body.dark-mode input::-ms-input-placeholder { color: #bbb; } /* IE/Edge */
+
+/* Specific styling for customer select */
+#customer-select {
+    flex-grow: 2; /* Allow customer select to take more space */
+}
+/* Specific styling for portfolio select */
+#portfolio-filter-select {
+     flex-grow: 2; /* Allow portfolio select to take more space */
+}
+
+
+/* Sizing for filter inputs/selects */
+.filter-row select,
+.filter-row input {
+    flex-basis: 150px; /* Default basis */
+}
+
+/* Alignment for first label in filter row */
+.filter-row label:first-child {
+    flex-basis: 60px;
+    text-align: right;
+}
+
+/* Styling for action buttons within filters/controls */
+button.filter-action-btn,
+button.remove-filter-btn,
+button.control-action-btn {
+    padding: 0.6em 1em;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.2s ease;
+    height: 38px; /* Match input height */
+    box-sizing: border-box;
+    color: var(--button-primary-text); /* Default text color */
+}
+
+#add-filter-btn {
+    background-color: var(--button-primary-bg);
+    color: var(--button-primary-text);
+    align-self: flex-start; /* Align button to the start */
+    margin-top: 0.5em;
+}
+
+#add-filter-btn:hover {
+    background-color: color-mix(in srgb, var(--button-primary-bg) 80%, black);
+}
+
+#clear-all-filters-btn {
+    background-color: var(--button-secondary-bg);
+    color: var(--button-secondary-text);
+    align-self: flex-start;
+    margin-top: 0.5em;
+}
+
+#clear-all-filters-btn:hover {
+    background-color: color-mix(in srgb, var(--button-secondary-bg) 80%, black);
+}
+
+#create-portfolio-btn {
+    background-color: var(--button-info-bg);
+    color: var(--button-info-text);
+    align-self: flex-start;
+    margin-top: 0.5em;
+}
+
+#create-portfolio-btn:hover {
+    background-color: color-mix(in srgb, var(--button-info-bg) 80%, black);
+}
+
+/* Remove filter button styling */
+button.remove-filter-btn {
+    background-color: var(--button-danger-bg);
+    color: var(--button-danger-text);
+    padding: 0.4em 0.8em;
+    font-size: 0.9em;
+    height: auto; /* Allow height to adjust */
+    flex-grow: 0; /* Don't allow button to grow */
+    flex-basis: auto; /* Base size on content */
+}
+
+button.remove-filter-btn:hover {
+    background-color: color-mix(in srgb, var(--button-danger-bg) 80%, black);
+}
+
+/* Container for filter action buttons */
+.filter-buttons-container {
+    display: flex;
+    flex-wrap: wrap; /* Allow buttons to wrap */
+    gap: 0.8em;
+    margin-top: 1em;
+    border-top: 1px solid var(--table-border-color);
+    padding-top: 1em;
+}
+
+/* Table container styling */
+.table-container {
+    overflow-x: auto; /* Allow horizontal scrolling for table */
+    margin-bottom: 2em;
+    background-color: var(--container-bg);
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    box-sizing: border-box;
+}
+
+body.dark-mode .table-container {
+    box-shadow: 0 2px 4px rgba(255,255,255,0.05);
+}
+
+/* Table styling */
+table {
+    border-collapse: collapse;
+    width: 100%;
+    table-layout: auto; /* Let browser determine column widths */
+}
+
+th, td {
+    border: 1px solid var(--table-border-color);
+    padding: 0.6em 0.8em;
+    text-align: center;
+    white-space: nowrap; /* Prevent cell content from wrapping */
+    vertical-align: middle;
+    font-size: 0.95em;
+    color: var(--text-color);
+}
+
+th {
+    background-color: var(--table-header-bg);
+    color: var(--table-header-text);
+    cursor: pointer; /* Indicate sortable columns */
+    position: relative; /* For sort arrow positioning */
+    user-select: none; /* Prevent text selection */
+}
+
+th:hover {
+    background-color: color-mix(in srgb, var(--table-header-bg) 85%, var(--text-color) 15%);
+}
+
+/* Sort arrow styling */
+th .sort-arrow {
+    font-size: 0.8em;
+    margin-left: 5px;
+    display: inline-block;
+    opacity: 0.5; /* Dim arrow when not sorted */
+    min-width: 1em; /* Ensure space for arrow */
+    text-align: left;
+}
+
+th.sorted .sort-arrow {
+    opacity: 1; /* Full opacity when sorted */
+}
+
+/* Specific cell alignment */
+td:nth-child(1), td:nth-child(2) { text-align: left; } /* CUSIP, Description */
+td:nth-child(3), td:nth-child(4), td:nth-child(5), td:nth-child(6), td:nth-child(7) { text-align: right; } /* Numeric columns */
+td:nth-child(8), td:nth-child(9), td:nth-child(10) { text-align: center; } /* Date/Year columns */
+
+/* Table body row styling */
+tbody tr:nth-child(odd) {
+    background-color: var(--table-odd-row-bg); /* Zebra striping */
+}
+tbody tr:hover {
+    background-color: var(--table-hover-bg); /* Hover effect */
+}
+
+/* Table footer styling */
+tfoot {
+    font-weight: bold;
+    background-color: var(--table-header-bg);
+}
+tfoot td {
+    text-align: right; /* Align totals to the right */
+    color: var(--text-color);
+}
+tfoot td:nth-child(1) {
+    text-align: left; /* Align "Totals" label to the left */
+}
+
+/* Charts grid layout */
+.charts-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr)); /* Two equal columns */
+    gap: 1.5em;
+    align-items: start; /* Align items to the top */
+    margin-bottom: 2em;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Individual chart container */
+.chart-container {
+    width: 100%;
+    height: 350px; /* Fixed height for charts */
+    background-color: var(--container-bg);
+    padding: 1em;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    box-sizing: border-box;
+}
+
+body.dark-mode .chart-container {
+    box-shadow: 0 2px 4px rgba(255,255,255,0.05);
+}
+
+/* --- Modal Styles --- */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: var(--modal-overlay-bg);
+    display: none; /* Hidden by default */
+    align-items: center;
+    justify-content: center;
+    z-index: 2000; /* Ensure modal is on top */
+}
+
+.modal-content {
+    background-color: var(--modal-bg);
+    padding: 2em;
+    border-radius: 8px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    width: 90%; /* Responsive width */
+    max-width: 500px; /* Max width */
+    border: 1px solid var(--modal-border-color);
+    color: var(--modal-text-color);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1em;
+}
+
+.modal-header h3 {
+    margin: 0;
+    color: var(--header-text-color);
+}
+
+.modal-close-btn {
+    background: none;
+    border: none;
+    font-size: 1.5em;
+    cursor: pointer;
+    color: var(--text-color);
+    padding: 0;
+    line-height: 1; /* Adjust line height for better alignment */
+}
+
+.modal-body {
+    margin-bottom: 1.5em;
+}
+
+.modal-body .form-group {
+    margin-bottom: 1em;
+}
+
+.modal-body label {
+    display: block; /* Ensure label is on its own line */
+    margin-bottom: 0.5em;
+    font-weight: bold;
+}
+
+.modal-body input[type="text"],
+.modal-body select {
+    width: 100%; /* Make inputs/selects full width */
+    padding: 0.6em 0.8em;
+    border-radius: 6px;
+    border: 1px solid var(--input-border-color);
+    background-color: var(--input-bg-color);
+    color: var(--text-color);
+    box-sizing: border-box;
+    height: 38px; /* Consistent height */
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end; /* Align buttons to the right */
+    gap: 0.8em;
+}
+
+.modal-footer button {
+    padding: 0.6em 1.2em;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.2s ease;
+}
+
+.modal-footer .btn-primary {
+    background-color: var(--button-primary-bg);
+    color: var(--button-primary-text);
+}
+
+.modal-footer .btn-primary:hover {
+    background-color: color-mix(in srgb, var(--button-primary-bg) 80%, black);
+}
+
+.modal-footer .btn-secondary {
+    background-color: var(--button-secondary-bg);
+    color: var(--button-secondary-text);
+}
+
+.modal-footer .btn-secondary:hover {
+    background-color: color-mix(in srgb, var(--button-secondary-bg) 80%, black);
+}
+
+/* Modal error message styling */
+.modal-error-message {
+    color: var(--modal-error-color);
+    font-size: 0.9em;
+    margin-top: 1em;
+    text-align: center;
+    display: none; /* Hidden by default */
+}
+
+/* Class to show the modal */
+.modal-overlay.visible {
+    display: flex;
+}
+
+/* Utility class to hide elements */
+.hidden {
+    display: none !important; /* Use !important to override potential conflicts */
+}
+
+
+/* --- Responsive adjustments --- */
+@media (max-width: 1650px) {
+    .container {
+        max-width: 95%; /* Slightly reduce max-width on smaller desktops */
+    }
+}
+
+@media (max-width: 992px) {
+    /* Tablet styles */
+    .filter-row, .control-row {
+        flex-direction: column; /* Stack filter elements vertically */
+        align-items: stretch; /* Stretch elements to full width */
+    }
+    .filter-row select,
+    .filter-row input,
+    .control-row select,
+    button.remove-filter-btn {
+        width: 100%; /* Make inputs/buttons full width */
+        flex-basis: auto; /* Reset flex-basis */
+    }
+    .filter-row label:first-child, .control-row label {
+        text-align: left; /* Align label left */
+        margin-bottom: 0.2em;
+        flex-basis: auto; /* Reset label basis */
+    }
+    header.app-header {
+        padding: 0 1em; /* Reduce header padding */
+    }
+    .container {
+        padding: 1.5em 1em; /* Reduce container padding */
+        max-width: 100%; /* Allow container to be full width */
+    }
+    .charts-grid {
+        grid-template-columns: 1fr; /* Stack charts vertically */
+    }
+}
+
+@media (max-width: 768px) {
+    /* Mobile styles */
+    body {
+        padding-top: calc(var(--header-height) + 0.5em); /* Increase padding top for smaller header */
+    }
+    header.app-header {
+        padding: 0 0.5em; /* Further reduce header padding */
+    }
+    header.app-header .header-right {
+        gap: 0.5em; /* Reduce gap between header buttons */
+    }
+    header.app-header h1 {
+        font-size: 1.2em; /* Reduce header title size */
+    }
+    header.app-header button {
+        padding: 0.4em 0.6em; /* Reduce header button padding */
+        font-size: 0.8em; /* Reduce header button font size */
+    }
+    .controls {
+        gap: 1em; /* Adjust gap in controls */
+    }
+    .control-row { /* Apply stacking to portfolio row too */
+        flex-direction: column;
+        align-items: stretch;
+    }
+    select, input, button.filter-action-btn, button.control-action-btn {
+        width: 100%; /* Make selects/inputs/buttons full width */
+        max-width: none;
+    }
+    th, td {
+        font-size: 0.9em; /* Reduce table font size */
+        padding: 0.5em 0.6em; /* Reduce table cell padding */
+    }
+    .chart-container {
+        height: 300px; /* Reduce chart height */
+    }
+    .modal-content {
+        width: 95%; /* Adjust modal width */
+        padding: 1.5em; /* Reduce modal padding */
+    }
+}
+
+@media (max-width: 480px) {
+    /* Smaller mobile styles */
+    header.app-header h1 {
+        font-size: 1.0em; /* Further reduce header title size */
+    }
+    th, td {
+        font-size: 0.85em; /* Further reduce table font size */
+        padding: 0.4em 0.5em; /* Further reduce table cell padding */
+    }
+}
