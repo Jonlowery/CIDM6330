@@ -8,7 +8,6 @@
 // Check if IS_ADMIN_USER is defined (should be set in the HTML before this script)
 if (typeof IS_ADMIN_USER === 'undefined') {
     console.error("CRITICAL: IS_ADMIN_USER is not defined. Ensure it's set in the HTML before loading script.js.");
-    // Provide a fallback or stop execution if necessary
     // const IS_ADMIN_USER = false; // Example fallback (use with caution)
 } else {
     console.log("User admin status (from script.js):", IS_ADMIN_USER); // Confirm it's accessible
@@ -22,6 +21,7 @@ let customers = []; // Holds the list of customers fetched for the main dropdown
 let currentPortfolios = []; // Holds the list of portfolios fetched for the selected customer
 let allHoldings = []; // Holds all holdings for the currently selected view (customer or portfolio)
 let filteredHoldings = []; // Holdings after applying filters (THIS IS THE ARRAY USED FOR THE SNAPSHOT)
+let allMuniOfferings = []; // NEW: Holds all municipal offerings
 let chartInstances = {}; // Stores active Chart.js instances for later destruction/update
 let columnOptionsHtml = ''; // HTML string for filter column dropdown options
 let currentSortKey = 'security_cusip'; // Default sort column key
@@ -30,7 +30,7 @@ let activeFilters = []; // Array to store active filter objects
 let nextFilterId = 0; // Counter for generating unique filter IDs
 let availableCustomers = []; // Stores the full customer list fetched for the admin modal dropdown
 let selectedCustomerId = null; // Store the currently selected customer ID
-let selectedHoldingIds = new Set(); // NEW: Set to store IDs of selected holdings for email action
+let selectedHoldingIds = new Set(); // Set to store IDs of selected holdings for email action
 
 // --- DOM Element References ---
 // Using const for elements that are expected to always exist
@@ -42,7 +42,7 @@ const portfolioNameEl = document.getElementById('portfolio-name');
 const tableBody = document.querySelector('#holdings-table tbody');
 const tableHeaders = document.querySelectorAll('#holdings-table th[data-key]'); // Select only sortable headers
 const tableElement = document.getElementById('holdings-table');
-const selectAllCheckbox = document.getElementById('select-all-holdings'); // NEW: Select All Checkbox
+const selectAllCheckbox = document.getElementById('select-all-holdings');
 const filtersContainer = document.getElementById('filters-container');
 const addFilterBtn = document.getElementById('add-filter-btn');
 const clearAllFiltersBtn = document.getElementById('clear-all-filters-btn');
@@ -58,9 +58,11 @@ const newPortfolioNameInput = document.getElementById('new-portfolio-name');
 const adminCustomerSelectGroup = document.getElementById('admin-customer-select-group');
 const adminCustomerSelect = document.getElementById('admin-customer-select');
 const modalErrorMessage = document.getElementById('modal-error-message');
-// NEW: Email Action Elements
+// Email Action Elements
 const emailInterestBtn = document.getElementById('email-interest-btn');
 const emailStatusMessage = document.getElementById('email-status-message');
+// NEW: Muni Offerings Elements
+const muniOfferingsTableBody = document.querySelector('#muni-offerings-table tbody');
 
 
 // --- Utility Functions ---
@@ -76,7 +78,6 @@ function getCookie(name) {
         const cookies = document.cookie.split(';');
         for (let i = 0; i < cookies.length; i++) {
             const cookie = cookies[i].trim();
-            // Does this cookie string begin with the name we want?
             if (cookie.substring(0, name.length + 1) === (name + '=')) {
                 cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
                 break;
@@ -88,7 +89,7 @@ function getCookie(name) {
 
 // Get CSRF token once for making state-changing requests (POST, PUT, DELETE)
 const csrfToken = getCookie('csrftoken');
-console.log("CSRF Token:", csrfToken); // Debug log
+console.log("CSRF Token:", csrfToken);
 
 /**
  * Parses a date string (YYYY-MM-DD) into a Date object.
@@ -99,9 +100,7 @@ console.log("CSRF Token:", csrfToken); // Debug log
 function parseDate(dateString) {
     if (!dateString) return null;
     try {
-        // Appending T00:00:00 helps avoid timezone issues during parsing
-        const date = new Date(dateString + 'T00:00:00');
-        // Check if the parsed date is valid
+        const date = new Date(dateString + 'T00:00:00'); // Use T00:00:00 for timezone consistency
         return isNaN(date.getTime()) ? null : date;
     } catch (e) {
         console.error("Error parsing date:", dateString, e);
@@ -110,8 +109,21 @@ function parseDate(dateString) {
 }
 
 /**
+ * Safely parses a string value into a float, returning null for invalid/empty inputs.
+ * @param {string|number|null} value - The value to parse.
+ * @returns {number|null} The parsed float or null.
+ */
+function parseFloatSafe(value) {
+    if (value === null || value === undefined || value === '') {
+        return null;
+    }
+    const parsed = parseFloat(value);
+    return isNaN(parsed) ? null : parsed;
+}
+
+
+/**
  * Generates an array of distinct HSL colors.
- * Useful for chart datasets like pie charts.
  * @param {number} count - The number of distinct colors needed.
  * @returns {string[]} An array of HSL color strings.
  */
@@ -120,7 +132,6 @@ function generateDistinctColors(count) {
     if (count <= 0) return colors;
     const hueStep = 360 / count;
     for (let i = 0; i < count; i++) {
-        // Use HSL color space for better visual distinction
         colors.push(`hsl(${i * hueStep}, 70%, 60%)`);
     }
     return colors;
@@ -133,7 +144,7 @@ function generateDistinctColors(count) {
  * @param {number} duration - How long to display the message in milliseconds (0 = permanent).
  */
 function showStatusMessage(message, isError = false, duration = 5000) {
-    if (!emailStatusMessage) return; // Exit if element doesn't exist
+    if (!emailStatusMessage) return;
 
     emailStatusMessage.textContent = message;
     emailStatusMessage.className = 'status-message'; // Reset classes
@@ -142,12 +153,11 @@ function showStatusMessage(message, isError = false, duration = 5000) {
     } else {
         emailStatusMessage.classList.add('success');
     }
-    emailStatusMessage.style.display = 'block'; // Make it visible
+    emailStatusMessage.style.display = 'block';
 
-    // Clear message after duration (if duration > 0)
     if (duration > 0) {
         setTimeout(() => {
-            if (emailStatusMessage.textContent === message) { // Only clear if it's the same message
+            if (emailStatusMessage.textContent === message) {
                 emailStatusMessage.textContent = '';
                 emailStatusMessage.style.display = 'none';
             }
@@ -155,36 +165,33 @@ function showStatusMessage(message, isError = false, duration = 5000) {
     }
 }
 
-// --- Filter Functions ---
+// --- Filter Functions --- (No changes needed here for muni offerings)
 
 /**
- * Generates HTML <option> elements for the filter column dropdown
- * based on the data-key attributes of the table headers.
+ * Generates HTML <option> elements for the filter column dropdown.
  */
 function generateColumnOptions() {
-    columnOptionsHtml = ''; // Reset the HTML string
+    columnOptionsHtml = '';
     tableHeaders.forEach(th => {
         const key = th.dataset.key;
-        const type = th.dataset.type || 'string'; // Default to string type if not specified
-        // Get text content, remove sort arrows if present
+        const type = th.dataset.type || 'string';
         const text = th.textContent.replace('▲', '').replace('▼', '').trim();
-        if (key) { // Only add options for headers with a data-key
+        if (key) {
             columnOptionsHtml += `<option value="${key}" data-type="${type}">${text}</option>`;
         }
     });
 }
 
 /**
- * Adds a new filter row UI element to the filters container.
- * @param {object|null} initialFilter - Optional object to pre-populate the filter row.
+ * Adds a new filter row UI element.
+ * @param {object|null} initialFilter - Optional object to pre-populate.
  */
 function addFilterRow(initialFilter = null) {
-    const filterId = nextFilterId++; // Increment and get unique ID
+    const filterId = nextFilterId++;
     const filterRow = document.createElement('div');
     filterRow.className = 'filter-row';
-    filterRow.dataset.filterId = filterId; // Store ID on the element
+    filterRow.dataset.filterId = filterId;
 
-    // Set inner HTML for the filter row structure
     filterRow.innerHTML = `
         <label for="filter-column-${filterId}">Filter by:</label>
         <select class="filter-column" id="filter-column-${filterId}">${columnOptionsHtml}</select>
@@ -193,40 +200,34 @@ function addFilterRow(initialFilter = null) {
         <button class="remove-filter-btn btn-danger" title="Remove this filter">X</button>
     `;
 
-    filtersContainer.appendChild(filterRow); // Add the row to the DOM
+    filtersContainer.appendChild(filterRow);
 
-    // Get references to the new elements within the row
     const columnSelect = filterRow.querySelector('.filter-column');
     const operatorSelect = filterRow.querySelector('.filter-operator');
     const valueInput = filterRow.querySelector('.filter-value');
     const removeBtn = filterRow.querySelector('.remove-filter-btn');
 
-    // Add event listeners
     columnSelect.addEventListener('change', handleFilterDropdownChange);
     operatorSelect.addEventListener('change', handleFilterDropdownChange);
-    valueInput.addEventListener('input', handleFilterValueChange); // Use 'input' for immediate feedback
+    valueInput.addEventListener('input', handleFilterValueChange);
     removeBtn.addEventListener('click', handleRemoveFilter);
 
-    // Create the initial state object for this filter
     const newFilter = {
         id: filterId,
-        column: initialFilter?.column || columnSelect.value, // Use initial value or default
-        operator: initialFilter?.operator, // Operator might be null initially
+        column: initialFilter?.column || columnSelect.value,
+        operator: initialFilter?.operator,
         value: initialFilter?.value || '',
         type: initialFilter?.type || columnSelect.options[columnSelect.selectedIndex]?.dataset.type || 'string'
     };
-    activeFilters.push(newFilter); // Add to the global list of active filters
+    activeFilters.push(newFilter);
 
-    // If initialFilter data was provided, set the dropdown/input values
     if (initialFilter) {
         columnSelect.value = initialFilter.column;
         valueInput.value = initialFilter.value;
     }
 
-    // Update the operator dropdown based on the selected column type
     updateOperatorOptionsForRow(filterRow, newFilter.operator);
 
-    // If an initial value was provided, trigger a full update immediately
     if (newFilter.value) {
         triggerFullUpdate();
     }
@@ -234,8 +235,8 @@ function addFilterRow(initialFilter = null) {
 
 /**
  * Updates the operator dropdown options based on the selected column's data type.
- * @param {HTMLElement} filterRow - The filter row element containing the dropdowns.
- * @param {string|null} preferredOperator - An operator to select by default if available.
+ * @param {HTMLElement} filterRow - The filter row element.
+ * @param {string|null} preferredOperator - An operator to select by default.
  */
 function updateOperatorOptionsForRow(filterRow, preferredOperator = null) {
     const columnSelect = filterRow.querySelector('.filter-column');
@@ -244,124 +245,96 @@ function updateOperatorOptionsForRow(filterRow, preferredOperator = null) {
     const selectedOption = columnSelect.options[columnSelect.selectedIndex];
     const columnType = selectedOption ? selectedOption.dataset.type : 'string';
 
-    // Define available operators for different data types
     const numberOperators = ['=', '!=', '>', '<', '>=', '<='];
     const stringOperators = ['contains', '=', '!=', 'startsWith', 'endsWith'];
-    const dateOperators = ['=', '!=', '>', '<', '>=', '<=']; // Same as number for date comparisons
+    const dateOperators = ['=', '!=', '>', '<', '>=', '<='];
 
     let availableOperators;
     let defaultOperator;
 
-    // Set operators and input type based on column type
     switch (columnType) {
         case 'number':
             availableOperators = numberOperators;
-            valueInput.type = 'number';
-            valueInput.step = 'any'; // Allow decimals
-            defaultOperator = '=';
+            valueInput.type = 'number'; valueInput.step = 'any'; defaultOperator = '=';
             break;
         case 'date':
             availableOperators = dateOperators;
-            valueInput.type = 'date';
-            valueInput.step = ''; // No step for dates
-            defaultOperator = '=';
+            valueInput.type = 'date'; valueInput.step = ''; defaultOperator = '=';
             break;
         case 'string':
-        default: // Default to string
+        default:
             availableOperators = stringOperators;
-            valueInput.type = 'text';
-            valueInput.step = '';
-            defaultOperator = 'contains';
+            valueInput.type = 'text'; valueInput.step = ''; defaultOperator = 'contains';
             break;
     }
 
-    const currentOperatorValue = operatorSelect.value; // Store current selection
-    operatorSelect.innerHTML = ''; // Clear existing options
+    const currentOperatorValue = operatorSelect.value;
+    operatorSelect.innerHTML = '';
 
-    // Populate the operator dropdown
     availableOperators.forEach(op => {
         const option = document.createElement('option');
         option.value = op;
-        // Use more readable symbols for operators
         option.textContent = op.replace('>=', '≥').replace('<=', '≤').replace('!=', '≠');
         operatorSelect.appendChild(option);
     });
 
-    // Set the selected operator
     if (preferredOperator && availableOperators.includes(preferredOperator)) {
         operatorSelect.value = preferredOperator;
     } else if (availableOperators.includes(currentOperatorValue)) {
-        // Keep the current operator if it's still valid for the new type
         operatorSelect.value = currentOperatorValue;
     } else {
-        // Otherwise, set the default operator for the type
         operatorSelect.value = defaultOperator;
     }
 }
 
 /**
- * Updates the state object for a specific filter row in the activeFilters array.
- * @param {HTMLElement} filterRow - The filter row element whose state needs updating.
- * @returns {boolean} True if the state was found and updated, false otherwise.
+ * Updates the state object for a specific filter row.
+ * @param {HTMLElement} filterRow - The filter row element.
+ * @returns {boolean} True if the state was updated.
  */
 function updateFilterState(filterRow) {
     const filterId = parseInt(filterRow.dataset.filterId, 10);
     const filterIndex = activeFilters.findIndex(f => f.id === filterId);
+    if (filterIndex === -1) return false;
 
-    if (filterIndex === -1) {
-        console.error("Filter state not found for ID:", filterId);
-        return false; // Filter not found
-    }
-
-    // Get current values from the row's elements
     const columnSelect = filterRow.querySelector('.filter-column');
     const operatorSelect = filterRow.querySelector('.filter-operator');
     const valueInput = filterRow.querySelector('.filter-value');
 
-    // Update the filter object in the array
     activeFilters[filterIndex] = {
         id: filterId,
         column: columnSelect.value,
         operator: operatorSelect.value,
-        value: valueInput.value.trim(), // Trim whitespace from value
+        value: valueInput.value.trim(),
         type: columnSelect.options[columnSelect.selectedIndex]?.dataset.type || 'string'
     };
-    // console.log("Updated filter state:", activeFilters[filterIndex]); // Debug log
     return true;
 }
 
 /**
  * Event handler for changes in filter column or operator dropdowns.
- * Updates operator options if needed and triggers a table update.
  * @param {Event} event - The change event object.
  */
 function handleFilterDropdownChange(event) {
     const filterRow = event.target.closest('.filter-row');
-    if (!filterRow) return; // Exit if the event didn't originate within a filter row
-
-    // If the column dropdown changed, update the available operators
+    if (!filterRow) return;
     if (event.target.classList.contains('filter-column')) {
         updateOperatorOptionsForRow(filterRow);
     }
-
-    // Update the filter state and re-render the table (no need to re-render charts yet)
     if (updateFilterState(filterRow)) {
-        triggerTableUpdate(); // Only update table/totals/sort
+        triggerTableUpdate();
     }
 }
 
 /**
  * Event handler for changes in the filter value input field.
- * Triggers a full update (table, totals, charts).
  * @param {Event} event - The input event object.
  */
 function handleFilterValueChange(event) {
     const filterRow = event.target.closest('.filter-row');
     if (!filterRow) return;
-
-    // Update the filter state and trigger a full re-render
     if (updateFilterState(filterRow)) {
-        triggerFullUpdate(); // Update table, totals, and charts
+        triggerFullUpdate();
     }
 }
 
@@ -372,23 +345,12 @@ function handleFilterValueChange(event) {
 function handleRemoveFilter(event) {
     const filterRow = event.target.closest('.filter-row');
     if (!filterRow) return;
-
-    // Prevent removing the very last filter row (optional, but can be good UX)
     const currentFilterRows = filtersContainer.querySelectorAll('.filter-row');
-    if (currentFilterRows.length <= 1) {
-        console.log("Cannot remove the last filter row.");
-        // Optionally provide user feedback here (e.g., flash the row)
-        return;
-    }
+    if (currentFilterRows.length <= 1) return;
 
-    // Remove the filter state from the array
     const filterIdToRemove = parseInt(filterRow.dataset.filterId, 10);
     activeFilters = activeFilters.filter(f => f.id !== filterIdToRemove);
-
-    // Remove the row from the DOM
     filterRow.remove();
-
-    // Trigger a full update
     triggerFullUpdate();
 }
 
@@ -396,249 +358,201 @@ function handleRemoveFilter(event) {
  * Clears all active filters and resets the filter UI.
  */
 function handleClearAllFilters() {
-    activeFilters = []; // Clear the state array
-    filtersContainer.innerHTML = ''; // Clear the filter rows from the DOM
-    addFilterRow(); // Add back a single, empty filter row
+    activeFilters = [];
+    filtersContainer.innerHTML = '';
+    addFilterRow();
 
-    // Reset portfolio dropdown to the first option if visible and trigger update
     if (!portfolioFilterContainer.classList.contains('hidden') && portfolioFilterSelect.options.length > 0) {
-         portfolioFilterSelect.value = portfolioFilterSelect.options[0].value; // Select first portfolio
-         handlePortfolioSelection(); // Trigger update based on the first portfolio
+         portfolioFilterSelect.value = portfolioFilterSelect.options[0].value;
+         handlePortfolioSelection();
     } else if (selectedCustomerId) {
-        // If only customer was selected, trigger update for that customer (will reload portfolios)
         handleCustomerSelection();
     }
-    // No need for separate triggerFullUpdate() as handlePortfolioSelection/handleCustomerSelection does it
 }
 
 // --- Data Fetching and Processing ---
 
 /**
- * Fetches the list of customers associated with the logged-in user.
- * Populates the main customer dropdown and triggers the initial customer selection.
+ * Fetches the list of customers.
  */
 async function loadCustomers() {
     console.log("Attempting to load customers...");
     try {
         const res = await fetch(`${apiRoot}/customers/`);
         console.log("Load customers response status:", res.status);
-        if (!res.ok) {
-            // Handle non-successful responses (e.g., 403 Forbidden, 500 Server Error)
-            throw new Error(`HTTP error! status: ${res.status}`);
-        }
-        customers = await res.json(); // Store fetched customers globally
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        customers = await res.json();
         console.log("Customers loaded:", customers);
 
-        // Populate the main customer selection dropdown
         customerSelect.innerHTML = customers.map(c =>
             `<option value="${c.id}">${c.name || `Customer ${c.customer_number}`}</option>`
         ).join('');
 
-        // If customers were loaded, trigger the handler for the first customer
         if (customers.length > 0) {
-            await handleCustomerSelection(); // Load portfolios and initial view for the default selected customer
+            await handleCustomerSelection(); // Trigger selection of the first customer
         } else {
-            // Handle case where user has no associated customers
             portfolioNameEl.textContent = "No customers available for this user.";
             clearTableAndCharts();
-            portfolioFilterContainer.classList.add('hidden'); // Hide portfolio dropdown
-            const colSpan = (tableHeaders.length || 10) + 1; // +1 for checkbox column
+            portfolioFilterContainer.classList.add('hidden');
+            const colSpan = (tableHeaders.length || 10) + 1;
             tableBody.innerHTML = `<tr><td colspan="${colSpan}">No customers found.</td></tr>`;
         }
     } catch (error) {
         console.error("Failed to load customers:", error);
         portfolioNameEl.textContent = "Error loading customers";
         clearTableAndCharts();
-        portfolioFilterContainer.classList.add('hidden'); // Hide portfolio dropdown
-        const colSpan = (tableHeaders.length || 10) + 1; // +1 for checkbox column
+        portfolioFilterContainer.classList.add('hidden');
+        const colSpan = (tableHeaders.length || 10) + 1;
         tableBody.innerHTML = `<tr><td colspan="${colSpan}">Error loading customer list. Check console.</td></tr>`;
     }
 }
 
 /**
- * Handles the selection of a customer from the dropdown.
- * Fetches the portfolios for the selected customer.
+ * Handles the selection of a customer.
  */
 async function handleCustomerSelection() {
-    selectedCustomerId = customerSelect.value; // Get selected customer ID
+    selectedCustomerId = customerSelect.value;
     console.log(`Customer selected: ID ${selectedCustomerId}`);
-
-    // Clear selections when customer changes
     clearHoldingSelection();
 
     if (!selectedCustomerId) {
         portfolioNameEl.textContent = "Please select a customer.";
         clearTableAndCharts();
-        portfolioFilterContainer.classList.add('hidden'); // Hide portfolio dropdown
-        deletePortfolioBtn.disabled = true; // Disable delete button
+        portfolioFilterContainer.classList.add('hidden');
+        deletePortfolioBtn.disabled = true;
         return;
     }
 
-    // Find the selected customer object
     const selectedCustomer = customers.find(c => c.id == selectedCustomerId);
     if (!selectedCustomer) {
-        console.error(`Selected customer with ID ${selectedCustomerId} not found in local list.`);
+        console.error(`Selected customer with ID ${selectedCustomerId} not found.`);
         portfolioNameEl.textContent = "Error: Selected customer not found.";
         clearTableAndCharts();
         portfolioFilterContainer.classList.add('hidden');
-        deletePortfolioBtn.disabled = true; // Disable delete button
+        deletePortfolioBtn.disabled = true;
         return;
     }
 
-    // Update title temporarily
     portfolioNameEl.textContent = `Loading portfolios for ${selectedCustomer.name || `Customer ${selectedCustomer.customer_number}`}...`;
-    clearTableAndCharts(); // Clear previous view
-    portfolioFilterContainer.classList.add('hidden'); // Hide portfolio dropdown while loading
-    deletePortfolioBtn.disabled = true; // Disable delete button while loading
+    clearTableAndCharts();
+    portfolioFilterContainer.classList.add('hidden');
+    deletePortfolioBtn.disabled = true;
 
-    // Load portfolios for this customer
     await loadPortfolios(selectedCustomerId);
 }
 
 /**
- * Fetches portfolios relevant to the logged-in user and populates the portfolio dropdown
- * filtered for the selected customer.
- * @param {string|number} customerId - The ID of the currently selected customer.
+ * Fetches portfolios for the selected customer.
+ * @param {string|number} customerId - The ID of the customer.
  */
 async function loadPortfolios(customerId) {
     console.log(`Attempting to load portfolios for customer ID: ${customerId}`);
     try {
-        // Fetch all portfolios accessible by the user
         const res = await fetch(`${apiRoot}/portfolios/`);
         console.log("Load portfolios response status:", res.status);
-        if (!res.ok) {
-            throw new Error(`HTTP error fetching portfolios! status: ${res.status}`);
-        }
-        currentPortfolios = await res.json(); // Store all accessible portfolios
+        if (!res.ok) throw new Error(`HTTP error fetching portfolios! status: ${res.status}`);
+        currentPortfolios = await res.json();
         console.log("All accessible portfolios loaded:", currentPortfolios.length);
 
-        // Filter portfolios to show only those owned by the selected customer
         const customerPortfolios = currentPortfolios.filter(p => p.owner?.id == customerId);
         console.log(`Portfolios found for customer ${customerId}:`, customerPortfolios.length);
 
-        // Populate the portfolio dropdown
-        portfolioFilterSelect.innerHTML = ''; // Clear existing options
+        portfolioFilterSelect.innerHTML = '';
 
         if (customerPortfolios.length > 0) {
-            // Add options for each specific portfolio
             customerPortfolios.forEach(p => {
                 const option = document.createElement('option');
-                option.value = p.id; // Use portfolio ID as value
+                option.value = p.id;
                 option.textContent = p.name || `Portfolio ${p.id}`;
-                // Store is_default flag on the option element for the delete check later
                 option.dataset.isDefault = p.is_default || false;
                 portfolioFilterSelect.appendChild(option);
             });
-
-            // Show the portfolio dropdown
             portfolioFilterContainer.classList.remove('hidden');
-            // Trigger the holdings display for the first portfolio in the list
-            handlePortfolioSelection();
+            handlePortfolioSelection(); // Trigger loading holdings for the first portfolio
         } else {
-            // No portfolios found for this customer
             const selectedCustomer = customers.find(c => c.id == customerId);
             portfolioNameEl.textContent = `${selectedCustomer.name || `Customer ${selectedCustomer.customer_number}`} - No Portfolios Found`;
-            portfolioFilterContainer.classList.add('hidden'); // Hide dropdown
-            deletePortfolioBtn.disabled = true; // Ensure delete is disabled
-            clearTableAndCharts(); // Clear table/charts
-            const colSpan = (tableHeaders.length || 10) + 1; // +1 for checkbox column
+            portfolioFilterContainer.classList.add('hidden');
+            deletePortfolioBtn.disabled = true;
+            clearTableAndCharts();
+            const colSpan = (tableHeaders.length || 10) + 1;
             tableBody.innerHTML = `<tr><td colspan="${colSpan}">No portfolios found for this customer.</td></tr>`;
         }
-
     } catch (error) {
         console.error("Failed to load or process portfolios:", error);
         portfolioNameEl.textContent = "Error loading portfolios";
-        // Keep portfolio dropdown hidden on error
         portfolioFilterContainer.classList.add('hidden');
-        deletePortfolioBtn.disabled = true; // Ensure delete is disabled
-        clearTableAndCharts(); // Clear view on error
-        const colSpan = (tableHeaders.length || 10) + 1; // +1 for checkbox column
+        deletePortfolioBtn.disabled = true;
+        clearTableAndCharts();
+        const colSpan = (tableHeaders.length || 10) + 1;
         tableBody.innerHTML = `<tr><td colspan="${colSpan}">Error loading portfolio list. Check console.</td></tr>`;
     }
 }
 
 
 /**
- * Handles the selection of a portfolio from the dropdown.
- * Fetches and displays holdings for the selected portfolio.
- * Enables/disables the delete button.
+ * Handles the selection of a portfolio.
  */
 async function handlePortfolioSelection() {
-    const selectedPortfolioId = portfolioFilterSelect.value; // This will now always be an ID if portfolios exist
+    const selectedPortfolioId = portfolioFilterSelect.value;
     const selectedOption = portfolioFilterSelect.options[portfolioFilterSelect.selectedIndex];
-    const isDefaultPortfolio = selectedOption?.dataset?.isDefault === 'true'; // Check if it's the default portfolio
-
+    const isDefaultPortfolio = selectedOption?.dataset?.isDefault === 'true';
     console.log(`Portfolio selected: ID '${selectedPortfolioId}' (Default: ${isDefaultPortfolio}), Customer ID: ${selectedCustomerId}`);
-
-    // Clear selections when portfolio changes
     clearHoldingSelection();
 
-    // Enable delete button only if a specific, non-default portfolio is selected
-    // Disable if no portfolio ID is selected (e.g., if the list was empty)
     deletePortfolioBtn.disabled = (!selectedPortfolioId || isDefaultPortfolio);
 
-    // Find the selected customer object again (needed for display name)
     const selectedCustomer = customers.find(c => c.id == selectedCustomerId);
     if (!selectedCustomer) {
-         console.error("Customer not found during portfolio selection.");
-         return; // Should not happen if customer was selected first
+         console.error("Customer not found during portfolio selection."); return;
     }
 
-    // If no portfolio ID is selected (e.g., after deleting the last one), don't fetch holdings
     if (!selectedPortfolioId) {
         console.log("No specific portfolio selected.");
          portfolioNameEl.textContent = `${selectedCustomer.name || `Customer ${selectedCustomer.customer_number}`} - Select a Portfolio`;
          clearTableAndCharts();
-         const colSpan = (tableHeaders.length || 10) + 1; // +1 for checkbox column
+         const colSpan = (tableHeaders.length || 10) + 1;
          tableBody.innerHTML = `<tr><td colspan="${colSpan}">Please select a portfolio.</td></tr>`;
          return;
     }
 
-    // --- Fetch holdings for the selected portfolio ---
     const fetchUrl = `${apiRoot}/holdings/?portfolio=${selectedPortfolioId}`;
     const selectedPortfolio = currentPortfolios.find(p => p.id == selectedPortfolioId);
     const portfolioDisplayName = selectedPortfolio?.name || `Portfolio ${selectedPortfolioId}`;
     const viewName = `${selectedCustomer.name || `Customer ${selectedCustomer.customer_number}`} - ${portfolioDisplayName}`;
     console.log("Fetching holdings for specific portfolio:", fetchUrl);
 
-
     portfolioNameEl.textContent = `Loading ${viewName}...`;
-    clearTableAndCharts(); // Clear previous view
+    clearTableAndCharts();
 
-    // --- Fetch Holdings ---
     try {
         const res = await fetch(fetchUrl);
         console.log(`Load holdings response status for view '${viewName}':`, res.status);
 
         if (!res.ok) {
-            if (res.status === 404) { // Handle no holdings found
+            if (res.status === 404) {
                 allHoldings = [];
                 portfolioNameEl.textContent = `${viewName} (No Holdings)`;
-                const colSpan = (tableHeaders.length || 10) + 1; // +1 for checkbox column
+                const colSpan = (tableHeaders.length || 10) + 1;
                 tableBody.innerHTML = `<tr><td colspan="${colSpan}">No holdings found for this portfolio.</td></tr>`;
-            } else { // Handle other errors
+            } else {
                 let errorText = `HTTP error! status: ${res.status}`;
-                try {
-                    const errorData = await res.json();
-                    errorText += ` - ${JSON.stringify(errorData)}`;
-                } catch (e) { /* Ignore if response is not JSON */ }
+                try { errorText += ` - ${JSON.stringify(await res.json())}`; } catch (e) {}
                 throw new Error(errorText);
             }
         } else {
-            // Holdings loaded successfully
             allHoldings = await res.json();
             console.log(`Holdings loaded for view '${viewName}':`, allHoldings.length);
-            portfolioNameEl.textContent = viewName; // Update display name
+            portfolioNameEl.textContent = viewName;
         }
-        // Process and display the fetched holdings
         processAndDisplayHoldings();
 
     } catch (error) {
         console.error("Failed to update holdings view:", error);
         portfolioNameEl.textContent = `Error loading holdings for ${viewName}`;
-        allHoldings = []; // Reset holdings
+        allHoldings = [];
         clearTableAndCharts();
-        const colSpan = (tableHeaders.length || 10) + 1; // +1 for checkbox column
+        const colSpan = (tableHeaders.length || 10) + 1;
         tableBody.innerHTML = `<tr><td colspan="${colSpan}">Error loading holdings. Check console.</td></tr>`;
     }
 }
@@ -646,48 +560,132 @@ async function handlePortfolioSelection() {
 
 /**
  * Processes the raw holding data fetched from the API.
- * Calculates derived fields (e.g., estimated maturity year, par) and parses numbers/dates.
- * Triggers a full UI update afterwards.
  */
 function processAndDisplayHoldings() {
     console.log("Processing and displaying holdings:", allHoldings.length);
     const today = new Date();
     allHoldings.forEach(h => {
-        // Calculate estimated maturity year based on WAL (Weighted Average Life)
-        const wal = parseFloat(h.wal);
+        const wal = parseFloatSafe(h.wal);
         h.estimated_maturity_date = !isNaN(wal) ? today.getFullYear() + Math.floor(wal) : null;
 
-        // Ensure numeric fields are parsed correctly, defaulting to 0 if null/invalid
-        h.original_face_amount = parseFloat(h.original_face_amount) || 0; // Ensure original face is parsed
-        h.settlement_price = parseFloat(h.settlement_price) || 0;
-        h.coupon = parseFloat(h.coupon) || 0;
-        h.book_yield = parseFloat(h.book_yield) || 0;
+        h.original_face_amount = parseFloatSafe(h.original_face_amount) ?? 0;
+        h.settlement_price = parseFloatSafe(h.settlement_price) ?? 0;
+        h.coupon = parseFloatSafe(h.coupon) ?? 0;
+        h.book_yield = parseFloatSafe(h.book_yield) ?? 0;
+        // Assuming factor comes from security via serializer or is copied
+        h.security_factor = parseFloatSafe(h.factor || h.security?.factor) ?? 1.0;
 
-        // Get factor from security if available (ensure it's a number)
-        // The API serializer should provide this if 'security' is expanded or fetched separately
-        // For now, assume it might be present in the holding data if copied during creation, or use 1.0
-        h.security_factor = parseFloat(h.factor) || 1.0; // Assuming 'factor' comes from Security via serializer
-
-        // Calculate current par value (needed for display and email action)
-        // Note: The serializer also calculates 'par', but we need it here too for display consistency
-        // and potential use before filtering/sorting.
         h.par_calculated = (h.original_face_amount * h.security_factor);
+        h.yield_val = h.book_yield || parseFloatSafe(h.yield) || 0;
+        h.wal = wal ?? 0; // Use the parsed WAL
 
-        // Determine the primary yield value to use (prefer book_yield if available)
-        h.yield_val = h.book_yield || parseFloat(h.yield) || 0; // API might send 'yield' if book_yield is null
-        h.wal = parseFloat(h.wal) || 0; // Ensure WAL is also parsed as a number
-
-        // Parse date strings into Date objects for easier manipulation/sorting
         h.maturity_date_obj = parseDate(h.maturity_date);
         h.call_date_obj = parseDate(h.call_date);
     });
 
-    // Trigger a full update to apply filters, sort, render table, totals, and charts
     triggerFullUpdate();
 }
 
+// --- NEW: Muni Offerings Fetching and Rendering ---
 
-// --- Filtering and Sorting Logic ---
+/**
+ * Fetches municipal offerings data from the API.
+ */
+async function loadMuniOfferings() {
+    console.log("Attempting to load municipal offerings...");
+    if (!muniOfferingsTableBody) {
+        console.warn("Muni offerings table body not found. Skipping load.");
+        return;
+    }
+
+    // Show loading state in table
+    muniOfferingsTableBody.innerHTML = `<tr><td colspan="13">Loading offerings...</td></tr>`;
+
+    try {
+        const response = await fetch(`${apiRoot}/muni-offerings/`);
+        console.log("Load muni offerings response status:", response.status);
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const rawOfferings = await response.json();
+        console.log("Raw muni offerings loaded:", rawOfferings.length);
+
+        // Process data (parse numbers, etc.)
+        allMuniOfferings = rawOfferings.map(offering => {
+            return {
+                ...offering, // Spread original properties
+                // Parse numeric fields safely
+                amount_num: parseFloatSafe(offering.amount),
+                coupon_num: parseFloatSafe(offering.coupon),
+                yield_rate_num: parseFloatSafe(offering.yield_rate),
+                price_num: parseFloatSafe(offering.price),
+                call_price_num: parseFloatSafe(offering.call_price),
+                // Dates can remain strings for now, parse if needed later
+                maturity_date_str: offering.maturity_date,
+                call_date_str: offering.call_date,
+            };
+        });
+
+        console.log("Processed muni offerings:", allMuniOfferings.length);
+        renderMuniOfferingsTable(allMuniOfferings); // Render the processed data
+
+    } catch (error) {
+        console.error("Failed to load municipal offerings:", error);
+        muniOfferingsTableBody.innerHTML = `<tr><td colspan="13">Error loading offerings. Check console.</td></tr>`;
+    }
+}
+
+/**
+ * Renders the municipal offerings data into the HTML table.
+ * @param {object[]} offeringsData - The array of processed offering objects.
+ */
+function renderMuniOfferingsTable(offeringsData) {
+    if (!muniOfferingsTableBody) return; // Exit if table body doesn't exist
+
+    // Clear existing rows or loading message
+    muniOfferingsTableBody.innerHTML = '';
+
+    if (!offeringsData || offeringsData.length === 0) {
+        muniOfferingsTableBody.innerHTML = `<tr><td colspan="13">No municipal offerings available.</td></tr>`;
+        return;
+    }
+
+    // Generate and append rows
+    offeringsData.forEach(o => {
+        const row = document.createElement('tr');
+
+        // Helper to create and append a cell
+        const addCell = (content, align = 'left') => {
+            const cell = document.createElement('td');
+            // Handle null/undefined gracefully
+            cell.textContent = (content !== null && content !== undefined) ? content : 'N/A';
+            cell.style.textAlign = align;
+            row.appendChild(cell);
+        };
+
+        // Populate cells in order of headers
+        addCell(o.cusip, 'left');
+        addCell(o.amount_num?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? 'N/A', 'right');
+        addCell(o.description, 'left');
+        addCell(o.coupon_num?.toFixed(3) ?? 'N/A', 'right');
+        addCell(o.maturity_date_str, 'center');
+        addCell(o.yield_rate_num?.toFixed(3) ?? 'N/A', 'right');
+        addCell(o.price_num?.toFixed(2) ?? 'N/A', 'right');
+        addCell(o.moody_rating || 'N/A', 'left'); // Use || for empty strings too
+        addCell(o.sp_rating || 'N/A', 'left');
+        addCell(o.call_date_str, 'center');
+        addCell(o.call_price_num?.toFixed(2) ?? 'N/A', 'right');
+        addCell(o.state || 'N/A', 'left');
+        addCell(o.insurance || 'N/A', 'left');
+
+        muniOfferingsTableBody.appendChild(row);
+    });
+}
+
+
+// --- Filtering and Sorting Logic --- (Adapted for Holdings, needs adaptation for Munis if sorting added)
 
 /**
  * Checks if a single holding matches a given filter criteria.
@@ -696,25 +694,15 @@ function processAndDisplayHoldings() {
  * @returns {boolean} True if the holding matches the filter, false otherwise.
  */
 function checkFilter(holding, filter) {
-    // If filter is invalid or has no value, it doesn't filter anything out
     if (!filter || filter.value === null || filter.value === '') return true;
-
-    // Get the value from the holding based on the filter's column key
-    const holdingValue = getSortValue(holding, filter.column);
-    let filterValue = filter.value; // Value entered by the user
-
-    // If the holding doesn't have the specified property, it doesn't match
-    if (holdingValue === null || holdingValue === undefined) {
-        return false;
-    }
+    const holdingValue = getSortValue(holding, filter.column); // Uses holding-specific getter
+    let filterValue = filter.value;
+    if (holdingValue === null || holdingValue === undefined) return false;
 
     try {
         let compareHolding = holdingValue;
         let compareFilter = filterValue;
-
-        // Perform comparison based on filter type
         if (filter.type === 'string') {
-            // Case-insensitive string comparison
             compareHolding = String(holdingValue).toLowerCase();
             compareFilter = String(filterValue).toLowerCase();
             switch (filter.operator) {
@@ -723,18 +711,12 @@ function checkFilter(holding, filter) {
                 case 'endsWith': return compareHolding.endsWith(compareFilter);
                 case '=': return compareHolding === compareFilter;
                 case '!=': return compareHolding !== compareFilter;
-                default: return false; // Unknown operator
+                default: return false;
             }
         } else if (filter.type === 'number') {
-            // Special handling for 'par' column - use calculated value
-            if (filter.column === 'par') {
-                compareHolding = parseFloat(holding.par_calculated);
-            } else {
-                compareHolding = parseFloat(holdingValue);
-            }
-            compareFilter = parseFloat(filterValue);
-            // If parsing fails, consider it a non-match
-            if (isNaN(compareHolding) || isNaN(compareFilter)) return false;
+            compareHolding = parseFloatSafe(holdingValue); // Use safe parse
+            compareFilter = parseFloatSafe(filterValue);
+            if (compareHolding === null || compareFilter === null) return false;
             switch (filter.operator) {
                 case '=': return compareHolding === compareFilter;
                 case '!=': return compareHolding !== compareFilter;
@@ -745,10 +727,9 @@ function checkFilter(holding, filter) {
                 default: return false;
             }
         } else if (filter.type === 'date') {
-            // Use getTime() for reliable date comparison
             compareHolding = holdingValue instanceof Date ? holdingValue.getTime() : null;
-            compareFilter = parseDate(filterValue)?.getTime(); // Parse filter value to date
-            if (compareHolding === null || compareFilter === null) return false; // Invalid date(s)
+            compareFilter = parseDate(filterValue)?.getTime();
+            if (compareHolding === null || compareFilter === null) return false;
             switch (filter.operator) {
                 case '=': return compareHolding === compareFilter;
                 case '!=': return compareHolding !== compareFilter;
@@ -761,34 +742,34 @@ function checkFilter(holding, filter) {
         }
     } catch (e) {
         console.error("Error during filter comparison:", e, { holdingValue, filter });
-        return false; // Error during comparison means no match
+        return false;
     }
-    return false; // Default to no match if type is unknown
+    return false;
 }
 
 /**
- * Sorts an array of holding data based on a key and direction.
+ * Sorts an array of data based on a key and direction.
  * Handles null/undefined values and different data types (number, date, string).
- * @param {object[]} data - The array of holdings to sort (will be modified in place).
+ * NOTE: Assumes the `getSortValueFunc` provides the correct value for comparison.
+ * @param {object[]} data - The array of objects to sort (will be modified in place).
  * @param {string} key - The key (column) to sort by.
  * @param {string} direction - 'asc' or 'desc'.
+ * @param {function} getSortValueFunc - Function to extract the sortable value (e.g., getHoldingSortValue).
  */
-function sortData(data, key, direction) {
+function sortDataGeneric(data, key, direction, getSortValueFunc) {
     data.sort((a, b) => {
-        let valA = getSortValue(a, key);
-        let valB = getSortValue(b, key);
+        let valA = getSortValueFunc(a, key);
+        let valB = getSortValueFunc(b, key);
 
-        // Define how null/undefined values are ordered
-        const nullOrder = direction === 'asc' ? 1 : -1; // Push nulls to end in asc, beginning in desc
+        const nullOrder = direction === 'asc' ? 1 : -1;
         if (valA === null || valA === undefined) return (valB === null || valB === undefined) ? 0 : nullOrder;
         if (valB === null || valB === undefined) return -nullOrder;
 
         let comparison = 0;
-        // Compare based on data type
         if (valA instanceof Date && valB instanceof Date) {
             comparison = valA.getTime() - valB.getTime();
         } else if (typeof valA === 'number' && typeof valB === 'number') {
-            comparison = valA - valB;
+            comparison = valA - valB; // Direct subtraction for numbers
         } else {
             // Default to case-insensitive string comparison
             valA = String(valA).toUpperCase();
@@ -796,30 +777,28 @@ function sortData(data, key, direction) {
             if (valA < valB) comparison = -1;
             else if (valA > valB) comparison = 1;
         }
-
-        // Apply direction
         return direction === 'desc' ? (comparison * -1) : comparison;
     });
 }
 
 /**
- * Retrieves the appropriate value from a holding object for sorting/filtering.
- * Handles special cases like dates, calculated yield, or calculated par.
+ * Retrieves the appropriate value from a HOLDING object for sorting/filtering.
  * @param {object} holding - The holding object.
  * @param {string} key - The key representing the column/property.
  * @returns {*} The value to be used for comparison.
  */
-function getSortValue(holding, key) {
+function getHoldingSortValue(holding, key) {
     switch (key) {
-        case 'yield': return holding.yield_val; // Use the calculated yield value
-        case 'maturity_date': return holding.maturity_date_obj; // Use the Date object
-        case 'call_date': return holding.call_date_obj; // Use the Date object
-        case 'par': return holding.par_calculated; // Use the calculated par value
-        default: return holding[key]; // Return the property directly
+        case 'yield': return holding.yield_val;
+        case 'maturity_date': return holding.maturity_date_obj;
+        case 'call_date': return holding.call_date_obj;
+        case 'par': return holding.par_calculated;
+        case 'security_cusip': return holding.security_cusip; // Use the direct field from API
+        default: return holding[key];
     }
 }
 
-// --- UI Rendering ---
+// --- UI Rendering --- (Holdings Table)
 
 /**
  * Renders the holdings data into the HTML table body.
@@ -827,51 +806,37 @@ function getSortValue(holding, key) {
  * @param {object[]} holdings - The array of holdings to render.
  */
 function renderTable(holdings) {
-    console.log("Rendering table with holdings:", holdings.length);
-    const colSpan = (tableHeaders.length || 10) + 1; // +1 for checkbox column
+    console.log("Rendering holdings table with:", holdings.length);
+    const colSpan = (tableHeaders.length || 10) + 1;
 
-    // Clear previous selections when table re-renders (important!)
-    // Keep the selectedHoldingIds Set intact, but reset checkbox states based on it
-    // clearHoldingSelection(); // Don't clear the Set here, just the visual checks
+    if (!tableBody) {
+        console.error("Holdings table body not found!");
+        return;
+    }
 
-    // Handle empty data state
     if (!holdings || holdings.length === 0) {
         const hasActiveFilters = activeFilters.some(f => f.value !== '');
         const noDataMessage = portfolioFilterSelect.value ? 'No holdings match filter criteria.' : 'No holdings to display.';
         tableBody.innerHTML = `<tr><td colspan="${colSpan}">${noDataMessage}</td></tr>`;
-        // Ensure "Select All" is unchecked if table is empty
-        if (selectAllCheckbox) {
-            selectAllCheckbox.checked = false;
-            selectAllCheckbox.indeterminate = false;
-        }
-        // Disable email button if table is empty
-        if (emailInterestBtn) {
-            emailInterestBtn.disabled = true;
-        }
+        if (selectAllCheckbox) { selectAllCheckbox.checked = false; selectAllCheckbox.indeterminate = false; }
+        if (emailInterestBtn) { emailInterestBtn.disabled = true; }
         return;
     }
 
-    // Generate table rows from holdings data
     tableBody.innerHTML = holdings.map(h => {
         const maturityDisplay = h.maturity_date_obj ? h.maturity_date_obj.toLocaleDateString() : (h.maturity_date || '');
         const callDisplay = h.call_date_obj ? h.call_date_obj.toLocaleDateString() : (h.call_date || '');
-
-        // Use calculated par for display, format it
         const parDisplay = (h.par_calculated ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const priceDisplay = (h.settlement_price ?? 0).toFixed(2);
         const couponDisplay = (h.coupon ?? 0).toFixed(3);
-        const yieldDisplay = (h.yield_val ?? 0).toFixed(3); // Use calculated yield
+        const yieldDisplay = (h.yield_val ?? 0).toFixed(3);
         const walDisplay = (h.wal ?? 0).toFixed(2);
-
-        // Check if this holding ID is in our selection Set
         const isChecked = selectedHoldingIds.has(h.id);
 
-        // Return the HTML string for the table row
         return `
             <tr data-holding-id="${h.id}">
                 <td class="checkbox-column">
-                    <input type="checkbox"
-                           class="holding-checkbox"
+                    <input type="checkbox" class="holding-checkbox"
                            data-holding-id="${h.id}"
                            data-cusip="${h.security_cusip || ''}"
                            data-par="${(h.par_calculated ?? 0).toFixed(2)}"
@@ -890,129 +855,97 @@ function renderTable(holdings) {
                 <td>${callDisplay}</td>
             </tr>
         `;
-    }).join(''); // Join the array of row strings into a single HTML string
+    }).join('');
 
-    // Update the state of the "Select All" checkbox based on currently rendered rows
     updateSelectAllCheckboxState();
-    // Update the email button state based on the selection Set
     emailInterestBtn.disabled = selectedHoldingIds.size === 0;
 }
 
 /**
- * Updates the sort indicator arrows (▲/▼) in the table headers.
+ * Updates the sort indicator arrows in the holdings table headers.
  */
 function updateSortIndicators() {
     tableHeaders.forEach(th => {
         const key = th.dataset.key;
         const arrowSpan = th.querySelector('.sort-arrow');
-        if (!arrowSpan) return; // Skip headers without arrows
-
+        if (!arrowSpan) return;
         if (key === currentSortKey) {
-            th.classList.add('sorted'); // Mark header as sorted
-            arrowSpan.textContent = currentSortDir === 'asc' ? ' ▲' : ' ▼'; // Set arrow direction
+            th.classList.add('sorted');
+            arrowSpan.textContent = currentSortDir === 'asc' ? ' ▲' : ' ▼';
         } else {
             th.classList.remove('sorted');
-            arrowSpan.textContent = ''; // Clear arrow for non-sorted columns
+            arrowSpan.textContent = '';
         }
     });
+    // TODO: Add similar logic for muni offerings table headers if sorting is implemented
 }
 
 /**
- * Calculates and renders the total values (Par, Yield, WAL) in the table footer.
- * Uses the calculated par value for totals.
+ * Calculates and renders the total values for the holdings table footer.
  * @param {object[]} holdings - The array of holdings to calculate totals from.
  */
 function renderTotals(holdings) {
-    // Calculate total Par value using the calculated par
     const totalPar = holdings.reduce((sum, h) => sum + (h.par_calculated ?? 0), 0);
-
-    // Calculate weighted average yield (weighted by calculated Par)
     const weightedYieldSum = holdings.reduce((sum, h) => sum + ((h.par_calculated ?? 0) * (h.yield_val ?? 0)), 0);
-    const totalYield = totalPar > 0 ? weightedYieldSum / totalPar : 0; // Avoid division by zero
-
-    // Calculate weighted average WAL (weighted by calculated Par)
+    const totalYield = totalPar > 0 ? weightedYieldSum / totalPar : 0;
     const weightedWalSum = holdings.reduce((sum, h) => sum + ((h.par_calculated ?? 0) * (h.wal ?? 0)), 0);
-    const totalWal = totalPar > 0 ? weightedWalSum / totalPar : 0; // Avoid division by zero
+    const totalWal = totalPar > 0 ? weightedWalSum / totalPar : 0;
 
-    // Update the DOM elements in the table footer
     document.getElementById('totals-par').textContent = totalPar.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     document.getElementById('totals-yield').textContent = totalYield.toFixed(3);
     document.getElementById('totals-wal').textContent = totalWal.toFixed(2);
 }
 
 /**
- * Destroys an existing Chart.js instance if it exists.
- * @param {string} chartId - The ID of the chart instance to destroy.
+ * Destroys an existing Chart.js instance.
+ * @param {string} chartId - The ID of the chart instance.
  */
 function destroyChart(chartId) {
-    if (chartInstances[chartId]?.destroy) { // Check if instance and destroy method exist
+    if (chartInstances[chartId]?.destroy) {
         chartInstances[chartId].destroy();
-        delete chartInstances[chartId]; // Remove reference
+        delete chartInstances[chartId];
     }
 }
 
 /**
- * Renders all the charts based on the provided holdings data.
- * Destroys existing charts before creating new ones.
- * Uses calculated par value where appropriate.
- * @param {object[]} holdings - The array of holdings data to visualize.
+ * Renders all the charts based on the holdings data.
+ * @param {object[]} holdings - The array of holdings data.
  */
 function renderCharts(holdings) {
     console.log("Rendering charts with holdings:", holdings.length);
-    // Destroy all existing chart instances first
     Object.keys(chartInstances).forEach(destroyChart);
-    chartInstances = {}; // Reset the instances object
+    chartInstances = {};
 
-    // Determine theme for chart colors
     const isDark = document.body.classList.contains('dark-mode');
     const gridColor = isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)';
     const labelColor = isDark ? '#aaa' : '#666';
-    const titleColor = isDark ? '#4dabf7' : '#0056b3'; // Use header colors for titles
+    const titleColor = isDark ? '#4dabf7' : '#0056b3';
     const tooltipBgColor = isDark ? 'rgba(50, 50, 50, 0.9)' : 'rgba(0, 0, 0, 0.8)';
     const tooltipColor = isDark ? '#f1f1f1' : '#fff';
 
-    // Base options common to most charts
     const baseChartOptionsStatic = {
-        responsive: true,
-        maintainAspectRatio: false, // Allow charts to fill container height
+        responsive: true, maintainAspectRatio: false,
         plugins: {
             legend: { labels: { color: labelColor } },
-            title: { color: titleColor, display: true }, // Enable titles
-            tooltip: {
-                backgroundColor: tooltipBgColor,
-                titleColor: tooltipColor,
-                bodyColor: tooltipColor,
-                footerColor: tooltipColor
-            }
+            title: { color: titleColor, display: true },
+            tooltip: { backgroundColor: tooltipBgColor, titleColor: tooltipColor, bodyColor: tooltipColor, footerColor: tooltipColor }
         },
-        scales: { // Default scales (can be overridden)
-            x: {
-                ticks: { color: labelColor },
-                grid: { color: gridColor, borderColor: gridColor },
-                title: { color: labelColor, display: true } // Enable axis titles
-            },
-            y: {
-                ticks: { color: labelColor },
-                grid: { color: gridColor, borderColor: gridColor },
-                title: { color: labelColor, display: true }
-            }
+        scales: {
+            x: { ticks: { color: labelColor }, grid: { color: gridColor, borderColor: gridColor }, title: { color: labelColor, display: true } },
+            y: { ticks: { color: labelColor }, grid: { color: gridColor, borderColor: gridColor }, title: { color: labelColor, display: true } }
         },
     };
 
-    // Plugin to draw a white background before chart draw (for PDF export)
     const pdfBackgroundPlugin = {
         id: 'pdfBackground',
         beforeDraw: (chart) => {
             const ctx = chart.canvas.getContext('2d');
-            ctx.save();
-            ctx.globalCompositeOperation = 'destination-over'; // Draw behind existing content
-            ctx.fillStyle = 'white'; // Use white for PDF background
-            ctx.fillRect(0, 0, chart.width, chart.height);
+            ctx.save(); ctx.globalCompositeOperation = 'destination-over';
+            ctx.fillStyle = 'white'; ctx.fillRect(0, 0, chart.width, chart.height);
             ctx.restore();
         }
     };
 
-    // Get canvas contexts
     const contexts = {
         yieldVsMaturityChart: document.getElementById('yieldVsMaturityChart')?.getContext('2d'),
         parByMaturityYearChart: document.getElementById('parByMaturityYearChart')?.getContext('2d'),
@@ -1020,250 +953,113 @@ function renderCharts(holdings) {
         priceVsYieldChart: document.getElementById('priceVsYieldChart')?.getContext('2d'),
     };
 
-    // Check if all contexts were found
     if (Object.values(contexts).some(ctx => !ctx)) {
-        console.error("One or more chart canvas elements not found. Cannot render charts.");
-        return;
+        console.error("One or more chart canvas elements not found."); return;
     }
 
-    // --- Chart 1: Yield vs. Estimated Maturity Year (Scatter) ---
-    const yieldMaturityPoints = holdings
-        .filter(h => h.estimated_maturity_date !== null && typeof h.yield_val === 'number')
-        .map(h => ({ x: h.estimated_maturity_date, y: h.yield_val }));
-
-    if (yieldMaturityPoints.length > 0 && contexts.yieldVsMaturityChart) {
-        const options1 = structuredClone(baseChartOptionsStatic); // Deep clone base options
+    // Chart 1: Yield vs. Estimated Maturity Year (Scatter)
+    const yieldMaturityPoints = holdings.filter(h => h.estimated_maturity_date !== null && typeof h.yield_val === 'number').map(h => ({ x: h.estimated_maturity_date, y: h.yield_val }));
+    if (yieldMaturityPoints.length > 0 && contexts.yieldVsMaturityChart) { /* ... chart 1 config ... */
+        const options1 = structuredClone(baseChartOptionsStatic);
         options1.plugins.title.text = 'Yield vs. Estimated Maturity Year';
-        options1.scales.x.type = 'linear'; // Use linear scale for year
-        options1.scales.x.position = 'bottom';
-        options1.scales.x.title.text = 'Estimated Maturity Year';
-        options1.scales.x.ticks = {
-            ...options1.scales.x.ticks,
-            stepSize: 1, // Show integer years
-            callback: value => Math.round(value) // Display rounded year values
-        };
-        options1.scales.y.beginAtZero = false; // Yield can be negative
-        options1.scales.y.title.text = 'Yield (%)';
-        options1.plugins.tooltip.callbacks = { // Custom tooltip format
-            label: ctx => `Year: ${ctx.parsed.x}, Yield: ${ctx.parsed.y.toFixed(3)}`
-        };
-        options1.plugins.pdfBackground = pdfBackgroundPlugin; // Add background for PDF
+        options1.scales.x.type = 'linear'; options1.scales.x.position = 'bottom'; options1.scales.x.title.text = 'Estimated Maturity Year';
+        options1.scales.x.ticks = { ...options1.scales.x.ticks, stepSize: 1, callback: value => Math.round(value) };
+        options1.scales.y.beginAtZero = false; options1.scales.y.title.text = 'Yield (%)';
+        options1.plugins.tooltip.callbacks = { label: ctx => `Year: ${ctx.parsed.x}, Yield: ${ctx.parsed.y.toFixed(3)}` };
+        options1.plugins.pdfBackground = pdfBackgroundPlugin;
+        const dataset1 = { label: 'Yield vs Est Maturity Year', data: yieldMaturityPoints, backgroundColor: isDark ? 'rgba(66, 135, 245, 0.7)' : 'rgba(0, 123, 255, 0.5)', borderColor: isDark ? 'rgba(86, 155, 255, 1)' : 'rgba(0, 123, 255, 1)', pointRadius: 5, pointHoverRadius: 7, showLine: false };
+        if (typeof Chart !== 'undefined' && window.pluginTrendlineLinear) { dataset1.trendlineLinear = { style: isDark ? "rgba(255, 80, 80, 0.9)" : "rgba(255, 50, 50, 0.8)", lineStyle: "solid", width: 2, projection: false }; }
+        chartInstances.yieldVsMaturityChart = new Chart(contexts.yieldVsMaturityChart, { type: 'scatter', data: { datasets: [dataset1] }, options: options1 });
+     }
 
-        const dataset1 = {
-            label: 'Yield vs Est Maturity Year',
-            data: yieldMaturityPoints,
-            backgroundColor: isDark ? 'rgba(66, 135, 245, 0.7)' : 'rgba(0, 123, 255, 0.5)',
-            borderColor: isDark ? 'rgba(86, 155, 255, 1)' : 'rgba(0, 123, 255, 1)',
-            pointRadius: 5,
-            pointHoverRadius: 7,
-            showLine: false // Scatter plot, no connecting line
-        };
-
-        // Add trendline if plugin is available
-        if (typeof Chart !== 'undefined' && window.pluginTrendlineLinear) {
-            dataset1.trendlineLinear = {
-                style: isDark ? "rgba(255, 80, 80, 0.9)" : "rgba(255, 50, 50, 0.8)", // Trendline color
-                lineStyle: "solid",
-                width: 2,
-                projection: false // Don't project beyond data range
-            };
-        }
-
-        chartInstances.yieldVsMaturityChart = new Chart(contexts.yieldVsMaturityChart, {
-            type: 'scatter',
-            data: { datasets: [dataset1] },
-            options: options1
-        });
-    }
-
-    // --- Chart 2: Total Par by Estimated Maturity Year (Bar) ---
-    const maturityBuckets = {}; // Object to store par sum per year
-    holdings.forEach(h => {
-        const year = h.estimated_maturity_date || (h.maturity_date_obj ? h.maturity_date_obj.getFullYear() : 'Unknown');
-        if (year !== 'Unknown' && !isNaN(year)) { // Only include valid years
-            // Use calculated par value
-            maturityBuckets[year] = (maturityBuckets[year] || 0) + (h.par_calculated ?? 0);
-        }
-    });
-    const sortedYears = Object.keys(maturityBuckets).map(Number).sort((a, b) => a - b); // Get sorted years
-
-    if (sortedYears.length > 0 && contexts.parByMaturityYearChart) {
+    // Chart 2: Total Par by Estimated Maturity Year (Bar)
+    const maturityBuckets = {}; holdings.forEach(h => { const year = h.estimated_maturity_date || (h.maturity_date_obj ? h.maturity_date_obj.getFullYear() : 'Unknown'); if (year !== 'Unknown' && !isNaN(year)) { maturityBuckets[year] = (maturityBuckets[year] || 0) + (h.par_calculated ?? 0); } }); const sortedYears = Object.keys(maturityBuckets).map(Number).sort((a, b) => a - b);
+    if (sortedYears.length > 0 && contexts.parByMaturityYearChart) { /* ... chart 2 config ... */
         const options2 = structuredClone(baseChartOptionsStatic);
-        options2.plugins.title.text = 'Total Par by Estimated Maturity Year';
-        options2.scales.x.title.text = 'Year';
-        // options2.scales.x.type = 'category'; // Implicit for bar chart labels
-        options2.scales.y.beginAtZero = true; // Par value starts at 0
-        options2.scales.y.title.text = 'Total Par Value';
-        options2.scales.y.ticks = {
-            ...options2.scales.y.ticks,
-            callback: value => value.toLocaleString() // Format Y-axis labels
-        };
-        options2.plugins.tooltip.callbacks = { // Custom tooltip
-            label: ctx => `Year: ${ctx.label}, Par: ${ctx.parsed.y.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-        };
+        options2.plugins.title.text = 'Total Par by Estimated Maturity Year'; options2.scales.x.title.text = 'Year'; options2.scales.y.beginAtZero = true; options2.scales.y.title.text = 'Total Par Value';
+        options2.scales.y.ticks = { ...options2.scales.y.ticks, callback: value => value.toLocaleString() };
+        options2.plugins.tooltip.callbacks = { label: ctx => `Year: ${ctx.label}, Par: ${ctx.parsed.y.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` };
         options2.plugins.pdfBackground = pdfBackgroundPlugin;
+        chartInstances.parByMaturityYearChart = new Chart(contexts.parByMaturityYearChart, { type: 'bar', data: { labels: sortedYears, datasets: [{ label: 'Total Par by Est. Maturity Year', data: sortedYears.map(year => maturityBuckets[year]), backgroundColor: isDark ? 'rgba(40, 167, 69, 0.85)' : 'rgba(40, 167, 69, 0.7)', borderColor: isDark ? 'rgba(60, 187, 89, 1)' : 'rgba(40, 167, 69, 1)', borderWidth: 1 }] }, options: options2 });
+     }
 
-        chartInstances.parByMaturityYearChart = new Chart(contexts.parByMaturityYearChart, {
-            type: 'bar',
-            data: {
-                labels: sortedYears, // Years on X-axis
-                datasets: [{
-                    label: 'Total Par by Est. Maturity Year',
-                    data: sortedYears.map(year => maturityBuckets[year]), // Par values for each year
-                    backgroundColor: isDark ? 'rgba(40, 167, 69, 0.85)' : 'rgba(40, 167, 69, 0.7)',
-                    borderColor: isDark ? 'rgba(60, 187, 89, 1)' : 'rgba(40, 167, 69, 1)',
-                    borderWidth: 1
-                }]
-            },
-            options: options2
-        });
-    }
-
-    // --- Chart 3: Portfolio Par Distribution by Coupon Rate (Pie) ---
-    const couponBuckets = {}; // Object to store par sum per coupon rate
-    holdings.forEach(h => {
-        const couponRate = (h.coupon ?? 0).toFixed(3); // Group by coupon rate (formatted)
-        // Use calculated par value
-        couponBuckets[couponRate] = (couponBuckets[couponRate] || 0) + (h.par_calculated ?? 0);
-    });
-    const sortedCoupons = Object.keys(couponBuckets).sort((a, b) => parseFloat(a) - parseFloat(b)); // Sort coupon rates numerically
-
-    if (sortedCoupons.length > 0 && contexts.couponPieChart) {
-        const pieColors = generateDistinctColors(sortedCoupons.length); // Generate colors for slices
-        const options3 = structuredClone(baseChartOptionsStatic);
-        delete options3.scales; // Pie charts don't have scales
-        options3.plugins.title.text = 'Portfolio Par Distribution by Coupon Rate';
-        options3.plugins.title.align = 'center'; // Center title for pie chart
-        options3.plugins.legend.position = 'bottom'; // Position legend below chart
-        options3.plugins.tooltip.callbacks = { // Custom tooltip showing value and percentage
-            label: ctx => {
-                const label = ctx.label || '';
-                const value = ctx.parsed || 0;
-                const total = ctx.dataset.data.reduce((acc, val) => acc + val, 0);
-                const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
-                return `${label}: ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${percentage}%)`;
-            }
-        };
+    // Chart 3: Portfolio Par Distribution by Coupon Rate (Pie)
+    const couponBuckets = {}; holdings.forEach(h => { const couponRate = (h.coupon ?? 0).toFixed(3); couponBuckets[couponRate] = (couponBuckets[couponRate] || 0) + (h.par_calculated ?? 0); }); const sortedCoupons = Object.keys(couponBuckets).sort((a, b) => parseFloat(a) - parseFloat(b));
+    if (sortedCoupons.length > 0 && contexts.couponPieChart) { /* ... chart 3 config ... */
+        const pieColors = generateDistinctColors(sortedCoupons.length); const options3 = structuredClone(baseChartOptionsStatic); delete options3.scales; options3.plugins.title.text = 'Portfolio Par Distribution by Coupon Rate'; options3.plugins.title.align = 'center'; options3.plugins.legend.position = 'bottom';
+        options3.plugins.tooltip.callbacks = { label: ctx => { const label = ctx.label || ''; const value = ctx.parsed || 0; const total = ctx.dataset.data.reduce((acc, val) => acc + val, 0); const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0; return `${label}: ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${percentage}%)`; } };
         options3.plugins.pdfBackground = pdfBackgroundPlugin;
+        chartInstances.couponPieChart = new Chart(contexts.couponPieChart, { type: 'pie', data: { labels: sortedCoupons.map(c => `${c}% Coupon`), datasets: [{ label: 'Par by Coupon Rate', data: sortedCoupons.map(c => couponBuckets[c]), backgroundColor: pieColors, hoverOffset: 4 }] }, options: options3 });
+     }
 
-        chartInstances.couponPieChart = new Chart(contexts.couponPieChart, {
-            type: 'pie',
-            data: {
-                labels: sortedCoupons.map(c => `${c}% Coupon`), // Labels for slices
-                datasets: [{
-                    label: 'Par by Coupon Rate',
-                    data: sortedCoupons.map(c => couponBuckets[c]), // Data values for slices
-                    backgroundColor: pieColors,
-                    hoverOffset: 4 // Slightly enlarge slice on hover
-                }]
-            },
-            options: options3
-        });
-    }
-
-    // --- Chart 4: Settlement Price vs. Yield (Scatter) ---
-    const priceYieldPoints = holdings
-        .filter(h => typeof h.settlement_price === 'number' && h.settlement_price > 0 && typeof h.yield_val === 'number')
-        .map(h => ({ x: h.settlement_price, y: h.yield_val }));
-
-    if (priceYieldPoints.length > 0 && contexts.priceVsYieldChart) {
+    // Chart 4: Settlement Price vs. Yield (Scatter)
+    const priceYieldPoints = holdings.filter(h => typeof h.settlement_price === 'number' && h.settlement_price > 0 && typeof h.yield_val === 'number').map(h => ({ x: h.settlement_price, y: h.yield_val }));
+    if (priceYieldPoints.length > 0 && contexts.priceVsYieldChart) { /* ... chart 4 config ... */
         const options4 = structuredClone(baseChartOptionsStatic);
-        options4.plugins.title.text = 'Settlement Price vs. Yield';
-        options4.scales.x.beginAtZero = false; // Price usually not zero
-        options4.scales.x.title.text = 'Settlement Price';
-        options4.scales.y.beginAtZero = false; // Yield can be negative
-        options4.scales.y.title.text = 'Yield (%)';
-        options4.plugins.tooltip.callbacks = { // Custom tooltip
-            label: ctx => `Price: ${ctx.parsed.x.toFixed(2)}, Yield: ${ctx.parsed.y.toFixed(3)}`
-        };
+        options4.plugins.title.text = 'Settlement Price vs. Yield'; options4.scales.x.beginAtZero = false; options4.scales.x.title.text = 'Settlement Price'; options4.scales.y.beginAtZero = false; options4.scales.y.title.text = 'Yield (%)';
+        options4.plugins.tooltip.callbacks = { label: ctx => `Price: ${ctx.parsed.x.toFixed(2)}, Yield: ${ctx.parsed.y.toFixed(3)}` };
         options4.plugins.pdfBackground = pdfBackgroundPlugin;
-
-        chartInstances.priceVsYieldChart = new Chart(contexts.priceVsYieldChart, {
-            type: 'scatter',
-            data: {
-                datasets: [{
-                    label: 'Price vs Yield',
-                    data: priceYieldPoints,
-                    backgroundColor: isDark ? 'rgba(255, 200, 50, 0.7)' : 'rgba(255, 193, 7, 0.6)',
-                    borderColor: isDark ? 'rgba(255, 210, 70, 1)' : 'rgba(255, 193, 7, 1)',
-                    pointRadius: 5,
-                    pointHoverRadius: 7,
-                    showLine: false // No line for scatter
-                }]
-            },
-            options: options4
-        });
-    }
+        chartInstances.priceVsYieldChart = new Chart(contexts.priceVsYieldChart, { type: 'scatter', data: { datasets: [{ label: 'Price vs Yield', data: priceYieldPoints, backgroundColor: isDark ? 'rgba(255, 200, 50, 0.7)' : 'rgba(255, 193, 7, 0.6)', borderColor: isDark ? 'rgba(255, 210, 70, 1)' : 'rgba(255, 193, 7, 1)', pointRadius: 5, pointHoverRadius: 7, showLine: false }] }, options: options4 });
+     }
 }
 
 
 // --- UI Update Triggers ---
 
 /**
- * Applies the current filters and sorting, then renders the table and totals.
- * Used when only the table needs updating (e.g., after sorting or changing filter operators).
+ * Applies filters and sorting to holdings, then renders table and totals.
  */
 function triggerTableUpdate() {
-    applyFilterAndSort(); // Apply filters and sort the data
-    renderTotals(filteredHoldings); // Update totals based on filtered data
+    applyFilterAndSort();
+    renderTotals(filteredHoldings);
 }
 
 /**
- * Applies filters and sorting, then renders the table, totals, and charts.
- * Used when data changes significantly (e.g., loading new data, changing filter values).
+ * Applies filters and sorting to holdings, then renders table, totals, and charts.
  */
 function triggerFullUpdate() {
-    applyFilterAndSort(); // Filter and sort
-    renderTotals(filteredHoldings); // Update totals
-    renderCharts(filteredHoldings); // Re-render all charts
+    applyFilterAndSort();
+    renderTotals(filteredHoldings);
+    renderCharts(filteredHoldings); // Only render charts based on holdings
 }
 
 /**
- * Applies filters and sorting to the `allHoldings` array, storing the result in `filteredHoldings`.
- * Then renders the filtered table and updates sort indicators.
+ * Applies filters and sorting to `allHoldings`, storing result in `filteredHoldings`.
+ * Renders the filtered holdings table and updates sort indicators.
  */
 function applyFilterAndSort() {
-    // Filter holdings based on active filters that have a value
     const filtersToApply = activeFilters.filter(f => f.value !== null && f.value !== '');
     if (filtersToApply.length > 0) {
-        // IMPORTANT: When saving a filtered view, we need the IDs of the holdings *before* filtering
-        // For display purposes, we filter `allHoldings`
         filteredHoldings = allHoldings.filter(holding => {
-            // Holding must match ALL active filters
             return filtersToApply.every(filter => checkFilter(holding, filter));
         });
     } else {
-        // If no filters have values, show all holdings
-        filteredHoldings = [...allHoldings]; // Create a shallow copy
+        filteredHoldings = [...allHoldings];
     }
-
-    // Sort the filtered data for display
-    sortData(filteredHoldings, currentSortKey, currentSortDir);
-
-    // Render the filtered and sorted data into the table
-    renderTable(filteredHoldings);
-
-    // Update the sort indicator arrows in the table headers
-    updateSortIndicators();
+    // Use generic sort function with holding-specific value getter
+    sortDataGeneric(filteredHoldings, currentSortKey, currentSortDir, getHoldingSortValue);
+    renderTable(filteredHoldings); // Render holdings table
+    updateSortIndicators(); // Update holdings table indicators
 }
 
 /**
- * Clears the table body, resets totals, and destroys all chart instances.
- * Used before loading new data.
+ * Clears the holdings table, totals, charts, and selections.
  */
 function clearTableAndCharts() {
-    const colSpan = (tableHeaders.length || 10) + 1; // +1 for checkbox column
-    tableBody.innerHTML = `<tr><td colspan="${colSpan}">Loading...</td></tr>`; // Show loading message
-    renderTotals([]); // Clear totals
-    Object.keys(chartInstances).forEach(destroyChart); // Destroy existing charts
-    chartInstances = {}; // Reset chart instances object
-    clearHoldingSelection(); // Clear selections when table is cleared
+    const colSpan = (tableHeaders.length || 10) + 1;
+    if (tableBody) {
+        tableBody.innerHTML = `<tr><td colspan="${colSpan}">Loading...</td></tr>`;
+    }
+    renderTotals([]);
+    Object.keys(chartInstances).forEach(destroyChart);
+    chartInstances = {};
+    clearHoldingSelection();
 }
 
 // --- Theme Toggling ---
 
 /**
- * Applies the specified theme (light or dark) to the body and re-renders charts.
+ * Applies the specified theme and re-renders charts.
  * @param {string} theme - 'light' or 'dark'.
  */
 function applyTheme(theme) {
@@ -1274,749 +1070,188 @@ function applyTheme(theme) {
         document.body.classList.remove('dark-mode');
         darkModeToggle.textContent = 'Toggle Dark Mode';
     }
-
-    // Re-render charts with updated theme colors, only if charts exist
-    // Check localStorage access first as a proxy for ability to save theme preference
     try {
-        localStorage.setItem('themeCheck', '1'); // Test write
-        localStorage.removeItem('themeCheck'); // Clean up test write
+        localStorage.setItem('themeCheck', '1'); localStorage.removeItem('themeCheck');
         if (Object.keys(chartInstances).length > 0) {
-             renderCharts(filteredHoldings); // Re-render charts with current data
+             renderCharts(filteredHoldings); // Re-render holdings charts
         }
-    } catch (e) {
-        console.warn("localStorage not accessible, charts will not update theme colors dynamically.");
-    }
+    } catch (e) { console.warn("localStorage not accessible for theme update."); }
 }
 
 /**
- * Toggles the theme between light and dark mode and saves the preference.
+ * Toggles the theme and saves preference.
  */
 function toggleTheme() {
     const currentTheme = document.body.classList.contains('dark-mode') ? 'light' : 'dark';
-    try {
-        // Save the new theme preference to localStorage
-        localStorage.setItem('portfolioTheme', currentTheme);
-    } catch (e) {
-        console.warn("Could not save theme preference to localStorage:", e);
-    }
-    // Apply the new theme
+    try { localStorage.setItem('portfolioTheme', currentTheme); }
+    catch (e) { console.warn("Could not save theme preference to localStorage:", e); }
     applyTheme(currentTheme);
 }
 
-// --- PDF Export ---
+// --- PDF Export --- (No changes needed for muni offerings)
 
 /**
- * Exports the current view (charts and table) to a PDF document.
- * Excludes the checkbox column from the PDF table.
+ * Exports the current view (charts and holdings table) to PDF.
  */
 async function exportToPdf() {
-    // Initialize jsPDF
-    const doc = new jsPDF({
-        orientation: 'p', // Portrait
-        unit: 'pt', // Points as unit
-        format: 'a4' // A4 paper size
-    });
-
-    // Determine colors based on current theme for PDF styling
+    const doc = new jsPDF({ orientation: 'p', unit: 'pt', format: 'a4' });
     const isDark = document.body.classList.contains('dark-mode');
-    const pdfHeaderBg = isDark ? '#3a3a3a' : '#e9ecef';
-    const pdfHeaderText = isDark ? '#e0e0e0' : '#495057';
-    const pdfTextColor = isDark ? '#f1f1f1' : '#333333';
-    const pdfBorderColor = isDark ? '#444444' : '#dee2e6';
-    const pdfRowBg = isDark ? '#2c2c2c' : '#ffffff';
-    const pdfAlternateRowBg = isDark ? '#303030' : '#f8f9fa';
+    const pdfHeaderBg = isDark ? '#3a3a3a' : '#e9ecef'; const pdfHeaderText = isDark ? '#e0e0e0' : '#495057'; const pdfTextColor = isDark ? '#f1f1f1' : '#333333'; const pdfBorderColor = isDark ? '#444444' : '#dee2e6'; const pdfRowBg = isDark ? '#2c2c2c' : '#ffffff'; const pdfAlternateRowBg = isDark ? '#303030' : '#f8f9fa';
+    const pageHeight = doc.internal.pageSize.getHeight(); const pageWidth = doc.internal.pageSize.getWidth(); const margin = 40; const usableWidth = pageWidth - (2 * margin); const usableHeight = pageHeight - (2 * margin);
 
-    // PDF page dimensions and margins
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const margin = 40;
-    const usableWidth = pageWidth - (2 * margin);
-    const usableHeight = pageHeight - (2 * margin); // Usable height considering margins
+    // Page 1: Charts
+    const chartGap = 25; const chartWidth = ((usableWidth - chartGap) / 2) * 0.95; const chartHeight = ((usableHeight - chartGap - 30) / 2) * 0.95; const chartStartX1 = margin; const chartStartX2 = margin + chartWidth + chartGap; const chartStartY1 = margin + 25; const chartStartY2 = chartStartY1 + chartHeight + chartGap;
+    doc.setFontSize(18); doc.setTextColor(isDark ? 241 : 51); const viewTitle = portfolioNameEl.textContent || 'Portfolio Analysis'; doc.text(viewTitle + " - Charts", margin, margin + 5);
+    const chartIds = ['yieldVsMaturityChart', 'parByMaturityYearChart', 'couponPieChart', 'priceVsYieldChart']; const chartImages = [];
+    for (const chartId of chartIds) { const chartInstance = chartInstances[chartId]; try { if (chartInstance) { chartImages.push(chartInstance.toBase64Image('image/png', 1.0)); } else { chartImages.push(null); } } catch (e) { console.error(`Error getting image for chart ${chartId}:`, e); chartImages.push(null); } }
+    if (chartImages[0]) doc.addImage(chartImages[0], 'PNG', chartStartX1, chartStartY1, chartWidth, chartHeight); if (chartImages[1]) doc.addImage(chartImages[1], 'PNG', chartStartX2, chartStartY1, chartWidth, chartHeight); if (chartImages[2]) doc.addImage(chartImages[2], 'PNG', chartStartX1, chartStartY2, chartWidth, chartHeight); if (chartImages[3]) doc.addImage(chartImages[3], 'PNG', chartStartX2, chartStartY2, chartWidth, chartHeight);
 
-    // --- Page 1: Charts ---
-    const chartGap = 25; // Gap between charts
-    // Calculate dimensions for 2x2 chart layout
-    const chartWidth = ((usableWidth - chartGap) / 2) * 0.95; // Reduce slightly for padding
-    const chartHeight = ((usableHeight - chartGap - 30) / 2) * 0.95; // Reduce height for title and padding
-    const chartStartX1 = margin;
-    const chartStartX2 = margin + chartWidth + chartGap;
-    const chartStartY1 = margin + 25; // Start below title
-    const chartStartY2 = chartStartY1 + chartHeight + chartGap;
-
-    // Add title for the charts page
-    doc.setFontSize(18);
-    doc.setTextColor(isDark ? 241 : 51); // Use appropriate text color
-    const viewTitle = portfolioNameEl.textContent || 'Portfolio Analysis'; // Use current view title
-    doc.text(viewTitle + " - Charts", margin, margin + 5);
-
-    // Get base64 image data for each chart
-    const chartIds = ['yieldVsMaturityChart', 'parByMaturityYearChart', 'couponPieChart', 'priceVsYieldChart'];
-    const chartImages = [];
-    for (const chartId of chartIds) {
-        const chartInstance = chartInstances[chartId];
-        try {
-            if (chartInstance) {
-                // Ensure background is white using the pdfBackgroundPlugin
-                chartImages.push(chartInstance.toBase64Image('image/png', 1.0));
-            } else {
-                chartImages.push(null); // Placeholder if chart doesn't exist
-            }
-        } catch (e) {
-            console.error(`Error getting image for chart ${chartId}:`, e);
-            chartImages.push(null);
-        }
-    }
-
-    // Add chart images to the PDF in a 2x2 grid
-    if (chartImages[0]) doc.addImage(chartImages[0], 'PNG', chartStartX1, chartStartY1, chartWidth, chartHeight);
-    if (chartImages[1]) doc.addImage(chartImages[1], 'PNG', chartStartX2, chartStartY1, chartWidth, chartHeight);
-    if (chartImages[2]) doc.addImage(chartImages[2], 'PNG', chartStartX1, chartStartY2, chartWidth, chartHeight);
-    if (chartImages[3]) doc.addImage(chartImages[3], 'PNG', chartStartX2, chartStartY2, chartWidth, chartHeight);
-
-    // --- Page 2: Holdings Table ---
-    doc.addPage(); // Add a new page for the table
-    doc.setFontSize(18);
-    doc.setTextColor(isDark ? 241 : 51);
-    doc.text(viewTitle + " - Holdings Table", margin, margin + 5); // Title for table page
-
-    // Use jsPDF-AutoTable to generate the table from HTML
+    // Page 2: Holdings Table
+    doc.addPage(); doc.setFontSize(18); doc.setTextColor(isDark ? 241 : 51); doc.text(viewTitle + " - Holdings Table", margin, margin + 5);
     doc.autoTable({
-        html: '#holdings-table', // Target the table element
-        startY: margin + 25, // Start table below the title
-        theme: 'grid', // Use grid theme for borders
-        // Exclude the first column (checkbox) from the PDF
-        columns: [
-            // Skip column 0 (checkbox)
-            { header: 'CUSIP', dataKey: 1 },
-            { header: 'Description', dataKey: 2 },
-            { header: 'Par', dataKey: 3 },
-            { header: 'Price', dataKey: 4 },
-            { header: 'Coupon', dataKey: 5 },
-            { header: 'Yield', dataKey: 6 },
-            { header: 'WAL', dataKey: 7 },
-            { header: 'Est. Maturity Year', dataKey: 8 },
-            { header: 'Maturity Date', dataKey: 9 },
-            { header: 'Call Date', dataKey: 10 },
-        ],
-        styles: { // General cell styles
-            fontSize: 7,
-            cellPadding: 3,
-            overflow: 'linebreak', // Allow text wrapping
-            textColor: pdfTextColor,
-            lineColor: pdfBorderColor,
-            lineWidth: 0.5,
-        },
-        headStyles: { // Header row styles
-            fillColor: pdfHeaderBg,
-            textColor: pdfHeaderText,
-            fontStyle: 'bold',
-            halign: 'center',
-            lineColor: pdfBorderColor,
-            lineWidth: 0.5,
-        },
-        bodyStyles: { // Body row styles
-            fillColor: pdfRowBg,
-            textColor: pdfTextColor,
-            lineColor: pdfBorderColor,
-            lineWidth: 0.5,
-        },
-        alternateRowStyles: { // Zebra striping
-            fillColor: pdfAlternateRowBg,
-        },
-        // Adjust column styles indices because we removed the first column
-        columnStyles: {
-            0: { cellWidth: 55, halign: 'left' },    // CUSIP (was 1)
-            1: { cellWidth: 'auto', halign: 'left'}, // Description (was 2)
-            2: { cellWidth: 60, halign: 'right' },   // Par (was 3)
-            3: { cellWidth: 40, halign: 'right' },   // Price (was 4)
-            4: { cellWidth: 40, halign: 'right' },   // Coupon (was 5)
-            5: { cellWidth: 40, halign: 'right' },   // Yield (was 6)
-            6: { cellWidth: 40, halign: 'right' },   // WAL (was 7)
-            7: { cellWidth: 55, halign: 'center' },  // Est. Maturity Year (was 8)
-            8: { cellWidth: 55, halign: 'center' },  // Maturity Date (was 9)
-            9: { cellWidth: 55, halign: 'center' }   // Call Date (was 10)
-        },
-        // Exclude the footer row from the PDF export as it includes the checkbox column colspan
-        // We could potentially add a custom footer row using `didDrawPage` if needed
-        // showFoot: 'never', // Option to hide footer
-        margin: { left: margin, right: margin }, // Page margins for the table
-        didDrawPage: function (data) { // Add page numbers in footer
-            let footerStr = "Page " + doc.internal.getCurrentPageInfo().pageNumber;
-            doc.setFontSize(8);
-            doc.setTextColor(isDark ? 150 : 100); // Dimmed text color for footer
-            doc.text(footerStr, data.settings.margin.left, pageHeight - 15, { baseline: 'bottom' });
-        }
+        html: '#holdings-table', startY: margin + 25, theme: 'grid',
+        columns: [ { header: 'CUSIP', dataKey: 1 }, { header: 'Description', dataKey: 2 }, { header: 'Par', dataKey: 3 }, { header: 'Price', dataKey: 4 }, { header: 'Coupon', dataKey: 5 }, { header: 'Yield', dataKey: 6 }, { header: 'WAL', dataKey: 7 }, { header: 'Est. Maturity Year', dataKey: 8 }, { header: 'Maturity Date', dataKey: 9 }, { header: 'Call Date', dataKey: 10 }, ],
+        styles: { fontSize: 7, cellPadding: 3, overflow: 'linebreak', textColor: pdfTextColor, lineColor: pdfBorderColor, lineWidth: 0.5, },
+        headStyles: { fillColor: pdfHeaderBg, textColor: pdfHeaderText, fontStyle: 'bold', halign: 'center', lineColor: pdfBorderColor, lineWidth: 0.5, },
+        bodyStyles: { fillColor: pdfRowBg, textColor: pdfTextColor, lineColor: pdfBorderColor, lineWidth: 0.5, },
+        alternateRowStyles: { fillColor: pdfAlternateRowBg },
+        columnStyles: { 0: { cellWidth: 55, halign: 'left' }, 1: { cellWidth: 'auto', halign: 'left'}, 2: { cellWidth: 60, halign: 'right' }, 3: { cellWidth: 40, halign: 'right' }, 4: { cellWidth: 40, halign: 'right' }, 5: { cellWidth: 40, halign: 'right' }, 6: { cellWidth: 40, halign: 'right' }, 7: { cellWidth: 55, halign: 'center' }, 8: { cellWidth: 55, halign: 'center' }, 9: { cellWidth: 55, halign: 'center' } },
+        margin: { left: margin, right: margin },
+        didDrawPage: function (data) { let footerStr = "Page " + doc.internal.getCurrentPageInfo().pageNumber; doc.setFontSize(8); doc.setTextColor(isDark ? 150 : 100); doc.text(footerStr, data.settings.margin.left, pageHeight - 15, { baseline: 'bottom' }); }
     });
 
-    // Save the generated PDF
-    const selectedCustomerOption = customerSelect.options[customerSelect.selectedIndex];
-    const selectedPortfolioOption = portfolioFilterSelect.options[portfolioFilterSelect.selectedIndex];
-    let baseFilename = 'export';
-    if (selectedCustomerOption) {
-        baseFilename = selectedCustomerOption.text.split('(')[0].trim(); // Get customer name
-        if (selectedPortfolioOption && selectedPortfolioOption.value !== "") {
-             baseFilename += '_' + selectedPortfolioOption.text.split('(')[0].trim(); // Add portfolio name if selected
-        }
-    }
-    // Sanitize filename (basic example)
-    const safeFilename = baseFilename.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    const selectedCustomerOption = customerSelect.options[customerSelect.selectedIndex]; const selectedPortfolioOption = portfolioFilterSelect.options[portfolioFilterSelect.selectedIndex]; let baseFilename = 'export'; if (selectedCustomerOption) { baseFilename = selectedCustomerOption.text.split('(')[0].trim(); if (selectedPortfolioOption && selectedPortfolioOption.value !== "") { baseFilename += '_' + selectedPortfolioOption.text.split('(')[0].trim(); } } const safeFilename = baseFilename.replace(/[^a-z0-9]/gi, '_').toLowerCase();
     doc.save(`portfolio_${safeFilename}.pdf`);
 }
 
 
-// --- Modal Functions (Create Portfolio) ---
+// --- Modal Functions (Create Portfolio) --- (No changes needed)
 
-/**
- * Shows the modal dialog for creating a new sub-portfolio.
- * Handles logic for showing/hiding the customer selection dropdown based on
- * whether the user is an admin or a regular user associated with multiple customers.
- * Populates the dropdown with appropriate values (customer ID or number) based on user type.
- */
+/** Shows the create portfolio modal. */
 function showCreatePortfolioModal() {
-    // Log current state for debugging
     console.log("Showing create portfolio modal. Admin:", IS_ADMIN_USER, "Customer Count:", customers.length);
-
-    // Reset form fields and error messages
-    createPortfolioForm.reset();
-    modalErrorMessage.textContent = '';
-    modalErrorMessage.style.display = 'none';
-
-    // Clear previous customer options and set a default placeholder
-    adminCustomerSelect.innerHTML = '<option value="">-- Select Customer --</option>';
-
-    // Determine if the customer selection dropdown should be shown and populate it
-    if (IS_ADMIN_USER) {
-        // Admin users ALWAYS see the customer selection dropdown.
-        console.log("Admin user: showing customer select, fetching all customers.");
-        adminCustomerSelectGroup.classList.remove('hidden'); // Ensure the dropdown group is visible
-        // Fetch the full list of customers for the admin to choose from.
-        // fetchCustomersForAdmin will populate the dropdown with customer NUMBER as value.
-        fetchCustomersForAdmin();
-    } else if (customers && customers.length > 1) {
-        // Non-admin user associated with MORE THAN ONE customer needs to select.
-        console.log("Non-admin, multiple customers: showing customer select.");
-        adminCustomerSelectGroup.classList.remove('hidden'); // Ensure the dropdown group is visible
-        // Populate the dropdown with the customers already fetched for this specific user (from loadCustomers)
-        customers.forEach(customer => {
-            const option = document.createElement('option');
-            // IMPORTANT: Backend now expects customer ID for non-admins selecting from multiple.
-            option.value = customer.id; // Use customer ID as the value
-            option.textContent = `${customer.name} (${customer.customer_number})`;
-            adminCustomerSelect.appendChild(option);
-        });
-    } else {
-        // Non-admin user with 0 or 1 associated customer - no selection needed.
-        // The backend will handle assignment automatically for the single customer case.
-        console.log("Non-admin, single/zero customers: hiding customer select.");
-        adminCustomerSelectGroup.classList.add('hidden'); // Hide the dropdown group
-    }
-
-    // Make the modal overlay visible
+    createPortfolioForm.reset(); modalErrorMessage.textContent = ''; modalErrorMessage.style.display = 'none'; adminCustomerSelect.innerHTML = '<option value="">-- Select Customer --</option>';
+    if (IS_ADMIN_USER) { adminCustomerSelectGroup.classList.remove('hidden'); fetchCustomersForAdmin(); }
+    else if (customers && customers.length > 1) { adminCustomerSelectGroup.classList.remove('hidden'); customers.forEach(customer => { const option = document.createElement('option'); option.value = customer.id; option.textContent = `${customer.name} (${customer.customer_number})`; adminCustomerSelect.appendChild(option); }); }
+    else { adminCustomerSelectGroup.classList.add('hidden'); }
     createPortfolioModal.classList.add('visible');
 }
-
-/**
- * Hides the create portfolio modal.
- */
-function hideCreatePortfolioModal() {
-    createPortfolioModal.classList.remove('visible');
-}
-
-/**
- * Fetches the full list of customers specifically for the admin's dropdown in the modal.
- * Populates the dropdown with customer NUMBER as the value.
- */
-async function fetchCustomersForAdmin() {
-    // Only admins should call this function.
-    if (!IS_ADMIN_USER) return;
-    console.log("Fetching customers for admin modal...");
-
-    // Avoid refetching if the dropdown seems populated (simple check)
-    if (adminCustomerSelect.options.length > 1 && adminCustomerSelect.options[0].value === "") {
-         console.log("Admin customer list already populated or loading.");
-         return;
-    }
-    // Set loading state in the dropdown
+/** Hides the create portfolio modal. */
+function hideCreatePortfolioModal() { createPortfolioModal.classList.remove('visible'); }
+/** Fetches customers for the admin modal dropdown. */
+async function fetchCustomersForAdmin() { /* ... implementation ... */
+    if (!IS_ADMIN_USER) return; console.log("Fetching customers for admin modal...");
+    if (adminCustomerSelect.options.length > 1 && adminCustomerSelect.options[0].value === "") { console.log("Admin customer list already populated/loading."); return; }
     adminCustomerSelect.innerHTML = '<option value="">Loading customers...</option>';
+    try { const response = await fetch(`${apiRoot}/customers/`); if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`); availableCustomers = await response.json(); console.log("Fetched customers for admin modal:", availableCustomers.length); adminCustomerSelect.innerHTML = '<option value="">-- Select Customer --</option>'; availableCustomers.forEach(customer => { const option = document.createElement('option'); option.value = customer.customer_number; option.textContent = `${customer.name} (${customer.customer_number})`; adminCustomerSelect.appendChild(option); }); }
+    catch (error) { console.error("Failed to fetch customers for admin:", error); adminCustomerSelect.innerHTML = '<option value="">Error loading customers</option>'; modalErrorMessage.textContent = 'Error loading customer list for modal.'; modalErrorMessage.style.display = 'block'; }
+ }
+/** Handles the create portfolio form submission. */
+async function handleCreatePortfolioSubmit(event) { /* ... implementation ... */
+    event.preventDefault(); console.log("Handling create portfolio submit..."); modalErrorMessage.textContent = ''; modalErrorMessage.style.display = 'none';
+    const portfolioName = newPortfolioNameInput.value.trim(); if (!portfolioName) { modalErrorMessage.textContent = 'Portfolio name is required.'; modalErrorMessage.style.display = 'block'; return; }
+    const payload = { name: portfolioName }; const isCustomerSelectionVisible = !adminCustomerSelectGroup.classList.contains('hidden');
+    if (isCustomerSelectionVisible) { const selectedValue = adminCustomerSelect.value; if (!selectedValue) { modalErrorMessage.textContent = 'Please select a customer.'; modalErrorMessage.style.display = 'block'; return; } if (IS_ADMIN_USER) { payload.customer_number_input = selectedValue; } else { payload.owner_customer_id = parseInt(selectedValue, 10); if (isNaN(payload.owner_customer_id)) { modalErrorMessage.textContent = 'Invalid customer selected.'; modalErrorMessage.style.display = 'block'; return; } } }
+    const initialHoldingIds = filteredHoldings.map(holding => holding.id).filter(id => id != null); if (initialHoldingIds.length > 0) { payload.initial_holding_ids = initialHoldingIds; }
+    console.log("Final create portfolio payload:", payload);
+    try { const response = await fetch(`${apiRoot}/portfolios/`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken, }, body: JSON.stringify(payload), }); console.log("Create portfolio response status:", response.status); if (!response.ok) { const errorData = await response.json().catch(() => ({ detail: response.statusText })); let errorMsg = `Error ${response.status}: ${errorData.detail || JSON.stringify(errorData)}`; if (typeof errorData === 'object' && errorData !== null) { errorMsg = Object.entries(errorData).map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors.join(', ') : errors}`).join('; '); } throw new Error(errorMsg); } const newPortfolio = await response.json(); console.log('Successfully created portfolio:', newPortfolio); hideCreatePortfolioModal(); alert(`Portfolio "${newPortfolio.name}" created successfully!`); if (selectedCustomerId) { await loadPortfolios(selectedCustomerId); portfolioFilterSelect.value = newPortfolio.id; await handlePortfolioSelection(); } else { loadCustomers(); } }
+    catch (error) { console.error('Failed to create portfolio:', error); modalErrorMessage.textContent = `Creation failed: ${error.message}`; modalErrorMessage.style.display = 'block'; }
+ }
 
-    try {
-        // Fetch the full list of customers from the API
-        const response = await fetch(`${apiRoot}/customers/`);
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        // Store the fetched customers in the 'availableCustomers' variable (can be useful)
-        availableCustomers = await response.json();
-        console.log("Fetched customers for admin modal:", availableCustomers.length);
-
-        // Reset dropdown and add the default "-- Select Customer --" option first
-        adminCustomerSelect.innerHTML = '<option value="">-- Select Customer --</option>';
-        // Populate the dropdown with fetched customers
-        availableCustomers.forEach(customer => {
-            const option = document.createElement('option');
-            // IMPORTANT: Admins use customer_number_input, so the value needs to be the customer number.
-            option.value = customer.customer_number;
-            option.textContent = `${customer.name} (${customer.customer_number})`;
-            adminCustomerSelect.appendChild(option);
-        });
-    } catch (error) {
-        console.error("Failed to fetch customers for admin:", error);
-        // Update dropdown to show error and display error message in the modal
-        adminCustomerSelect.innerHTML = '<option value="">Error loading customers</option>';
-        modalErrorMessage.textContent = 'Error loading customer list for modal.';
-        modalErrorMessage.style.display = 'block';
-    }
-}
-
-/**
- * Handles the submission of the create portfolio form.
- * Sends the correct payload (including name and potentially customer identifier)
- * to the backend API based on user type and context.
- * Includes the IDs of currently filtered holdings if the "Save Filtered View" approach is used.
- * @param {Event} event - The form submission event.
- */
-async function handleCreatePortfolioSubmit(event) {
-    event.preventDefault(); // Prevent default form submission which reloads the page
-    console.log("Handling create portfolio submit (Save Filtered View)...");
-
-    // Clear previous error messages
-    modalErrorMessage.textContent = '';
-    modalErrorMessage.style.display = 'none';
-
-    // Get the portfolio name from the input field
-    const portfolioName = newPortfolioNameInput.value.trim();
-    if (!portfolioName) {
-        modalErrorMessage.textContent = 'Portfolio name is required.';
-        modalErrorMessage.style.display = 'block';
-        return; // Stop if name is missing
-    }
-
-    // Prepare the base data payload for the API request
-    const payload = { name: portfolioName };
-
-    // Check if the customer selection dropdown is currently visible
-    const isCustomerSelectionVisible = !adminCustomerSelectGroup.classList.contains('hidden');
-
-    // If the dropdown is visible, a customer selection is required
-    if (isCustomerSelectionVisible) {
-        const selectedValue = adminCustomerSelect.value;
-        if (!selectedValue) {
-            // If dropdown is visible, but no value selected, show error
-            modalErrorMessage.textContent = 'Please select a customer.';
-            modalErrorMessage.style.display = 'block';
-            return; // Stop if selection is required but not made
-        }
-
-        // Determine which identifier field to add based on user type
-        if (IS_ADMIN_USER) {
-            // Admin sends 'customer_number_input' with the selected customer NUMBER
-            payload.customer_number_input = selectedValue;
-            console.log("Admin submitting with customer_number_input:", selectedValue);
-        } else {
-            // Non-admin (multi-customer user) sends 'owner_customer_id' with the selected customer ID
-            payload.owner_customer_id = parseInt(selectedValue, 10); // Ensure it's sent as an integer
-            // Check if parsing failed (though dropdown value should be valid ID)
-            if (isNaN(payload.owner_customer_id)) {
-                 console.error("Invalid customer ID selected:", selectedValue);
-                 modalErrorMessage.textContent = 'Invalid customer selected. Please try again.';
-                 modalErrorMessage.style.display = 'block';
-                 return;
-            }
-            console.log("Non-admin submitting with owner_customer_id:", payload.owner_customer_id);
-        }
-    } else {
-         console.log("Single customer user or dropdown hidden, no customer identifier needed in payload.");
-         // For non-admin single-customer users, the backend handles association automatically.
-         // No need to add customer_number_input or owner_customer_id to the payload.
-    }
-
-    // --- Add filtered holding IDs to the payload ---
-    // Get the IDs of the holdings currently displayed in the filtered view
-    const initialHoldingIds = filteredHoldings.map(holding => holding.id).filter(id => id != null); // Ensure IDs are not null/undefined
-    if (initialHoldingIds.length > 0) {
-        payload.initial_holding_ids = initialHoldingIds;
-        console.log(`Adding ${initialHoldingIds.length} filtered holding IDs to the payload.`);
-    } else {
-        console.log("No filtered holdings to add to the new portfolio.");
-        // No need to send empty array, backend should handle absence of the key
-    }
-    // -------------------------------------------------
-
-    console.log("Final create portfolio payload:", payload); // Log the final payload being sent
-
-    // --- API Call ---
-    try {
-        // Send the POST request to the portfolio API endpoint
-        const response = await fetch(`${apiRoot}/portfolios/`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken, // Include CSRF token for security
-            },
-            body: JSON.stringify(payload), // Send the data as JSON string
-        });
-        console.log("Create portfolio response status:", response.status); // Log response status
-
-        // Check if the request was successful (status code 2xx)
-        if (!response.ok) {
-            // Attempt to parse error details from the response body (if JSON)
-            const errorData = await response.json().catch(() => ({ detail: response.statusText })); // Fallback to status text
-            // Format a user-friendly error message from the response
-            let errorMsg = `Error ${response.status}: ${errorData.detail || JSON.stringify(errorData)}`;
-             if (typeof errorData === 'object' && errorData !== null) {
-                 // Handle DRF validation errors (often field-specific)
-                 errorMsg = Object.entries(errorData)
-                     .map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors.join(', ') : errors}`)
-                     .join('; ');
-             }
-            throw new Error(errorMsg); // Throw an error to be caught by the catch block
-        }
-
-        // If successful:
-        const newPortfolio = await response.json(); // Parse the newly created portfolio data
-        console.log('Successfully created portfolio:', newPortfolio);
-        hideCreatePortfolioModal(); // Close the modal
-        alert(`Portfolio "${newPortfolio.name}" created successfully!`); // Show success message to user
-
-        // --- UI Update after successful creation ---
-        // Re-fetch portfolios for the currently selected customer to include the new one
-        if (selectedCustomerId) {
-            await loadPortfolios(selectedCustomerId);
-            // Automatically select the newly created portfolio in the dropdown
-            portfolioFilterSelect.value = newPortfolio.id;
-            // Trigger view update for the new portfolio
-            await handlePortfolioSelection();
-        } else {
-            // If no customer was selected (shouldn't happen if creation succeeded), reload customers
-             loadCustomers();
-        }
-
-
-    } catch (error) {
-        // Handle errors during the API call or response processing
-        console.error('Failed to create portfolio:', error);
-        modalErrorMessage.textContent = `Creation failed: ${error.message}`; // Display specific error in the modal
-        modalErrorMessage.style.display = 'block';
-    }
-}
-
-/**
- * Handles the click event for the delete portfolio button.
- */
-async function handleDeletePortfolio() {
-    const portfolioIdToDelete = portfolioFilterSelect.value;
-    const selectedOption = portfolioFilterSelect.options[portfolioFilterSelect.selectedIndex];
-    const portfolioNameToDelete = selectedOption ? selectedOption.textContent : `Portfolio ID ${portfolioIdToDelete}`;
-
-    // Double-check that a specific portfolio is selected and it's not marked as default
-    if (!portfolioIdToDelete || selectedOption?.dataset?.isDefault === 'true') { // Ensure ID is not empty
-        alert("Please select a non-default portfolio to delete.");
-        return;
-    }
-
-    // Confirm deletion with the user
-    if (!confirm(`Are you sure you want to delete portfolio "${portfolioNameToDelete}"? This action cannot be undone and will delete all holdings within it.`)) {
-        return; // User cancelled
-    }
-
+/** Handles the delete portfolio button click. */
+async function handleDeletePortfolio() { /* ... implementation ... */
+    const portfolioIdToDelete = portfolioFilterSelect.value; const selectedOption = portfolioFilterSelect.options[portfolioFilterSelect.selectedIndex]; const portfolioNameToDelete = selectedOption ? selectedOption.textContent : `Portfolio ID ${portfolioIdToDelete}`;
+    if (!portfolioIdToDelete || selectedOption?.dataset?.isDefault === 'true') { alert("Please select a non-default portfolio to delete."); return; }
+    if (!confirm(`Are you sure you want to delete portfolio "${portfolioNameToDelete}"? This action cannot be undone.`)) { return; }
     console.log(`Attempting to delete portfolio ID: ${portfolioIdToDelete}`);
-
-    try {
-        const response = await fetch(`${apiRoot}/portfolios/${portfolioIdToDelete}/`, {
-            method: 'DELETE',
-            headers: {
-                'X-CSRFToken': csrfToken, // Include CSRF token
-                'Accept': 'application/json',
-            }
-        });
-
-        console.log(`Delete portfolio response status: ${response.status}`);
-
-        // Check if deletion was successful (status 204 No Content is typical for successful DELETE)
-        if (response.status === 204) {
-            alert(`Portfolio "${portfolioNameToDelete}" deleted successfully.`);
-
-            // Remove the portfolio from the dropdown
-            selectedOption.remove();
-
-            // Check if any portfolios remain
-            if (portfolioFilterSelect.options.length > 0) {
-                // Select the first remaining portfolio
-                portfolioFilterSelect.value = portfolioFilterSelect.options[0].value;
-                // Refresh the view to show the newly selected portfolio
-                await handlePortfolioSelection();
-            } else {
-                // No portfolios left, hide dropdown and show message
-                portfolioFilterContainer.classList.add('hidden');
-                deletePortfolioBtn.disabled = true;
-                const selectedCustomer = customers.find(c => c.id == selectedCustomerId);
-                portfolioNameEl.textContent = `${selectedCustomer.name || `Customer ${selectedCustomer.customer_number}`} - No Portfolios Found`;
-                clearTableAndCharts();
-                const colSpan = (tableHeaders.length || 10) + 1; // +1 for checkbox column
-                tableBody.innerHTML = `<tr><td colspan="${colSpan}">No portfolios found for this customer.</td></tr>`;
-            }
-
-        } else {
-            // Handle errors (e.g., 403 Forbidden, 404 Not Found, 500 Server Error)
-            let errorMsg = `Error ${response.status}: Failed to delete portfolio.`;
-            try {
-                 const errorData = await response.json();
-                 errorMsg += ` ${errorData.detail || JSON.stringify(errorData)}`;
-            } catch (e) {
-                 errorMsg += ` ${response.statusText}`;
-            }
-            throw new Error(errorMsg);
-        }
-
-    } catch (error) {
-        console.error("Failed to delete portfolio:", error);
-        alert(`Error deleting portfolio: ${error.message}`);
-    }
-}
+    try { const response = await fetch(`${apiRoot}/portfolios/${portfolioIdToDelete}/`, { method: 'DELETE', headers: { 'X-CSRFToken': csrfToken, 'Accept': 'application/json', } }); console.log(`Delete portfolio response status: ${response.status}`); if (response.status === 204) { alert(`Portfolio "${portfolioNameToDelete}" deleted successfully.`); selectedOption.remove(); if (portfolioFilterSelect.options.length > 0) { portfolioFilterSelect.value = portfolioFilterSelect.options[0].value; await handlePortfolioSelection(); } else { portfolioFilterContainer.classList.add('hidden'); deletePortfolioBtn.disabled = true; const selectedCustomer = customers.find(c => c.id == selectedCustomerId); portfolioNameEl.textContent = `${selectedCustomer.name || `Customer ${selectedCustomer.customer_number}`} - No Portfolios Found`; clearTableAndCharts(); const colSpan = (tableHeaders.length || 10) + 1; tableBody.innerHTML = `<tr><td colspan="${colSpan}">No portfolios found.</td></tr>`; } } else { let errorMsg = `Error ${response.status}: Failed to delete portfolio.`; try { const errorData = await response.json(); errorMsg += ` ${errorData.detail || JSON.stringify(errorData)}`; } catch (e) { errorMsg += ` ${response.statusText}`; } throw new Error(errorMsg); } }
+    catch (error) { console.error("Failed to delete portfolio:", error); alert(`Error deleting portfolio: ${error.message}`); }
+ }
 
 
-// --- NEW: Holding Selection and Email Action ---
+// --- Holding Selection and Email Action --- (No changes needed)
 
-/**
- * Handles changes to individual holding checkboxes and the "Select All" checkbox.
- * Updates the selectedHoldingIds Set and the state of the email button.
- * @param {Event} event - The change event object.
- */
+/** Handles checkbox changes for holdings. */
 function handleCheckboxChange(event) {
     const target = event.target;
-
-    if (target === selectAllCheckbox) {
-        // Handle "Select All" checkbox click
-        const isChecked = target.checked;
-        const visibleCheckboxes = tableBody.querySelectorAll('.holding-checkbox');
-        visibleCheckboxes.forEach(checkbox => {
-            checkbox.checked = isChecked;
-            const holdingId = parseInt(checkbox.dataset.holdingId, 10);
-            if (!isNaN(holdingId)) { // Ensure ID is a valid number
-                if (isChecked) {
-                    selectedHoldingIds.add(holdingId);
-                } else {
-                    selectedHoldingIds.delete(holdingId);
-                }
-            }
-        });
-    } else if (target.classList.contains('holding-checkbox')) {
-        // Handle individual holding checkbox click
-        const holdingId = parseInt(target.dataset.holdingId, 10);
-         if (!isNaN(holdingId)) { // Ensure ID is a valid number
-            if (target.checked) {
-                selectedHoldingIds.add(holdingId);
-            } else {
-                selectedHoldingIds.delete(holdingId);
-            }
-            // Update "Select All" checkbox state based on individual selections
-            updateSelectAllCheckboxState();
-         }
-    }
-
-    // Enable/disable the email button based on selection
-    emailInterestBtn.disabled = selectedHoldingIds.size === 0;
-    console.log("Selected Holdings:", selectedHoldingIds); // Debug log
+    if (target === selectAllCheckbox) { const isChecked = target.checked; const visibleCheckboxes = tableBody.querySelectorAll('.holding-checkbox'); visibleCheckboxes.forEach(checkbox => { checkbox.checked = isChecked; const holdingId = parseInt(checkbox.dataset.holdingId, 10); if (!isNaN(holdingId)) { if (isChecked) { selectedHoldingIds.add(holdingId); } else { selectedHoldingIds.delete(holdingId); } } }); }
+    else if (target.classList.contains('holding-checkbox')) { const holdingId = parseInt(target.dataset.holdingId, 10); if (!isNaN(holdingId)) { if (target.checked) { selectedHoldingIds.add(holdingId); } else { selectedHoldingIds.delete(holdingId); } updateSelectAllCheckboxState(); } }
+    emailInterestBtn.disabled = selectedHoldingIds.size === 0; console.log("Selected Holdings:", selectedHoldingIds);
 }
-
-/**
- * Updates the checked state and indeterminate state of the "Select All" checkbox
- * based on the selection state of individual holding checkboxes currently visible.
- */
+/** Updates the "Select All" checkbox state. */
 function updateSelectAllCheckboxState() {
-    if (!selectAllCheckbox) return; // Exit if element doesn't exist
-
-    const visibleCheckboxes = tableBody.querySelectorAll('.holding-checkbox');
-    const totalVisible = visibleCheckboxes.length;
-    const totalSelected = Array.from(visibleCheckboxes).filter(cb => cb.checked).length;
-
-    if (totalVisible === 0) {
-        selectAllCheckbox.checked = false;
-        selectAllCheckbox.indeterminate = false;
-    } else if (totalSelected === totalVisible) {
-        selectAllCheckbox.checked = true;
-        selectAllCheckbox.indeterminate = false;
-    } else if (totalSelected > 0) {
-        selectAllCheckbox.checked = false;
-        selectAllCheckbox.indeterminate = true; // Partially selected
-    } else {
-        selectAllCheckbox.checked = false;
-        selectAllCheckbox.indeterminate = false;
-    }
+    if (!selectAllCheckbox) return; const visibleCheckboxes = tableBody.querySelectorAll('.holding-checkbox'); const totalVisible = visibleCheckboxes.length; const totalSelected = Array.from(visibleCheckboxes).filter(cb => cb.checked).length;
+    if (totalVisible === 0) { selectAllCheckbox.checked = false; selectAllCheckbox.indeterminate = false; }
+    else if (totalSelected === totalVisible) { selectAllCheckbox.checked = true; selectAllCheckbox.indeterminate = false; }
+    else if (totalSelected > 0) { selectAllCheckbox.checked = false; selectAllCheckbox.indeterminate = true; }
+    else { selectAllCheckbox.checked = false; selectAllCheckbox.indeterminate = false; }
 }
-
-
-/**
- * Clears the holding selection Set, unchecks all checkboxes, and disables the email button.
- */
+/** Clears holding selection. */
 function clearHoldingSelection() {
-    selectedHoldingIds.clear(); // Clear the Set
-    // Uncheck all individual checkboxes
-    tableBody.querySelectorAll('.holding-checkbox').forEach(cb => cb.checked = false);
-    // Uncheck and remove indeterminate state from "Select All"
-    if (selectAllCheckbox) {
-        selectAllCheckbox.checked = false;
-        selectAllCheckbox.indeterminate = false;
-    }
-    // Disable the email button
-    if (emailInterestBtn) {
-        emailInterestBtn.disabled = true;
-    }
-    // Clear any previous status message
-    if (emailStatusMessage) {
-        emailStatusMessage.textContent = '';
-        emailStatusMessage.style.display = 'none';
-    }
+    selectedHoldingIds.clear(); tableBody.querySelectorAll('.holding-checkbox').forEach(cb => cb.checked = false);
+    if (selectAllCheckbox) { selectAllCheckbox.checked = false; selectAllCheckbox.indeterminate = false; }
+    if (emailInterestBtn) { emailInterestBtn.disabled = true; }
+    if (emailStatusMessage) { emailStatusMessage.textContent = ''; emailStatusMessage.style.display = 'none'; }
 }
-
-/**
- * Handles the click event for the "Sell Bonds" button.
- * Gathers selected bond data and sends it to the backend API.
- */
+/** Handles the "Sell Bonds" button click. */
 async function handleEmailInterestClick() {
-    if (!selectedCustomerId) {
-        showStatusMessage("Error: No customer selected.", true);
-        return;
-    }
-    if (selectedHoldingIds.size === 0) {
-        showStatusMessage("Error: No bonds selected.", true);
-        return;
-    }
-
-    // Disable button and show processing message
-    emailInterestBtn.disabled = true;
-    showStatusMessage("Sending email...", false, 0); // Permanent message until response
-
-    // Prepare the list of selected bonds for the payload
-    const selectedBondsPayload = [];
-    // Iterate through the *currently filtered* holdings to find selected ones
-    // This ensures we use the correct calculated par value from the displayed data
-    filteredHoldings.forEach(holding => {
-        if (selectedHoldingIds.has(holding.id)) {
-            selectedBondsPayload.push({
-                cusip: holding.security_cusip || 'N/A', // Use the CUSIP from the holding data
-                par: (holding.par_calculated ?? 0).toFixed(2) // Use calculated par, format as string
-            });
-        }
-    });
-
-    // Construct the final payload
-    const payload = {
-        customer_id: parseInt(selectedCustomerId, 10),
-        selected_bonds: selectedBondsPayload
-    };
-
-    console.log("Sending email interest payload:", payload); // Debug log
-
-    try {
-        const response = await fetch(`${apiRoot}/email-salesperson-interest/`, { // Use the correct endpoint URL
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken,
-            },
-            body: JSON.stringify(payload),
-        });
-
-        const responseData = await response.json(); // Attempt to parse JSON response
-
-        if (response.ok) {
-            console.log("Email sent successfully:", responseData);
-            showStatusMessage(responseData.message || "Email sent successfully!", false);
-            clearHoldingSelection(); // Clear selection on success
-        } else {
-            // Handle errors reported by the API
-            console.error("API Error sending email:", response.status, responseData);
-            const errorDetail = responseData.error || responseData.detail || response.statusText || 'Failed to send email.';
-            showStatusMessage(`Error: ${errorDetail}`, true);
-            // Re-enable button on failure (user might want to retry or fix config)
-            emailInterestBtn.disabled = false;
-        }
-
-    } catch (error) {
-        // Handle network errors or issues parsing JSON
-        console.error("Network/Fetch Error sending email:", error);
-        showStatusMessage("Network error. Please check connection and try again.", true);
-        emailInterestBtn.disabled = false; // Re-enable button for retry
-    }
+    if (!selectedCustomerId) { showStatusMessage("Error: No customer selected.", true); return; } if (selectedHoldingIds.size === 0) { showStatusMessage("Error: No bonds selected.", true); return; }
+    emailInterestBtn.disabled = true; showStatusMessage("Sending email...", false, 0);
+    const selectedBondsPayload = []; filteredHoldings.forEach(holding => { if (selectedHoldingIds.has(holding.id)) { selectedBondsPayload.push({ cusip: holding.security_cusip || 'N/A', par: (holding.par_calculated ?? 0).toFixed(2) }); } });
+    const payload = { customer_id: parseInt(selectedCustomerId, 10), selected_bonds: selectedBondsPayload }; console.log("Sending email interest payload:", payload);
+    try { const response = await fetch(`${apiRoot}/email-salesperson-interest/`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken, }, body: JSON.stringify(payload), }); const responseData = await response.json(); if (response.ok) { console.log("Email sent successfully:", responseData); showStatusMessage(responseData.message || "Email sent successfully!", false); clearHoldingSelection(); } else { console.error("API Error sending email:", response.status, responseData); const errorDetail = responseData.error || responseData.detail || response.statusText || 'Failed.'; showStatusMessage(`Error: ${errorDetail}`, true); emailInterestBtn.disabled = false; } }
+    catch (error) { console.error("Network/Fetch Error sending email:", error); showStatusMessage("Network error. Please try again.", true); emailInterestBtn.disabled = false; }
 }
 
 
 // --- Event Listeners Setup ---
 
 /**
- * Attaches all necessary event listeners when the DOM is ready.
+ * Attaches all necessary event listeners.
  */
 function setupEventListeners() {
-    // Customer dropdown change
+    // Customer/Portfolio Dropdowns
     customerSelect.addEventListener('change', handleCustomerSelection);
-
-    // Portfolio dropdown change
     portfolioFilterSelect.addEventListener('change', handlePortfolioSelection);
-
-    // Delete Portfolio button click
     deletePortfolioBtn.addEventListener('click', handleDeletePortfolio);
 
-    // Filter buttons
+    // Filters
     addFilterBtn.addEventListener('click', () => addFilterRow());
     clearAllFiltersBtn.addEventListener('click', handleClearAllFilters);
 
-    // Table header clicks for sorting
+    // Holdings Table Sorting
     tableHeaders.forEach(th => {
         th.addEventListener('click', () => {
-            const key = th.dataset.key;
-            if (!key) return; // Ignore clicks on non-sortable headers
-
-            // Toggle direction or change sort key
-            if (key === currentSortKey) {
-                currentSortDir = currentSortDir === 'asc' ? 'desc' : 'asc';
-            } else {
-                currentSortKey = key;
-                currentSortDir = 'asc'; // Default to ascending on new column
-            }
-            // Apply sort and re-render table (no need to re-render charts)
-            applySortAndRenderTable();
+            const key = th.dataset.key; if (!key) return;
+            if (key === currentSortKey) { currentSortDir = currentSortDir === 'asc' ? 'desc' : 'asc'; }
+            else { currentSortKey = key; currentSortDir = 'asc'; }
+            applySortAndRenderTable(); // Apply sort to holdings table
         });
     });
+    // TODO: Add listeners for muni offerings table headers if sorting is implemented
 
-    // Theme toggle button
+    // Theme & Export
     darkModeToggle.addEventListener('click', toggleTheme);
-
-    // PDF export button
     exportPdfBtn.addEventListener('click', exportToPdf);
 
-    // Create Portfolio Modal listeners
+    // Create Portfolio Modal
     createPortfolioBtn.addEventListener('click', showCreatePortfolioModal);
     modalCloseBtn.addEventListener('click', hideCreatePortfolioModal);
     modalCancelBtn.addEventListener('click', hideCreatePortfolioModal);
     createPortfolioForm.addEventListener('submit', handleCreatePortfolioSubmit);
-    // Close modal if user clicks on the overlay background
-    createPortfolioModal.addEventListener('click', (event) => {
-        if (event.target === createPortfolioModal) { // Check if click was directly on the overlay
-            hideCreatePortfolioModal();
-        }
-    });
+    createPortfolioModal.addEventListener('click', (event) => { if (event.target === createPortfolioModal) hideCreatePortfolioModal(); });
 
-    // NEW: Event listener for checkbox changes (using event delegation on table body)
-    tableBody.addEventListener('change', handleCheckboxChange);
-
-    // NEW: Event listener for "Select All" checkbox
-    if (selectAllCheckbox) {
-        selectAllCheckbox.addEventListener('change', handleCheckboxChange);
-    }
-
-    // NEW: Event listener for Email Interest button
-    if (emailInterestBtn) {
-        emailInterestBtn.addEventListener('click', handleEmailInterestClick);
-    }
+    // Holdings Table Checkboxes & Email Button
+    if (tableBody) tableBody.addEventListener('change', handleCheckboxChange); // Use delegation
+    if (selectAllCheckbox) selectAllCheckbox.addEventListener('change', handleCheckboxChange);
+    if (emailInterestBtn) emailInterestBtn.addEventListener('click', handleEmailInterestClick);
 }
 
 /**
- * Applies sorting and re-renders the table and totals.
- * Used after a sort key or direction changes.
+ * Applies sorting and re-renders the holdings table and totals.
  */
 function applySortAndRenderTable() {
-    sortData(filteredHoldings, currentSortKey, currentSortDir);
+    sortDataGeneric(filteredHoldings, currentSortKey, currentSortDir, getHoldingSortValue);
     renderTable(filteredHoldings);
     renderTotals(filteredHoldings);
     updateSortIndicators();
@@ -2024,38 +1259,29 @@ function applySortAndRenderTable() {
 
 
 // --- Initial Load ---
-// Wait for the DOM to be fully loaded before running setup code
 document.addEventListener('DOMContentLoaded', () => {
     console.log("DOM fully loaded and parsed");
 
-    // Initial setup tasks
-    generateColumnOptions(); // Prepare column options for filters based on table headers
-    addFilterRow(); // Add the initial (empty) filter row UI
+    // Initial setup
+    generateColumnOptions();
+    addFilterRow();
 
-    // Register Chart.js plugins if they are available
+    // Register Chart.js plugins
     if (typeof Chart !== 'undefined' && window.pluginTrendlineLinear) {
-        try {
-            Chart.register(window.pluginTrendlineLinear);
-            console.log("Trendline plugin registered.");
-        } catch (e) { console.error("Error registering Trendline plugin:", e) }
+        try { Chart.register(window.pluginTrendlineLinear); console.log("Trendline plugin registered."); }
+        catch (e) { console.error("Error registering Trendline plugin:", e); }
     } else { console.warn("Chart.js or Trendline plugin not found."); }
-    // Add registration for other plugins if needed (e.g., Chartjs-adapter-date-fns is usually auto-registered or used internally)
 
-    // Apply initial theme preference from localStorage (or default to light)
+    // Apply theme
     let preferredTheme = 'light';
-    try {
-        localStorage.setItem('themeCheck', '1'); // Check if localStorage is accessible
-        localStorage.removeItem('themeCheck');
-        preferredTheme = localStorage.getItem('portfolioTheme') || 'light'; // Get saved theme or default
-        console.log("Theme preference loaded:", preferredTheme);
-    } catch (e) {
-        console.warn("Could not access localStorage for theme preference:", e);
-    }
-    applyTheme(preferredTheme); // Apply the determined theme
+    try { localStorage.setItem('themeCheck', '1'); localStorage.removeItem('themeCheck'); preferredTheme = localStorage.getItem('portfolioTheme') || 'light'; console.log("Theme preference loaded:", preferredTheme); }
+    catch (e) { console.warn("Could not access localStorage for theme preference:", e); }
+    applyTheme(preferredTheme);
 
-    // Setup all event listeners
+    // Setup event listeners
     setupEventListeners();
 
-    // Start loading initial data (customers, which then triggers portfolio/holdings loading)
-    loadCustomers();
+    // Start loading initial data
+    loadCustomers(); // This triggers portfolio/holdings load
+    loadMuniOfferings(); // NEW: Load municipal offerings data
 });

@@ -34,9 +34,9 @@
         </div>
         <div id="filters-container"></div>
         <div class="filter-buttons-container">
-            <button id="add-filter-btn" class="filter-action-btn">Add Filter</button>
-            <button id="clear-all-filters-btn" class="filter-action-btn">Clear All Filters</button>
-            <button id="create-portfolio-btn" class="control-action-btn">Save Filtered View as Portfolio</button>
+            <button id="add-filter-btn" class="filter-action-btn btn-primary">Add Filter</button>
+            <button id="clear-all-filters-btn" class="filter-action-btn btn-secondary">Clear All Filters</button>
+            <button id="create-portfolio-btn" class="control-action-btn btn-info">Save Filtered View as Portfolio</button>
         </div>
     </div>
 
@@ -84,7 +84,33 @@
         <div id="email-status-message" class="status-message"></div>
     </div>
 
-</div> <div id="create-portfolio-modal" class="modal-overlay">
+    <div class="muni-offerings-container section-container">
+        <h2>Municipal Offerings</h2>
+        <div class="table-container"> <table id="muni-offerings-table">
+                <thead>
+                    <tr>
+                        <th data-key="cusip" data-type="string">Cusip</th>
+                        <th data-key="amount" data-type="number">Amount</th>
+                        <th data-key="description" data-type="string">Description</th>
+                        <th data-key="coupon" data-type="number">Coupon</th>
+                        <th data-key="maturity_date" data-type="date">Maturity</th>
+                        <th data-key="yield_rate" data-type="number">Yield</th>
+                        <th data-key="price" data-type="number">Price</th>
+                        <th data-key="moody_rating" data-type="string">Moody</th>
+                        <th data-key="sp_rating" data-type="string">S&P</th>
+                        <th data-key="call_date" data-type="date">Call Date</th>
+                        <th data-key="call_price" data-type="number">Call Price</th>
+                        <th data-key="state" data-type="string">State</th>
+                        <th data-key="insurance" data-type="string">Insurance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td colspan="13">Loading offerings...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    </div> <div id="create-portfolio-modal" class="modal-overlay">
     <div class="modal-content">
         <div class="modal-header">
             <h3>Save View as New Portfolio</h3>

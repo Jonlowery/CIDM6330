@@ -1,4 +1,4 @@
-/* --- CSS (Includes styles for new modal, delete button, and email action) --- */
+/* --- CSS (Includes styles for new modal, delete button, email action, and muni offerings) --- */
 
 /* Define CSS variables for theming (light and dark modes) */
 :root {
@@ -23,10 +23,12 @@
     --button-danger-text: white;
     --button-info-bg: #17a2b8;
     --button-info-text: white;
-    --button-success-bg: #28a745; /* NEW: Success color */
+    --button-success-bg: #28a745;
     --button-success-text: white;
     --status-success-color: #28a745;
     --status-error-color: #dc3545;
+    --section-bg: var(--container-bg); /* Background for sections */
+    --section-shadow: 0 1px 3px rgba(0,0,0,0.1);
     --header-height: 60px;
     /* PDF specific colors */
     --pdf-header-bg: '#e9ecef';
@@ -58,9 +60,11 @@ body.dark-mode {
     --button-secondary-bg: #5c636a;
     --button-danger-bg: #e34d5a;
     --button-info-bg: #20c997;
-    --button-success-bg: #34c759; /* NEW: Dark mode success */
+    --button-success-bg: #34c759;
     --status-success-color: #34c759;
     --status-error-color: #f56565;
+    --section-bg: var(--container-bg);
+    --section-shadow: 0 1px 3px rgba(255,255,255,0.05);
     /* PDF specific colors */
     --pdf-header-bg: '#3a3a3a';
     --pdf-header-text: '#e0e0e0';
@@ -179,6 +183,27 @@ header.app-header button {
     box-sizing: border-box;
 }
 
+/* Section Container Styling (General) */
+.section-container {
+    background-color: var(--section-bg);
+    padding: 1em;
+    border-radius: 8px;
+    box-shadow: var(--section-shadow);
+    margin-bottom: 1.5em; /* Space between sections */
+    box-sizing: border-box;
+}
+
+/* Section Titles */
+.section-container h2 {
+    color: var(--header-text-color);
+    margin-top: 0;
+    margin-bottom: 1em;
+    padding-bottom: 0.5em;
+    border-bottom: 1px solid var(--table-border-color);
+    font-size: 1.3em;
+}
+
+
 /* Portfolio name heading */
 h2#portfolio-name {
     color: var(--header-text-color);
@@ -186,23 +211,15 @@ h2#portfolio-name {
     margin-top: 0;
     margin-bottom: 1em;
     min-height: 1.2em;
+    font-size: 1.5em; /* Make it slightly larger */
 }
 
-/* Controls section styling */
+/* Controls section styling (using section-container) */
 .controls {
     display: flex;
     flex-direction: column;
     gap: 1em;
-    margin-bottom: 1.5em;
-    padding: 1em;
-    background-color: var(--container-bg);
-    border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    box-sizing: border-box;
-}
-
-body.dark-mode .controls {
-    box-shadow: 0 1px 3px rgba(255,255,255,0.05);
+    /* Inherits background, padding, shadow from .section-container */
 }
 
 .control-row {
@@ -298,32 +315,21 @@ button:disabled {
 .btn-info { background-color: var(--button-info-bg); color: var(--button-info-text); }
 .btn-info:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-info-bg) 80%, black); }
 
-.btn-success { background-color: var(--button-success-bg); color: var(--button-success-text); } /* NEW */
-.btn-success:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-success-bg) 80%, black); } /* NEW */
+.btn-success { background-color: var(--button-success-bg); color: var(--button-success-text); }
+.btn-success:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-success-bg) 80%, black); }
 
 
-#add-filter-btn { background-color: var(--button-primary-bg); color: var(--button-primary-text); align-self: flex-start; margin-top: 0.5em; }
-#add-filter-btn:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-primary-bg) 80%, black); }
-
-#clear-all-filters-btn { background-color: var(--button-secondary-bg); color: var(--button-secondary-text); align-self: flex-start; margin-top: 0.5em; }
-#clear-all-filters-btn:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-secondary-bg) 80%, black); }
-
-#create-portfolio-btn { background-color: var(--button-info-bg); color: var(--button-info-text); align-self: flex-start; margin-top: 0.5em; }
-#create-portfolio-btn:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-info-bg) 80%, black); }
-
-#delete-portfolio-btn { background-color: var(--button-danger-bg); color: var(--button-danger-text); margin-left: 0.5em; flex-grow: 0; }
-#delete-portfolio-btn:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-danger-bg) 80%, black); }
-
+#add-filter-btn { align-self: flex-start; margin-top: 0.5em; }
+#clear-all-filters-btn { align-self: flex-start; margin-top: 0.5em; }
+#create-portfolio-btn { align-self: flex-start; margin-top: 0.5em; }
+#delete-portfolio-btn { margin-left: 0.5em; flex-grow: 0; }
 button.remove-filter-btn {
-    background-color: var(--button-danger-bg);
-    color: var(--button-danger-text);
     padding: 0.4em 0.8em;
     font-size: 0.9em;
     height: auto;
     flex-grow: 0;
     flex-basis: auto;
 }
-button.remove-filter-btn:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-danger-bg) 80%, black); }
 
 .filter-buttons-container {
     display: flex;
@@ -334,21 +340,37 @@ button.remove-filter-btn:hover:not(:disabled) { background-color: color-mix(in s
     padding-top: 1em;
 }
 
-/* Table container styling */
-.table-container {
-    overflow-x: auto;
-    margin-bottom: 1em; /* Reduced margin */
-    background-color: var(--container-bg);
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+/* Charts grid layout */
+.charts-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.5em;
+    align-items: start;
+    margin-bottom: 1.5em; /* Consistent margin */
+    padding: 0;
     box-sizing: border-box;
 }
 
-body.dark-mode .table-container {
-    box-shadow: 0 2px 4px rgba(255,255,255,0.05);
+.chart-container {
+    width: 100%;
+    height: 350px;
+    background-color: var(--container-bg);
+    padding: 1em;
+    border-radius: 8px;
+    box-shadow: var(--section-shadow);
+    box-sizing: border-box;
 }
 
-/* Table styling */
+/* Table container styling (reusable) */
+.table-container {
+    overflow-x: auto;
+    /* background-color: var(--container-bg); */ /* Removed, handled by section-container */
+    /* border-radius: 8px; */ /* Removed, handled by section-container */
+    /* box-shadow: var(--section-shadow); */ /* Removed, handled by section-container */
+    box-sizing: border-box;
+}
+
+/* Table styling (applies to both holdings and muni offerings) */
 table {
     border-collapse: collapse;
     width: 100%;
@@ -377,24 +399,24 @@ th:hover {
     background-color: color-mix(in srgb, var(--table-header-bg) 85%, var(--text-color) 15%);
 }
 
-/* NEW: Checkbox column styling */
-th.checkbox-column, td.checkbox-column {
+/* Holdings Table Specifics */
+#holdings-table th.checkbox-column,
+#holdings-table td.checkbox-column {
     width: 40px; /* Fixed width for checkbox column */
     padding: 0.4em;
     text-align: center;
     cursor: default; /* No sort cursor */
 }
-th.checkbox-column:hover {
+#holdings-table th.checkbox-column:hover {
     background-color: var(--table-header-bg); /* Prevent hover effect */
 }
-th.checkbox-column input,
-td.checkbox-column input {
+#holdings-table th.checkbox-column input,
+#holdings-table td.checkbox-column input {
     cursor: pointer;
     vertical-align: middle; /* Align checkbox vertically */
 }
 
-
-th .sort-arrow {
+#holdings-table th .sort-arrow {
     font-size: 0.8em;
     margin-left: 5px;
     display: inline-block;
@@ -402,74 +424,44 @@ th .sort-arrow {
     min-width: 1em;
     text-align: left;
 }
+#holdings-table th.sorted .sort-arrow { opacity: 1; }
 
-th.sorted .sort-arrow { opacity: 1; }
+/* Holdings Table Cell Alignment */
+#holdings-table td:nth-child(2), #holdings-table td:nth-child(3) { text-align: left; } /* CUSIP, Description */
+#holdings-table td:nth-child(4), #holdings-table td:nth-child(5), #holdings-table td:nth-child(6), #holdings-table td:nth-child(7), #holdings-table td:nth-child(8) { text-align: right; } /* Numeric columns */
+#holdings-table td:nth-child(9), #holdings-table td:nth-child(10), #holdings-table td:nth-child(11) { text-align: center; } /* Date/Year columns */
 
-/* Specific cell alignment (adjusting for checkbox column) */
-td:nth-child(2), td:nth-child(3) { text-align: left; } /* CUSIP, Description */
-td:nth-child(4), td:nth-child(5), td:nth-child(6), td:nth-child(7), td:nth-child(8) { text-align: right; } /* Numeric columns */
-td:nth-child(9), td:nth-child(10), td:nth-child(11) { text-align: center; } /* Date/Year columns */
-
-tbody tr:nth-child(odd) {
+#holdings-table tbody tr:nth-child(odd) {
     background-color: var(--table-odd-row-bg);
 }
-tbody tr:hover {
+#holdings-table tbody tr:hover {
     background-color: var(--table-hover-bg);
 }
 
-tfoot {
+#holdings-table tfoot {
     font-weight: bold;
     background-color: var(--table-header-bg);
 }
-tfoot td {
+#holdings-table tfoot td {
     text-align: right;
     color: var(--text-color);
 }
-tfoot td:nth-child(1) { /* First cell in footer (colspan) */
+#holdings-table tfoot td:nth-child(1) { /* First cell in footer (colspan) */
     text-align: left;
 }
 
-/* Charts grid layout */
-.charts-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 1.5em;
-    align-items: start;
-    margin-bottom: 2em;
-    padding: 0;
-    box-sizing: border-box;
-}
-
-.chart-container {
-    width: 100%;
-    height: 350px;
-    background-color: var(--container-bg);
-    padding: 1em;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    box-sizing: border-box;
-}
-
-body.dark-mode .chart-container {
-    box-shadow: 0 2px 4px rgba(255,255,255,0.05);
-}
-
-/* --- NEW: Email Action Container --- */
+/* Email Action Container */
 .email-action-container {
     display: flex;
     align-items: center;
     gap: 1em;
-    margin-top: 0; /* Removed top margin, placed directly after table container */
-    margin-bottom: 2em;
+    margin-top: 1em; /* Add space above */
+    margin-bottom: 1.5em; /* Consistent margin */
     padding: 1em;
-    background-color: var(--container-bg);
+    background-color: var(--section-bg);
     border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    box-shadow: var(--section-shadow);
     box-sizing: border-box;
-}
-
-body.dark-mode .email-action-container {
-    box-shadow: 0 1px 3px rgba(255,255,255,0.05);
 }
 
 #email-interest-btn {
@@ -477,7 +469,7 @@ body.dark-mode .email-action-container {
     flex-shrink: 0; /* Prevent button shrinking */
 }
 
-/* NEW: Status Message Styling */
+/* Status Message Styling */
 .status-message {
     padding: 0.5em 1em;
     border-radius: 6px;
@@ -497,6 +489,46 @@ body.dark-mode .email-action-container {
     background-color: color-mix(in srgb, var(--status-error-color) 20%, transparent);
     color: var(--status-error-color);
     border: 1px solid color-mix(in srgb, var(--status-error-color) 50%, transparent);
+}
+
+/* --- Muni Offerings Table Styles --- */
+.muni-offerings-container {
+    /* Uses .section-container styles */
+}
+
+/* Specific alignments for muni table if needed */
+#muni-offerings-table th,
+#muni-offerings-table td {
+    /* Inherit base styles */
+    font-size: 0.9em; /* Slightly smaller font for potentially wider table */
+}
+
+/* Example alignments (adjust based on final data/preference) */
+#muni-offerings-table td:nth-child(1), /* Cusip */
+#muni-offerings-table td:nth-child(3), /* Description */
+#muni-offerings-table td:nth-child(8), /* Moody */
+#muni-offerings-table td:nth-child(9), /* S&P */
+#muni-offerings-table td:nth-child(12), /* State */
+#muni-offerings-table td:nth-child(13) { /* Insurance */
+    text-align: left;
+}
+#muni-offerings-table td:nth-child(2), /* Amount */
+#muni-offerings-table td:nth-child(4), /* Coupon */
+#muni-offerings-table td:nth-child(6), /* Yield */
+#muni-offerings-table td:nth-child(7), /* Price */
+#muni-offerings-table td:nth-child(11) { /* Call Price */
+    text-align: right;
+}
+#muni-offerings-table td:nth-child(5), /* Maturity */
+#muni-offerings-table td:nth-child(10) { /* Call Date */
+    text-align: center;
+}
+
+#muni-offerings-table tbody tr:nth-child(odd) {
+    background-color: var(--table-odd-row-bg);
+}
+#muni-offerings-table tbody tr:hover {
+    background-color: var(--table-hover-bg);
 }
 
 
@@ -648,6 +680,8 @@ body.dark-mode .email-action-container {
     .control-row { flex-direction: column; align-items: stretch; }
     select, input, button.filter-action-btn, button.control-action-btn { width: 100%; max-width: none; }
     th, td { font-size: 0.9em; padding: 0.5em 0.6em; }
+    #muni-offerings-table th,
+    #muni-offerings-table td { font-size: 0.85em; padding: 0.4em 0.5em; } /* Further reduce for muni table */
     .chart-container { height: 300px; }
     .modal-content { width: 95%; padding: 1.5em; }
 }
@@ -655,4 +689,6 @@ body.dark-mode .email-action-container {
 @media (max-width: 480px) {
     header.app-header h1 { font-size: 1.0em; }
     th, td { font-size: 0.85em; padding: 0.4em 0.5em; }
+    #muni-offerings-table th,
+    #muni-offerings-table td { font-size: 0.8em; padding: 0.3em 0.4em; } /* Further reduce for muni table */
 }
