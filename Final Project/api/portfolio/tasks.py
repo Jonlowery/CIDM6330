@@ -1,4 +1,4 @@
-# api/portfolio/tasks.py (Updated customer import for salesperson fields)
+# api/portfolio/tasks.py (Added email task)
 
 import os
 import logging
@@ -8,6 +8,7 @@ from celery import shared_task, chain
 # Import necessary Django components
 from django.db import transaction, IntegrityError, OperationalError
 from django.conf import settings
+from django.core.mail import send_mail # For sending email
 # Import models from the current app
 from .models import Security, Customer, Portfolio, CustomerHolding
 # Import Decimal for data cleaning
@@ -46,9 +47,10 @@ def clean_date(value, default=None):
              # Log if the value isn't a datetime object as expected from data_only=True
              log.warning(f"Value '{value}' is not a datetime object from openpyxl. Attempting direct use, might fail.")
              # If parsing is needed, add it here, otherwise return default
-             return default
+             # For now, assume openpyxl handles it or return default
+             return default # Or attempt specific parsing if a format is known
         # This part might not be reached if openpyxl handles conversion correctly
-        return default
+        return value.date() # If it IS a datetime object, return its date part
     except (ValueError, TypeError) as e:
         log.warning(f"Could not convert '{value}' to Date: {e}. Using default '{default}'")
         return default
@@ -150,7 +152,8 @@ def import_securities_from_excel(file_path):
                     log.debug(f"Sec Row {row_idx}: Updated Security: {cusip}")
             except OperationalError as e:
                 # Handle database lock errors specifically for retrying
-                if 'database is locked' in str(e) and retries < max_retries_per_row - 1:
+                # Check if 'database is locked' is in the error message (case-insensitive)
+                if 'database is locked' in str(e).lower() and retries < max_retries_per_row - 1:
                     retries += 1
                     wait_time = retry_delay * (2**retries) # Exponential backoff
                     log.warning(f"Sec Row {row_idx}: DB locked for security {cusip}. Retrying ({retries}/{max_retries_per_row-1}) in {wait_time:.2f}s...")
@@ -280,28 +283,57 @@ def import_customers_from_excel(file_path):
                     )
 
                     # Define the standard name for the default portfolio
-                    portfolio_name = f"{customer.name or customer_number} - Primary Holdings"
+                    # Use customer name if available, otherwise fallback to customer number
+                    portfolio_owner_name = customer.name if customer.name else f"Customer {customer.customer_number}"
+                    portfolio_name = f"{portfolio_owner_name} - Primary Holdings"
+
 
                     # --- Ensure default portfolio exists AND is marked as default ---
                     # Define the defaults for get_or_create, including is_default=True
-                    portfolio_defaults = {'is_default': True}
-                    portfolio, portfolio_created = Portfolio.objects.get_or_create(
-                        owner=customer,
-                        name=portfolio_name, # Match based on owner and name
-                        defaults=portfolio_defaults # Apply defaults ONLY if creating
-                    )
+                    portfolio_defaults = {'is_default': True, 'name': portfolio_name} # Include name in defaults
+                    # Try to get or create based on owner and is_default=True
+                    try:
+                        portfolio, portfolio_created = Portfolio.objects.get_or_create(
+                            owner=customer,
+                            is_default=True, # Match based on owner and default status
+                            defaults=portfolio_defaults # Apply defaults ONLY if creating
+                        )
+                    except IntegrityError as ie:
+                        # This might happen if a default portfolio exists but with a different name
+                        # and the unique constraint is on (owner, is_default)
+                        log.warning(f"Cust Row {row_idx}: IntegrityError finding/creating default portfolio for {customer_number}. Attempting lookup by name. Error: {ie}")
+                        # Fallback: try finding by name if get_or_create failed
+                        portfolio, portfolio_created = Portfolio.objects.get_or_create(
+                            owner=customer,
+                            name=portfolio_name, # Match based on owner and name
+                            defaults=portfolio_defaults # Apply defaults ONLY if creating
+                        )
+                        # If found by name, ensure is_default is True
+                        if not portfolio_created and not portfolio.is_default:
+                            portfolio.is_default = True
+                            portfolio.save(update_fields=['is_default'])
+                            portfolio_updated = True
+
 
                     # If the portfolio was NOT created (it already existed),
-                    # ensure its is_default flag is True.
-                    if not portfolio_created and not portfolio.is_default:
-                        portfolio.is_default = True
-                        portfolio.save(update_fields=['is_default']) # Efficiently update only the flag
-                        portfolio_updated = True # Mark that we updated the flag
+                    # ensure its is_default flag is True and name matches convention.
+                    if not portfolio_created:
+                        updated_fields = []
+                        if not portfolio.is_default:
+                            portfolio.is_default = True
+                            updated_fields.append('is_default')
+                        if portfolio.name != portfolio_name: # Check if name needs update
+                            portfolio.name = portfolio_name
+                            updated_fields.append('name')
+
+                        if updated_fields:
+                            portfolio.save(update_fields=updated_fields) # Efficiently update only the flag/name
+                            portfolio_updated = True # Mark that we updated the flag/name
 
                 success = True # Mark transaction as successful
 
             except OperationalError as e:
-                 if 'database is locked' in str(e) and retries < max_retries_per_row -1:
+                 if 'database is locked' in str(e).lower() and retries < max_retries_per_row -1:
                     retries += 1
                     wait_time = retry_delay * (2**retries)
                     log.warning(f"Cust Row {row_idx}: DB locked for customer {customer_number}. Retrying ({retries}/{max_retries_per_row-1}) in {wait_time:.2f}s...")
@@ -333,14 +365,14 @@ def import_customers_from_excel(file_path):
                 log.debug(f"Cust Row {row_idx}: Created default Portfolio '{portfolio.name}' for Customer: {customer_number}")
             elif portfolio_updated:
                 portfolio_marked_default_count += 1
-                log.debug(f"Cust Row {row_idx}: Marked existing Portfolio '{portfolio.name}' as default for Customer: {customer_number}")
+                log.debug(f"Cust Row {row_idx}: Marked existing Portfolio '{portfolio.name}' as default (or updated name) for Customer: {customer_number}")
 
     wb.close()
     result_message = (
         f"Imported/Updated customers from {os.path.basename(file_path)}. "
         f"Customers Created: {created_count}, Updated: {updated_count}. "
         f"Default Portfolios Created: {portfolio_created_count}, "
-        f"Existing Portfolios Marked Default: {portfolio_marked_default_count}, "
+        f"Existing Portfolios Marked Default/Updated: {portfolio_marked_default_count}, "
         f"Skipped Rows: {skipped_rows}."
     )
     log.info(result_message)
@@ -461,14 +493,16 @@ def import_holdings_from_excel(self, file_path):
              skipped_rows += 1; continue
 
         # --- Prepare holding data defaults ---
+        # Note: We are removing the direct 'customer' and 'customer_number' FKs from Holding model
+        # They are derived from the portfolio owner.
         holding_defaults = {
             'original_face_amount': clean_decimal(raw_data.get('original_face_amount')),
             'settlement_date': clean_date(raw_data.get('settlement_date')),
             'settlement_price': clean_decimal(raw_data.get('settlement_price')),
             'book_price': clean_decimal(raw_data.get('book_price')),
             'book_yield': clean_decimal(raw_data.get('book_yield')),
-            'customer': customer, # Redundant field
-            'customer_number': cust_no # Redundant field
+            # Copy potentially cached fields from security at time of import?
+            # Or rely on fetching from Security model always? Let's rely on Security model.
         }
         holding_defaults = {k: v for k, v in holding_defaults.items() if v is not None}
 
@@ -520,8 +554,10 @@ def import_holdings_from_excel(self, file_path):
         log.info(f"Holdings Deletion: Checking default portfolio '{default_portfolio.name}' (ID: {default_portfolio.id}) for obsolete holdings.")
         try:
             # Find holdings in the DB for this specific default portfolio NOT present in the file
-            obsolete_holdings = CustomerHolding.objects.filter(portfolio=default_portfolio).exclude(security_id__in=processed_security_ids)
-            obsolete_count = obsolete_holdings.count()
+            obsolete_holdings_qs = CustomerHolding.objects.filter(portfolio=default_portfolio).exclude(security_id__in=processed_security_ids)
+            # Execute the query to get the count
+            obsolete_count = obsolete_holdings_qs.count()
+
 
             if obsolete_count > 0:
                 log.info(f"Holdings Deletion: Attempting to delete {obsolete_count} obsolete holdings from portfolio {default_portfolio.id}.")
@@ -533,12 +569,14 @@ def import_holdings_from_excel(self, file_path):
                     try:
                         with transaction.atomic():
                             # Use the queryset's delete method
-                            deleted_batch_count, _ = obsolete_holdings.delete()
+                            # Re-fetch the queryset inside the transaction if needed,
+                            # or ensure the original queryset is still valid.
+                            deleted_batch_count, _ = obsolete_holdings_qs.delete()
                         success = True
                         deleted_count += deleted_batch_count
                         log.info(f"Holdings Deletion: Successfully deleted {deleted_batch_count} holdings from portfolio '{default_portfolio.name}'.")
                     except OperationalError as e:
-                        if 'database is locked' in str(e) and retries < max_retries_per_row -1:
+                        if 'database is locked' in str(e).lower() and retries < max_retries_per_row -1:
                             retries += 1
                             wait_time = retry_delay * (2**retries)
                             log.warning(f"Holdings Deletion: DB locked deleting holdings for portfolio {default_portfolio.id}. Retrying ({retries}/{max_retries_per_row-1}) in {wait_time:.2f}s...")
@@ -582,13 +620,79 @@ def import_all_from_excel():
 
     if not files_ok: return "Error: One or more import files not found for chained import."
 
+    # Use .si() to pass arguments immutably if the task doesn't modify them
+    # Use .s() if the task might modify the argument (like a mutable object)
+    # or if you prefer the standard signature behavior.
     import_chain = chain(
         import_securities_from_excel.s(str(sec_file)),
-        import_customers_from_excel.si(str(cust_file)), # Use .si()
-        import_holdings_from_excel.si(str(hold_file)),   # Use .si()
+        import_customers_from_excel.s(str(cust_file)), # Using .s() is generally safer
+        import_holdings_from_excel.s(str(hold_file)),   # Using .s()
     )
     import_chain.apply_async()
 
     result_message = "Scheduled chained non-destructive import of securities -> customers -> holdings from hardcoded paths."
     log.info(result_message)
     return result_message
+
+
+# --- NEW TASK for Sending Salesperson Email ---
+@shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
+def send_salesperson_interest_email(self, salesperson_email, salesperson_name, customer_name, customer_number, selected_bonds):
+    """
+    Sends an email notification to the salesperson about customer's selling interest.
+
+    Args:
+        salesperson_email (str): Recipient email address.
+        salesperson_name (str): Salesperson's name (for greeting).
+        customer_name (str): Customer's name.
+        customer_number (str): Customer's number.
+        selected_bonds (list): List of dicts [{'cusip': str, 'par': str}, ...].
+    """
+    log.info(f"Task send_salesperson_interest_email started for salesperson: {salesperson_email}, customer: {customer_number}")
+
+    # Format subject
+    subject = f"Interest in Selling Bonds - Customer {customer_name} ({customer_number})"
+
+    # Format body
+    greeting_name = salesperson_name if salesperson_name else "Salesperson"
+    customer_display = f"{customer_name} ({customer_number})" if customer_name else f"Customer {customer_number}"
+
+    bond_lines = []
+    for bond in selected_bonds:
+        # Format par amount nicely if possible, otherwise use the string as is
+        try:
+            par_decimal = Decimal(bond['par'])
+            par_formatted = f"{par_decimal:,.2f}" # Add commas and 2 decimal places
+        except (InvalidOperation, TypeError, ValueError):
+            par_formatted = bond['par'] # Fallback to the original string
+        bond_lines.append(f"  - CUSIP: {bond['cusip']}, Par: {par_formatted}")
+
+    bonds_list_str = "\n".join(bond_lines)
+
+    body = f"""Dear {greeting_name},
+
+Our client, {customer_display}, has indicated interest in selling the following bonds held in their portfolio:
+
+{bonds_list_str}
+
+Please follow up with them regarding this interest.
+
+Thanks,
+Portfolio Analyzer System
+"""
+
+    try:
+        send_mail(
+            subject,
+            body,
+            settings.DEFAULT_FROM_EMAIL, # Sender email address (configure in settings.py)
+            [salesperson_email],         # List of recipients
+            fail_silently=False,         # Raise exceptions on failure
+        )
+        log.info(f"Successfully sent interest email to {salesperson_email} for customer {customer_number}")
+        return f"Email sent successfully to {salesperson_email}"
+    except Exception as e:
+        log.error(f"Failed to send interest email to {salesperson_email} for customer {customer_number}. Error: {e}", exc_info=True)
+        # Celery will retry based on task decorator settings
+        # You might want to raise the exception again if you want the task to be marked as failed after retries
+        raise self.retry(exc=e, countdown=60) # Retry after 60 seconds

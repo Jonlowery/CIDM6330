@@ -1,4 +1,4 @@
-# api/portfolio/serializers.py (Revised Create Method)
+# api/portfolio/serializers.py (Corrected CustomerHoldingSerializer)
 
 from rest_framework import serializers
 # Import models using relative path within the app
@@ -9,6 +9,8 @@ from decimal import Decimal, InvalidOperation
 # Setup logging
 import logging
 log = logging.getLogger(__name__)
+
+# --- Existing Serializers ---
 
 class CustomerSerializer(serializers.ModelSerializer):
     """ Serializer for Customer model, used for nesting and lookups. """
@@ -33,21 +35,42 @@ class CustomerHoldingSerializer(serializers.ModelSerializer):
     """ Serializer for CustomerHolding model, including calculated/derived fields. """
     # Provide read-only representations of related fields for easy display
     security_cusip = serializers.SlugRelatedField(source='security', slug_field='cusip', read_only=True)
-    customer_number = serializers.CharField(source='customer.customer_number', read_only=True)
+    # Use source='portfolio.owner.customer_number' to get the number from the actual owner
+    customer_number = serializers.CharField(source='portfolio.owner.customer_number', read_only=True)
     par = serializers.SerializerMethodField() # Calculated field
+    # Use source='security...' for fields derived from the Security model
     maturity_date = serializers.DateField(source='security.maturity_date', read_only=True)
-    # Ensure DecimalFields match model definition (max_digits, decimal_places)
-    wal = serializers.DecimalField(source='security.wal', max_digits=5, decimal_places=3, read_only=True)
-    coupon = serializers.DecimalField(source='security.coupon', max_digits=5, decimal_places=3, read_only=True)
-    call_date = serializers.DateField(source='security.call_date', read_only=True)
+    wal = serializers.DecimalField(source='security.wal', max_digits=5, decimal_places=3, read_only=True, allow_null=True)
+    coupon = serializers.DecimalField(source='security.coupon', max_digits=8, decimal_places=5, read_only=True, allow_null=True) # Match model
+    call_date = serializers.DateField(source='security.call_date', read_only=True, allow_null=True)
     description = serializers.CharField(source='security.description', read_only=True)
+
+    # --- CORRECTED FIELD RENAMING ---
+    # Rename 'book_yield' to 'yield' in the output.
+    # The variable name 'yield' becomes the output field name.
+    # 'source' points to the actual model field.
+    # Removed the invalid 'field_name' argument.
+    yield_ = serializers.DecimalField( # Use yield_ temporarily if 'yield' is a reserved keyword issue in some contexts, otherwise use 'yield'
+        source='book_yield',
+        max_digits=8,
+        decimal_places=5,
+        read_only=True,
+        allow_null=True,
+        label='yield' # Use label for browsable API display if needed
+    )
+    # If 'yield' directly causes issues (rare in DRF field definition but possible),
+    # you might need to map it explicitly in fields list if using Meta.fields = '__all__'
+    # but here we list fields explicitly, so naming the variable is usually enough.
+    # Let's stick to naming the variable 'yield_' for safety, but output name will be 'yield'
+    # if mapped correctly or if DRF handles it. If output is 'yield_', change variable name to 'yield'.
 
     # Allow writing to foreign keys using PrimaryKeyRelatedField during create/update
     portfolio = serializers.PrimaryKeyRelatedField(queryset=Portfolio.objects.all())
     security = serializers.PrimaryKeyRelatedField(queryset=Security.objects.all())
     # Customer is automatically set in the view's perform_create based on portfolio owner
     # Making it read_only here prevents accidental direct setting via API
-    customer = serializers.PrimaryKeyRelatedField(read_only=True)
+    # We also don't need the redundant customer FK on the holding itself if portfolio owner is source of truth
+    # customer = serializers.PrimaryKeyRelatedField(read_only=True)
 
 
     class Meta:
@@ -56,8 +79,8 @@ class CustomerHoldingSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'ticket_id',
-            'customer',             # Read-only PK (set in view)
-            'customer_number',      # Read-only derived field
+            # 'customer',             # Removed redundant FK if not needed
+            'customer_number',      # Read-only derived field (from portfolio owner)
             'portfolio',            # Writable PK field (user selects portfolio)
             'security',             # Writable PK field (user selects security)
             'security_cusip',       # Read-only derived field
@@ -65,19 +88,23 @@ class CustomerHoldingSerializer(serializers.ModelSerializer):
             'settlement_date',      # Writable field
             'settlement_price',     # Writable field
             'book_price',           # Writable field
-            'book_yield',           # Writable field
+            'book_yield',           # Writable field (source for yield_field)
             'par',                  # Read-only method field
             'maturity_date',        # Read-only derived field
             'wal',                  # Read-only derived field
             'coupon',               # Read-only derived field
             'call_date',            # Read-only derived field
             'description',          # Read-only derived field
+            'yield_',               # Include the yield field (will be named 'yield_' in output if variable is yield_)
+                                    # Rename variable to 'yield' if output should be 'yield'
         ]
         # Fields that cannot be set directly via the API during creation/update
         read_only_fields = [
-            'id', 'ticket_id', 'customer', 'customer_number', 'security_cusip',
+            'id', 'ticket_id', 'customer_number', 'security_cusip',
             'par', 'maturity_date', 'wal', 'coupon', 'call_date', 'description',
+            'yield_', # Add yield_ to read_only if variable is yield_
         ]
+        # If you named the variable 'yield', add 'yield' here instead.
 
     def get_par(self, obj):
         """ Calculate current par value based on original face and security factor. """
@@ -136,11 +163,11 @@ class PortfolioSerializer(serializers.ModelSerializer):
     class Meta:
         model = Portfolio
         fields = [
-            'id', 'owner', 'name', 'created_at', 'holdings',
+            'id', 'owner', 'name', 'created_at', 'holdings', 'is_default', # Added is_default
             'customer_number_input', 'owner_customer_id',
             'initial_holding_ids', # Include new field
         ]
-        read_only_fields = ['id', 'created_at', 'holdings']
+        read_only_fields = ['id', 'created_at', 'holdings', 'owner', 'is_default'] # owner is read-only here, set via write_only fields
 
     def validate(self, data):
         """
@@ -152,21 +179,30 @@ class PortfolioSerializer(serializers.ModelSerializer):
              raise serializers.ValidationError("Validation Error: Request context is missing user information.")
 
         user = request.user
-        # Skip this validation during updates
+        # Skip this validation during updates (PUT/PATCH)
+        # Check if it's a create operation (no instance)
         if self.instance is not None:
-             return data
+             # If updating, ensure name is provided if it's being changed
+             if 'name' in data and not data.get('name'):
+                 raise serializers.ValidationError({'name': 'Portfolio name cannot be empty.'})
+             # Prevent changing the owner or default status via update
+             if 'owner' in data or 'owner_customer_id' in data or 'customer_number_input' in data:
+                 raise serializers.ValidationError("Cannot change the portfolio owner after creation.")
+             if 'is_default' in data:
+                 raise serializers.ValidationError("Cannot change the default status via the API.")
+             return data # Skip create-specific validation
 
-        # --- Determine the intended owner ---
+        # --- CREATE Validation ---
         intended_owner = None
         is_admin = user.is_staff or user.is_superuser
         customer_number = data.get('customer_number_input')
-        # 'owner' field is populated if owner_customer_id was valid
+        # 'owner' field is populated if owner_customer_id was valid and mapped via source='owner'
         owner_instance_from_input = data.get('owner')
 
         log.debug(f"PortfolioSerializer validate (Create): User={user.username}, Admin={is_admin}, customer_number_input={customer_number}, owner_instance_from_input={owner_instance_from_input}")
 
         if is_admin:
-            # Admin validation (as before)
+            # Admin validation
             if owner_instance_from_input is not None:
                 raise serializers.ValidationError({'owner_customer_id': "Admin must use 'customer_number_input', not 'owner_customer_id'."})
             if not customer_number:
@@ -179,42 +215,46 @@ class PortfolioSerializer(serializers.ModelSerializer):
             except Customer.DoesNotExist:
                  raise serializers.ValidationError({'customer_number_input': f"Customer with number '{customer_number}' not found."})
         else:
-            # Non-admin validation (as before)
+            # Non-admin validation
             if customer_number is not None:
                  raise serializers.ValidationError({'customer_number_input': "Non-admin users cannot specify 'customer_number_input'."})
 
-            customer_count = user.customers.count()
+            user_customers = user.customers.all() # Get customers associated with the user
+            customer_count = user_customers.count()
+
             if customer_count == 0:
                  raise serializers.ValidationError("User is not associated with any customers.")
             elif customer_count == 1:
                  if owner_instance_from_input is not None:
+                      # If owner was somehow provided (e.g., owner_customer_id was sent), raise error
                       raise serializers.ValidationError({'owner_customer_id': "Cannot specify owner ID when associated with only one customer."})
                  # Intended owner is the user's single associated customer
-                 intended_owner = user.customers.first()
+                 intended_owner = user_customers.first()
                  self.context['_intended_owner'] = intended_owner
             else: # Multi-customer non-admin
                  if owner_instance_from_input is None:
+                      # owner_customer_id was not provided or was invalid
                       raise serializers.ValidationError({'owner_customer_id': "Must specify a valid owner customer ID when associated with multiple customers."})
-                 if not user.customers.filter(id=owner_instance_from_input.id).exists():
+                 # Check if the owner instance provided (from owner_customer_id) is actually linked to the user
+                 if not user_customers.filter(id=owner_instance_from_input.id).exists():
                       raise serializers.ValidationError({'owner_customer_id': f"Invalid or inaccessible customer ID ({owner_instance_from_input.id}) provided."})
                  # Intended owner is the one specified and validated
                  intended_owner = owner_instance_from_input
-                 # No need to store in context, as 'owner' is already in data
+                 # No need to store in context, as 'owner' is already in data['owner']
 
         # --- Validate initial_holding_ids (if provided) ---
         initial_ids = data.get('initial_holding_ids')
         if initial_ids:
             if not intended_owner:
                 # This check ensures owner is determined before validating holdings
-                # It relies on the logic above correctly setting intended_owner
-                # or raising an error if it can't be determined.
                 log.error("Cannot validate initial_holding_ids because intended owner could not be determined.")
                 raise serializers.ValidationError("Internal error: Could not determine portfolio owner for holding validation.")
 
-            # Check if all provided IDs exist and belong to the intended owner
+            # Check if all provided IDs exist and belong to the intended owner's portfolios
+            # Holdings must exist and belong to *any* portfolio owned by the intended_owner
             valid_holdings = CustomerHolding.objects.filter(
                 id__in=initial_ids,
-                portfolio__owner=intended_owner # Crucial check
+                portfolio__owner=intended_owner # Crucial check: holdings must belong to the target owner
             )
             valid_ids_set = set(valid_holdings.values_list('id', flat=True))
             provided_ids_set = set(initial_ids)
@@ -227,14 +267,19 @@ class PortfolioSerializer(serializers.ModelSerializer):
                 })
             log.debug(f"Validated initial_holding_ids: {initial_ids} for owner {intended_owner.id}")
 
+        # Ensure portfolio name is provided and not empty during creation
+        if not data.get('name'):
+            raise serializers.ValidationError({'name': 'Portfolio name is required.'})
+
         return data
 
     # --- REVISED create method ---
     def create(self, validated_data):
         """
         Override create to explicitly handle owner assignment and remove write-only fields.
+        Holding copy logic is now handled in the view's perform_create.
         """
-        # Remove purely informational write-only fields
+        # Remove purely informational write-only fields before creating the model instance
         validated_data.pop('customer_number_input', None)
         validated_data.pop('initial_holding_ids', None) # Holding copy logic is in the view
 
@@ -251,14 +296,15 @@ class PortfolioSerializer(serializers.ModelSerializer):
             log.error("PortfolioSerializer create: Owner instance could not be determined.")
             raise serializers.ValidationError("Internal error: Failed to determine portfolio owner.")
 
-        # Add the determined owner instance directly to the data for model creation
+        # Add the determined owner instance directly back to the data for model creation
         validated_data['owner'] = owner
+        # Ensure is_default is False when creating via API
+        validated_data['is_default'] = False
 
         log.debug(f"PortfolioSerializer create - final validated_data before Model.create: {validated_data}")
 
         try:
             # Directly create the Portfolio instance using the model manager
-            # This bypasses super().create() which might have complex M2M handling we don't need here
             instance = Portfolio.objects.create(**validated_data)
             return instance
         except TypeError as e:
@@ -272,3 +318,39 @@ class PortfolioSerializer(serializers.ModelSerializer):
 class ExcelUploadSerializer(serializers.Serializer):
     """ Serializer for the file upload endpoint in ImportExcelView. """
     file = serializers.FileField()
+
+
+# --- NEW SERIALIZER for Salesperson Email ---
+
+class SelectedBondSerializer(serializers.Serializer):
+    """ Nested serializer for validating individual bonds in the email request. """
+    cusip = serializers.CharField(max_length=9, required=True, allow_blank=False)
+    par = serializers.CharField(required=True, allow_blank=False) # Keep as string for precision
+
+    def validate_par(self, value):
+        """ Validate that the 'par' string can be converted to a Decimal. """
+        try:
+            Decimal(value)
+        except InvalidOperation:
+            raise serializers.ValidationError("Invalid par amount format. Must be a valid number string.")
+        return value
+
+class SalespersonInterestSerializer(serializers.Serializer):
+    """ Serializer for validating the request to email the salesperson. """
+    customer_id = serializers.IntegerField(required=True)
+    selected_bonds = serializers.ListField(
+        child=SelectedBondSerializer(),
+        allow_empty=False, # Must provide at least one bond
+        required=True
+    )
+
+    def validate_customer_id(self, value):
+        """ Check if the customer exists. """
+        try:
+            Customer.objects.get(id=value)
+        except Customer.DoesNotExist:
+            # Note: Raising ValidationError here might result in a 400,
+            # but the view will handle the 404 specifically.
+            # This ensures the ID is at least potentially valid before view logic.
+            raise serializers.ValidationError(f"Customer with ID {value} not found.")
+        return value

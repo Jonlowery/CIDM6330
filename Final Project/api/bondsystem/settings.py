@@ -39,6 +39,8 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'corsheaders',
     'portfolio.apps.PortfolioConfig',
+    'django_celery_beat', # Added for Celery Beat scheduling
+    'django_celery_results', # Added for storing Celery results in DB (optional but useful)
 ]
 
 MIDDLEWARE = [
@@ -100,9 +102,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'UTC' # Keep as UTC for consistency, especially with Celery Beat
 USE_I18N = True
-USE_TZ = True
+USE_TZ = True # Enable timezone support
 
 
 # Static files (CSS, JavaScript, Images)
@@ -122,7 +124,7 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 # ---------------------------------------
 
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True  # Log out user when browser is closed
-SESSION_COOKIE_AGE = 900                 # Session expires after 60 seconds of inactivity
+SESSION_COOKIE_AGE = 900                 # Session expires after 15 minutes of inactivity
 SESSION_SAVE_EVERY_REQUEST = True       # Reset session expiry timer on each request
 
 
@@ -137,6 +139,7 @@ REST_FRAMEWORK = {
   'DEFAULT_PERMISSION_CLASSES': [
     'rest_framework.permissions.IsAuthenticated', # Ensures only logged-in users can access API views by default
   ],
+   'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend'], # Enable filters globally if desired
 }
 
 
@@ -153,15 +156,31 @@ CORS_ALLOW_ALL_ORIGINS = True
 # Celery configuration (Ensure Redis is running)
 # --------------------
 
-CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://redis:6379/0') # Use 'redis' hostname from docker-compose
+CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://redis:6379/0') # Use 'redis' hostname
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = TIME_ZONE # Use Django's timezone
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler' # Use DB scheduler for Beat
+
+
+# Email Settings (Gmail - HARDCODED - USING APP PASSWORD)
+# -------------------------------------------------------
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = 'avionhwow@gmail.com' # Your Gmail address
+EMAIL_HOST_PASSWORD = 'jhvm vgog vwdv zlui' # The 16-character App Password you generated
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER # Default 'From' address for emails sent by Django
 
 
 # Login/Logout URLs
 # --------------------------
 LOGIN_URL = '/api-auth/login/'  # URL where users are redirected FOR login
-LOGIN_REDIRECT_URL = '/api/imports/upload_excel/' # URL to redirect AFTER successful login
-# LOGOUT_REDIRECT_URL = '/' # Optional: URL to redirect after logout (defaults to LOGIN_URL if not set)
+LOGIN_REDIRECT_URL = '/' # Redirect to the main portfolio analyzer view after login
+LOGOUT_REDIRECT_URL = '/api-auth/login/' # Redirect to login page after logout
 
 # Security Settings (Consider uncommenting and configuring for Production)
 # ---------------------------------------------------------------------
@@ -174,3 +193,8 @@ LOGIN_REDIRECT_URL = '/api/imports/upload_excel/' # URL to redirect AFTER succes
 # SECURE_BROWSER_XSS_FILTER = True
 # X_FRAME_OPTIONS = 'DENY' # Prevent clickjacking
 # SECURE_CONTENT_TYPE_NOSNIFF = True
+
+# Default primary key field type
+# https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
+
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

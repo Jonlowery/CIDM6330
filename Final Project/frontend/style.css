@@ -1,4 +1,4 @@
-/* --- CSS (Includes styles for new modal and delete button) --- */
+/* --- CSS (Includes styles for new modal, delete button, and email action) --- */
 
 /* Define CSS variables for theming (light and dark modes) */
 :root {
@@ -23,8 +23,12 @@
     --button-danger-text: white;
     --button-info-bg: #17a2b8;
     --button-info-text: white;
+    --button-success-bg: #28a745; /* NEW: Success color */
+    --button-success-text: white;
+    --status-success-color: #28a745;
+    --status-error-color: #dc3545;
     --header-height: 60px;
-    /* PDF specific colors (might not be directly used by browser CSS but good for reference) */
+    /* PDF specific colors */
     --pdf-header-bg: '#e9ecef';
     --pdf-header-text: '#495057';
     --pdf-table-border: '#dee2e6';
@@ -52,8 +56,11 @@ body.dark-mode {
     --input-bg-color: #333;
     --button-primary-bg: #0d6efd;
     --button-secondary-bg: #5c636a;
-    --button-danger-bg: #e34d5a; /* Slightly adjusted danger color for dark mode */
+    --button-danger-bg: #e34d5a;
     --button-info-bg: #20c997;
+    --button-success-bg: #34c759; /* NEW: Dark mode success */
+    --status-success-color: #34c759;
+    --status-error-color: #f56565;
     /* PDF specific colors */
     --pdf-header-bg: '#3a3a3a';
     --pdf-header-text: '#e0e0e0';
@@ -69,7 +76,7 @@ body.dark-mode {
 
 /* Basic HTML and Body styling */
 html {
-    scroll-behavior: smooth; /* Smooth scrolling for anchor links */
+    scroll-behavior: smooth;
 }
 
 body {
@@ -79,13 +86,13 @@ body {
     background-color: var(--bg-color);
     color: var(--text-color);
     min-height: 100vh;
-    transition: background-color 0.3s, color 0.3s; /* Smooth theme transition */
-    padding-top: var(--header-height); /* Add padding to prevent content from hiding under fixed header */
+    transition: background-color 0.3s, color 0.3s;
+    padding-top: var(--header-height);
 }
 
 /* Header styling */
 header.app-header {
-    position: fixed; /* Keep header fixed at the top */
+    position: fixed;
     top: 0;
     left: 0;
     width: 100%;
@@ -94,15 +101,15 @@ header.app-header {
     color: var(--header-text-color);
     display: flex;
     align-items: center;
-    justify-content: space-between; /* Space out left and right sections */
+    justify-content: space-between;
     padding: 0 1.5em;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* Subtle shadow */
-    z-index: 1000; /* Ensure header stays on top */
-    box-sizing: border-box; /* Include padding in width/height */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    z-index: 1000;
+    box-sizing: border-box;
 }
 
 body.dark-mode header.app-header {
-    box-shadow: 0 2px 4px rgba(255,255,255,0.05); /* Lighter shadow for dark mode */
+    box-shadow: 0 2px 4px rgba(255,255,255,0.05);
 }
 
 header.app-header .header-left {
@@ -113,11 +120,11 @@ header.app-header .header-left {
 header.app-header .header-right {
     display: flex;
     align-items: center;
-    gap: 1em; /* Space between buttons */
+    gap: 1em;
 }
 
 header.app-header a {
-    color: inherit; /* Inherit color from header */
+    color: inherit;
     text-decoration: none;
     display: flex;
     align-items: center;
@@ -126,7 +133,7 @@ header.app-header a {
 header.app-header a:hover,
 header.app-header a:focus {
     text-decoration: underline;
-    outline: none; /* Remove default focus outline */
+    outline: none;
 }
 
 header.app-header h1 {
@@ -152,7 +159,6 @@ header.app-header button {
 }
 
 #dark-mode-toggle:hover {
-    /* Slightly darken the button on hover */
     background-color: color-mix(in srgb, var(--button-secondary-bg) 80%, black);
 }
 
@@ -167,19 +173,19 @@ header.app-header button {
 
 /* Main container styling */
 .container {
-    max-width: 1600px; /* Limit maximum width */
-    margin: 0 auto; /* Center the container */
+    max-width: 1600px;
+    margin: 0 auto;
     padding: 1.5em 1em;
     box-sizing: border-box;
 }
 
 /* Portfolio name heading */
 h2#portfolio-name {
-    color: var(--header-text-color); /* Use header text color for consistency */
+    color: var(--header-text-color);
     text-align: center;
     margin-top: 0;
     margin-bottom: 1em;
-    min-height: 1.2em; /* Prevent layout shift while loading */
+    min-height: 1.2em;
 }
 
 /* Controls section styling */
@@ -196,13 +202,12 @@ h2#portfolio-name {
 }
 
 body.dark-mode .controls {
-    box-shadow: 0 1px 3px rgba(255,255,255,0.05); /* Lighter shadow for dark mode */
+    box-shadow: 0 1px 3px rgba(255,255,255,0.05);
 }
 
-/* Styling for rows within the controls section */
 .control-row {
     display: flex;
-    flex-wrap: wrap; /* Allow items to wrap on smaller screens */
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.8em;
 }
@@ -214,10 +219,9 @@ body.dark-mode .controls {
     gap: 0.8em;
     border-top: 1px solid var(--table-border-color);
     padding-top: 1em;
-    margin-top: 1em; /* Add margin above filters */
+    margin-top: 1em;
 }
 
-/* Individual filter row */
 .filter-row {
     display: flex;
     flex-wrap: wrap;
@@ -225,18 +229,16 @@ body.dark-mode .controls {
     gap: 0.8em;
 }
 
-/* Label styling */
 label {
     margin-right: 0.5em;
     font-weight: bold;
-    white-space: nowrap; /* Prevent labels from wrapping */
+    white-space: nowrap;
     color: var(--text-color);
-    flex-basis: 60px; /* Give labels a consistent base width */
-    text-align: right; /* Align label text right */
-    flex-shrink: 0; /* Prevent labels from shrinking */
+    flex-basis: 60px;
+    text-align: right;
+    flex-shrink: 0;
 }
 
-/* Input and select element styling */
 select,
 input[type="text"],
 input[type="number"],
@@ -246,39 +248,23 @@ input[type="date"] {
     border: 1px solid var(--input-border-color);
     background-color: var(--input-bg-color);
     color: var(--text-color);
-    flex-grow: 1; /* Allow inputs to grow */
-    min-width: 100px; /* Minimum width */
-    height: 38px; /* Consistent height */
+    flex-grow: 1;
+    min-width: 100px;
+    height: 38px;
     box-sizing: border-box;
 }
 
-/* Placeholder text color for dark mode */
 body.dark-mode input::placeholder { color: #bbb; opacity: 1; }
-body.dark-mode input::-ms-input-placeholder { color: #bbb; } /* IE/Edge */
+body.dark-mode input::-ms-input-placeholder { color: #bbb; }
 
-/* Specific styling for customer select */
-#customer-select {
-    flex-grow: 2; /* Allow customer select to take more space */
-}
-/* Specific styling for portfolio select */
-#portfolio-filter-select {
-     flex-grow: 2; /* Allow portfolio select to take more space */
-}
+#customer-select { flex-grow: 2; }
+#portfolio-filter-select { flex-grow: 2; }
 
-
-/* Sizing for filter inputs/selects */
 .filter-row select,
-.filter-row input {
-    flex-basis: 150px; /* Default basis */
-}
+.filter-row input { flex-basis: 150px; }
+.filter-row label:first-child { flex-basis: 60px; text-align: right; }
 
-/* Alignment for first label in filter row */
-.filter-row label:first-child {
-    flex-basis: 60px;
-    text-align: right;
-}
-
-/* Styling for action buttons within filters/controls */
+/* General button styling */
 button.filter-action-btn,
 button.remove-filter-btn,
 button.control-action-btn {
@@ -287,84 +273,61 @@ button.control-action-btn {
     border: none;
     cursor: pointer;
     font-weight: bold;
-    transition: background-color 0.2s ease, opacity 0.2s ease; /* Add opacity transition */
-    height: 38px; /* Match input height */
+    transition: background-color 0.2s ease, opacity 0.2s ease;
+    height: 38px;
     box-sizing: border-box;
     color: var(--button-primary-text); /* Default text color */
-    flex-shrink: 0; /* Prevent buttons from shrinking too much */
+    flex-shrink: 0;
 }
 
-/* Disabled state for buttons */
 button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
 }
 
+/* Specific button colors */
+.btn-primary { background-color: var(--button-primary-bg); color: var(--button-primary-text); }
+.btn-primary:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-primary-bg) 80%, black); }
 
-#add-filter-btn {
-    background-color: var(--button-primary-bg);
-    color: var(--button-primary-text);
-    align-self: flex-start; /* Align button to the start */
-    margin-top: 0.5em;
-}
+.btn-secondary { background-color: var(--button-secondary-bg); color: var(--button-secondary-text); }
+.btn-secondary:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-secondary-bg) 80%, black); }
 
-#add-filter-btn:hover:not(:disabled) { /* Apply hover only if not disabled */
-    background-color: color-mix(in srgb, var(--button-primary-bg) 80%, black);
-}
+.btn-danger { background-color: var(--button-danger-bg); color: var(--button-danger-text); }
+.btn-danger:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-danger-bg) 80%, black); }
 
-#clear-all-filters-btn {
-    background-color: var(--button-secondary-bg);
-    color: var(--button-secondary-text);
-    align-self: flex-start;
-    margin-top: 0.5em;
-}
+.btn-info { background-color: var(--button-info-bg); color: var(--button-info-text); }
+.btn-info:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-info-bg) 80%, black); }
 
-#clear-all-filters-btn:hover:not(:disabled) {
-    background-color: color-mix(in srgb, var(--button-secondary-bg) 80%, black);
-}
-
-#create-portfolio-btn {
-    background-color: var(--button-info-bg);
-    color: var(--button-info-text);
-    align-self: flex-start;
-    margin-top: 0.5em;
-}
-
-#create-portfolio-btn:hover:not(:disabled) {
-    background-color: color-mix(in srgb, var(--button-info-bg) 80%, black);
-}
-
-/* Delete button specific styles */
-#delete-portfolio-btn {
-    background-color: var(--button-danger-bg);
-    color: var(--button-danger-text);
-    margin-left: 0.5em; /* Add some space next to the dropdown */
-    flex-grow: 0; /* Don't allow delete button to grow */
-}
-#delete-portfolio-btn:hover:not(:disabled) {
-    background-color: color-mix(in srgb, var(--button-danger-bg) 80%, black);
-}
+.btn-success { background-color: var(--button-success-bg); color: var(--button-success-text); } /* NEW */
+.btn-success:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-success-bg) 80%, black); } /* NEW */
 
 
-/* Remove filter button styling */
+#add-filter-btn { background-color: var(--button-primary-bg); color: var(--button-primary-text); align-self: flex-start; margin-top: 0.5em; }
+#add-filter-btn:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-primary-bg) 80%, black); }
+
+#clear-all-filters-btn { background-color: var(--button-secondary-bg); color: var(--button-secondary-text); align-self: flex-start; margin-top: 0.5em; }
+#clear-all-filters-btn:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-secondary-bg) 80%, black); }
+
+#create-portfolio-btn { background-color: var(--button-info-bg); color: var(--button-info-text); align-self: flex-start; margin-top: 0.5em; }
+#create-portfolio-btn:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-info-bg) 80%, black); }
+
+#delete-portfolio-btn { background-color: var(--button-danger-bg); color: var(--button-danger-text); margin-left: 0.5em; flex-grow: 0; }
+#delete-portfolio-btn:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-danger-bg) 80%, black); }
+
 button.remove-filter-btn {
     background-color: var(--button-danger-bg);
     color: var(--button-danger-text);
     padding: 0.4em 0.8em;
     font-size: 0.9em;
-    height: auto; /* Allow height to adjust */
-    flex-grow: 0; /* Don't allow button to grow */
-    flex-basis: auto; /* Base size on content */
+    height: auto;
+    flex-grow: 0;
+    flex-basis: auto;
 }
+button.remove-filter-btn:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-danger-bg) 80%, black); }
 
-button.remove-filter-btn:hover:not(:disabled) {
-    background-color: color-mix(in srgb, var(--button-danger-bg) 80%, black);
-}
-
-/* Container for filter action buttons */
 .filter-buttons-container {
     display: flex;
-    flex-wrap: wrap; /* Allow buttons to wrap */
+    flex-wrap: wrap;
     gap: 0.8em;
     margin-top: 1em;
     border-top: 1px solid var(--table-border-color);
@@ -373,8 +336,8 @@ button.remove-filter-btn:hover:not(:disabled) {
 
 /* Table container styling */
 .table-container {
-    overflow-x: auto; /* Allow horizontal scrolling for table */
-    margin-bottom: 2em;
+    overflow-x: auto;
+    margin-bottom: 1em; /* Reduced margin */
     background-color: var(--container-bg);
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -389,14 +352,14 @@ body.dark-mode .table-container {
 table {
     border-collapse: collapse;
     width: 100%;
-    table-layout: auto; /* Let browser determine column widths */
+    table-layout: auto;
 }
 
 th, td {
     border: 1px solid var(--table-border-color);
     padding: 0.6em 0.8em;
     text-align: center;
-    white-space: nowrap; /* Prevent cell content from wrapping */
+    white-space: nowrap;
     vertical-align: middle;
     font-size: 0.95em;
     color: var(--text-color);
@@ -405,70 +368,81 @@ th, td {
 th {
     background-color: var(--table-header-bg);
     color: var(--table-header-text);
-    cursor: pointer; /* Indicate sortable columns */
-    position: relative; /* For sort arrow positioning */
-    user-select: none; /* Prevent text selection */
+    cursor: pointer;
+    position: relative;
+    user-select: none;
 }
 
 th:hover {
     background-color: color-mix(in srgb, var(--table-header-bg) 85%, var(--text-color) 15%);
 }
 
-/* Sort arrow styling */
+/* NEW: Checkbox column styling */
+th.checkbox-column, td.checkbox-column {
+    width: 40px; /* Fixed width for checkbox column */
+    padding: 0.4em;
+    text-align: center;
+    cursor: default; /* No sort cursor */
+}
+th.checkbox-column:hover {
+    background-color: var(--table-header-bg); /* Prevent hover effect */
+}
+th.checkbox-column input,
+td.checkbox-column input {
+    cursor: pointer;
+    vertical-align: middle; /* Align checkbox vertically */
+}
+
+
 th .sort-arrow {
     font-size: 0.8em;
     margin-left: 5px;
     display: inline-block;
-    opacity: 0.5; /* Dim arrow when not sorted */
-    min-width: 1em; /* Ensure space for arrow */
+    opacity: 0.5;
+    min-width: 1em;
     text-align: left;
 }
 
-th.sorted .sort-arrow {
-    opacity: 1; /* Full opacity when sorted */
-}
+th.sorted .sort-arrow { opacity: 1; }
 
-/* Specific cell alignment */
-td:nth-child(1), td:nth-child(2) { text-align: left; } /* CUSIP, Description */
-td:nth-child(3), td:nth-child(4), td:nth-child(5), td:nth-child(6), td:nth-child(7) { text-align: right; } /* Numeric columns */
-td:nth-child(8), td:nth-child(9), td:nth-child(10) { text-align: center; } /* Date/Year columns */
+/* Specific cell alignment (adjusting for checkbox column) */
+td:nth-child(2), td:nth-child(3) { text-align: left; } /* CUSIP, Description */
+td:nth-child(4), td:nth-child(5), td:nth-child(6), td:nth-child(7), td:nth-child(8) { text-align: right; } /* Numeric columns */
+td:nth-child(9), td:nth-child(10), td:nth-child(11) { text-align: center; } /* Date/Year columns */
 
-/* Table body row styling */
 tbody tr:nth-child(odd) {
-    background-color: var(--table-odd-row-bg); /* Zebra striping */
+    background-color: var(--table-odd-row-bg);
 }
 tbody tr:hover {
-    background-color: var(--table-hover-bg); /* Hover effect */
+    background-color: var(--table-hover-bg);
 }
 
-/* Table footer styling */
 tfoot {
     font-weight: bold;
     background-color: var(--table-header-bg);
 }
 tfoot td {
-    text-align: right; /* Align totals to the right */
+    text-align: right;
     color: var(--text-color);
 }
-tfoot td:nth-child(1) {
-    text-align: left; /* Align "Totals" label to the left */
+tfoot td:nth-child(1) { /* First cell in footer (colspan) */
+    text-align: left;
 }
 
 /* Charts grid layout */
 .charts-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr)); /* Two equal columns */
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 1.5em;
-    align-items: start; /* Align items to the top */
+    align-items: start;
     margin-bottom: 2em;
     padding: 0;
     box-sizing: border-box;
 }
 
-/* Individual chart container */
 .chart-container {
     width: 100%;
-    height: 350px; /* Fixed height for charts */
+    height: 350px;
     background-color: var(--container-bg);
     padding: 1em;
     border-radius: 8px;
@@ -480,6 +454,52 @@ body.dark-mode .chart-container {
     box-shadow: 0 2px 4px rgba(255,255,255,0.05);
 }
 
+/* --- NEW: Email Action Container --- */
+.email-action-container {
+    display: flex;
+    align-items: center;
+    gap: 1em;
+    margin-top: 0; /* Removed top margin, placed directly after table container */
+    margin-bottom: 2em;
+    padding: 1em;
+    background-color: var(--container-bg);
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    box-sizing: border-box;
+}
+
+body.dark-mode .email-action-container {
+    box-shadow: 0 1px 3px rgba(255,255,255,0.05);
+}
+
+#email-interest-btn {
+    /* Uses .control-action-btn and .btn-success for base styles */
+    flex-shrink: 0; /* Prevent button shrinking */
+}
+
+/* NEW: Status Message Styling */
+.status-message {
+    padding: 0.5em 1em;
+    border-radius: 6px;
+    font-size: 0.9em;
+    display: none; /* Hidden by default */
+    flex-grow: 1; /* Allow message to take remaining space */
+    text-align: center;
+}
+
+.status-message.success {
+    background-color: color-mix(in srgb, var(--status-success-color) 20%, transparent);
+    color: var(--status-success-color);
+    border: 1px solid color-mix(in srgb, var(--status-success-color) 50%, transparent);
+}
+
+.status-message.error {
+    background-color: color-mix(in srgb, var(--status-error-color) 20%, transparent);
+    color: var(--status-error-color);
+    border: 1px solid color-mix(in srgb, var(--status-error-color) 50%, transparent);
+}
+
+
 /* --- Modal Styles --- */
 .modal-overlay {
     position: fixed;
@@ -488,10 +508,10 @@ body.dark-mode .chart-container {
     width: 100%;
     height: 100%;
     background-color: var(--modal-overlay-bg);
-    display: none; /* Hidden by default */
+    display: none;
     align-items: center;
     justify-content: center;
-    z-index: 2000; /* Ensure modal is on top */
+    z-index: 2000;
 }
 
 .modal-content {
@@ -499,8 +519,8 @@ body.dark-mode .chart-container {
     padding: 2em;
     border-radius: 8px;
     box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-    width: 90%; /* Responsive width */
-    max-width: 500px; /* Max width */
+    width: 90%;
+    max-width: 500px;
     border: 1px solid var(--modal-border-color);
     color: var(--modal-text-color);
 }
@@ -524,7 +544,7 @@ body.dark-mode .chart-container {
     cursor: pointer;
     color: var(--text-color);
     padding: 0;
-    line-height: 1; /* Adjust line height for better alignment */
+    line-height: 1;
 }
 
 .modal-body {
@@ -536,26 +556,27 @@ body.dark-mode .chart-container {
 }
 
 .modal-body label {
-    display: block; /* Ensure label is on its own line */
+    display: block;
     margin-bottom: 0.5em;
     font-weight: bold;
+    text-align: left; /* Ensure modal labels are left-aligned */
 }
 
 .modal-body input[type="text"],
 .modal-body select {
-    width: 100%; /* Make inputs/selects full width */
+    width: 100%;
     padding: 0.6em 0.8em;
     border-radius: 6px;
     border: 1px solid var(--input-border-color);
     background-color: var(--input-bg-color);
     color: var(--text-color);
     box-sizing: border-box;
-    height: 38px; /* Consistent height */
+    height: 38px;
 }
 
 .modal-footer {
     display: flex;
-    justify-content: flex-end; /* Align buttons to the right */
+    justify-content: flex-end;
     gap: 0.8em;
 }
 
@@ -568,135 +589,70 @@ body.dark-mode .chart-container {
     transition: background-color 0.2s ease;
 }
 
-.modal-footer .btn-primary {
-    background-color: var(--button-primary-bg);
-    color: var(--button-primary-text);
-}
+.modal-footer .btn-primary { background-color: var(--button-primary-bg); color: var(--button-primary-text); }
+.modal-footer .btn-primary:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-primary-bg) 80%, black); }
 
-.modal-footer .btn-primary:hover:not(:disabled) {
-    background-color: color-mix(in srgb, var(--button-primary-bg) 80%, black);
-}
+.modal-footer .btn-secondary { background-color: var(--button-secondary-bg); color: var(--button-secondary-text); }
+.modal-footer .btn-secondary:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-secondary-bg) 80%, black); }
 
-.modal-footer .btn-secondary {
-    background-color: var(--button-secondary-bg);
-    color: var(--button-secondary-text);
-}
-
-.modal-footer .btn-secondary:hover:not(:disabled) {
-    background-color: color-mix(in srgb, var(--button-secondary-bg) 80%, black);
-}
-
-/* Modal error message styling */
 .modal-error-message {
     color: var(--modal-error-color);
     font-size: 0.9em;
     margin-top: 1em;
     text-align: center;
-    display: none; /* Hidden by default */
+    display: none;
 }
 
-/* Class to show the modal */
-.modal-overlay.visible {
-    display: flex;
-}
-
-/* Utility class to hide elements */
-.hidden {
-    display: none !important; /* Use !important to override potential conflicts */
-}
+.modal-overlay.visible { display: flex; }
+.hidden { display: none !important; }
 
 
 /* --- Responsive adjustments --- */
 @media (max-width: 1650px) {
-    .container {
-        max-width: 95%; /* Slightly reduce max-width on smaller desktops */
-    }
+    .container { max-width: 95%; }
 }
 
 @media (max-width: 992px) {
-    /* Tablet styles */
     .filter-row, .control-row {
-        flex-direction: column; /* Stack filter elements vertically */
-        align-items: stretch; /* Stretch elements to full width */
+        flex-direction: column;
+        align-items: stretch;
     }
     .filter-row select,
     .filter-row input,
     .control-row select,
-    .control-row button, /* Stack delete button */
+    .control-row button,
     button.remove-filter-btn {
-        width: 100%; /* Make inputs/buttons full width */
-        flex-basis: auto; /* Reset flex-basis */
-        margin-left: 0; /* Remove margin for delete button */
+        width: 100%;
+        flex-basis: auto;
+        margin-left: 0;
     }
     .filter-row label:first-child, .control-row label {
-        text-align: left; /* Align label left */
+        text-align: left;
         margin-bottom: 0.2em;
-        flex-basis: auto; /* Reset label basis */
+        flex-basis: auto;
     }
-    #delete-portfolio-btn {
-        margin-top: 0.5em; /* Add space above delete button when stacked */
-    }
-    header.app-header {
-        padding: 0 1em; /* Reduce header padding */
-    }
-    .container {
-        padding: 1.5em 1em; /* Reduce container padding */
-        max-width: 100%; /* Allow container to be full width */
-    }
-    .charts-grid {
-        grid-template-columns: 1fr; /* Stack charts vertically */
-    }
+    #delete-portfolio-btn { margin-top: 0.5em; }
+    header.app-header { padding: 0 1em; }
+    .container { padding: 1.5em 1em; max-width: 100%; }
+    .charts-grid { grid-template-columns: 1fr; }
+    .email-action-container { flex-direction: column; align-items: stretch; } /* Stack email button/message */
 }
 
 @media (max-width: 768px) {
-    /* Mobile styles */
-    body {
-        padding-top: calc(var(--header-height) + 0.5em); /* Increase padding top for smaller header */
-    }
-    header.app-header {
-        padding: 0 0.5em; /* Further reduce header padding */
-    }
-    header.app-header .header-right {
-        gap: 0.5em; /* Reduce gap between header buttons */
-    }
-    header.app-header h1 {
-        font-size: 1.2em; /* Reduce header title size */
-    }
-    header.app-header button {
-        padding: 0.4em 0.6em; /* Reduce header button padding */
-        font-size: 0.8em; /* Reduce header button font size */
-    }
-    .controls {
-        gap: 1em; /* Adjust gap in controls */
-    }
-    .control-row { /* Apply stacking to portfolio row too */
-        flex-direction: column;
-        align-items: stretch;
-    }
-    select, input, button.filter-action-btn, button.control-action-btn {
-        width: 100%; /* Make selects/inputs/buttons full width */
-        max-width: none;
-    }
-    th, td {
-        font-size: 0.9em; /* Reduce table font size */
-        padding: 0.5em 0.6em; /* Reduce table cell padding */
-    }
-    .chart-container {
-        height: 300px; /* Reduce chart height */
-    }
-    .modal-content {
-        width: 95%; /* Adjust modal width */
-        padding: 1.5em; /* Reduce modal padding */
-    }
+    body { padding-top: calc(var(--header-height) + 0.5em); }
+    header.app-header { padding: 0 0.5em; }
+    header.app-header .header-right { gap: 0.5em; }
+    header.app-header h1 { font-size: 1.2em; }
+    header.app-header button { padding: 0.4em 0.6em; font-size: 0.8em; }
+    .controls { gap: 1em; }
+    .control-row { flex-direction: column; align-items: stretch; }
+    select, input, button.filter-action-btn, button.control-action-btn { width: 100%; max-width: none; }
+    th, td { font-size: 0.9em; padding: 0.5em 0.6em; }
+    .chart-container { height: 300px; }
+    .modal-content { width: 95%; padding: 1.5em; }
 }
 
 @media (max-width: 480px) {
-    /* Smaller mobile styles */
-    header.app-header h1 {
-        font-size: 1.0em; /* Further reduce header title size */
-    }
-    th, td {
-        font-size: 0.85em; /* Further reduce table font size */
-        padding: 0.4em 0.5em; /* Further reduce table cell padding */
-    }
+    header.app-header h1 { font-size: 1.0em; }
+    th, td { font-size: 0.85em; padding: 0.4em 0.5em; }
 }

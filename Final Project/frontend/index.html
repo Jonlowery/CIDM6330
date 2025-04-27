@@ -53,6 +53,7 @@
         <table id="holdings-table">
             <thead>
                 <tr>
+                    <th class="checkbox-column"><input type="checkbox" id="select-all-holdings" title="Select/Deselect All Visible"></th>
                     <th data-key="security_cusip" data-type="string">CUSIP<span class="sort-arrow"></span></th>
                     <th data-key="description" data-type="string">Description<span class="sort-arrow"></span></th>
                     <th data-key="par" data-type="number">Par<span class="sort-arrow"></span></th>
@@ -68,17 +69,22 @@
             <tbody></tbody>
             <tfoot>
                 <tr>
-                    <td colspan="2">Totals</td>
+                    <td colspan="3">Totals</td>
                     <td id="totals-par">0</td>
                     <td></td> <td></td> <td id="totals-yield">0</td>
                     <td id="totals-wal">0</td>
-                    <td colspan="3"></td> </tr>
+                    <td colspan="3"></td>
+                </tr>
             </tfoot>
         </table>
     </div>
-</div>
 
-<div id="create-portfolio-modal" class="modal-overlay">
+    <div class="email-action-container">
+        <button id="email-interest-btn" class="control-action-btn btn-success" disabled>Sell Bonds</button>
+        <div id="email-status-message" class="status-message"></div>
+    </div>
+
+</div> <div id="create-portfolio-modal" class="modal-overlay">
     <div class="modal-content">
         <div class="modal-header">
             <h3>Save View as New Portfolio</h3>
@@ -108,7 +114,6 @@
 
 <script>
     // Make the admin status available globally in JS
-    // Safer way to assign boolean from Django template tag
     const IS_ADMIN_USER = {% if is_admin %}true{% else %}false{% endif %};
     console.log("User admin status (from HTML):", IS_ADMIN_USER); // Debug log
 </script>

@@ -1,4 +1,4 @@
-# api/portfolio/views.py (Added Portfolio Deletion Logic)
+# api/portfolio/views.py (Added EmailSalespersonInterestView)
 
 import os
 import logging
@@ -15,15 +15,17 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.generics import GenericAPIView
+from rest_framework.views import APIView # Import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 from rest_framework import serializers # For raising validation errors
 
-# Import Celery tasks for the import view
+# Import Celery tasks for the import view AND the new email task
 from .tasks import (
     import_securities_from_excel,
     import_customers_from_excel,
     import_holdings_from_excel,
+    send_salesperson_interest_email, # <-- Import the new task
 )
 # Import models and serializers
 from .models import Customer, Security, Portfolio, CustomerHolding
@@ -33,6 +35,7 @@ from .serializers import (
     SecuritySerializer,
     PortfolioSerializer,
     CustomerHoldingSerializer,
+    SalespersonInterestSerializer, # <-- Import the new serializer
 )
 
 # Setup logging
@@ -84,6 +87,8 @@ class SecurityViewSet(viewsets.ModelViewSet):
     queryset = Security.objects.all() # All securities are available
     serializer_class = SecuritySerializer
     permission_classes = [permissions.IsAuthenticated] # Must be logged in
+    filter_backends = [DjangoFilterBackend] # Enable filtering
+    filterset_fields = ['cusip'] # Allow filtering by CUSIP
 
 class PortfolioViewSet(viewsets.ModelViewSet):
     """
@@ -125,46 +130,35 @@ class PortfolioViewSet(viewsets.ModelViewSet):
         into the newly created portfolio.
         """
         user = self.request.user
-        customer_to_assign = None
-        # Get validated data before saving, as save() triggers create() which pops fields
-        validated_data = serializer.validated_data
-        initial_holding_ids = validated_data.get('initial_holding_ids') # Get validated IDs
+        # Get the owner instance determined during validation (either from context or data)
+        # The serializer's create method now handles setting the owner correctly.
+        # We just need to handle the holding copy logic here.
+        owner = serializer.validated_data.get('owner') # Get owner set by serializer.create
+        if not owner:
+            # Fallback check, though serializer should guarantee owner exists here
+             owner_from_context = self.get_serializer_context().get('_intended_owner')
+             if owner_from_context:
+                 owner = owner_from_context
+             else:
+                 log.error(f"Portfolio perform_create: Could not determine owner for user {user.username}.")
+                 # Use a more specific error if possible
+                 raise serializers.ValidationError("Failed to determine the portfolio owner during creation.")
 
-        # --- Determine Owner (logic remains same as previous update) ---
-        is_admin = user.is_staff or user.is_superuser
-        if is_admin:
-            customer_number = validated_data.get('customer_number_input')
+
+        # Get validated initial holding IDs from the original request data
+        # Accessing request.data directly here is generally discouraged,
+        # it's better if the serializer keeps validated data accessible.
+        # Let's assume the serializer's validated_data still holds it,
+        # or re-validate if necessary. For simplicity, access from initial request context if needed.
+        initial_holding_ids = self.get_serializer_context().get('request').data.get('initial_holding_ids', [])
+        # Ensure initial_holding_ids are integers if they exist
+        if initial_holding_ids:
             try:
-                customer_to_assign = Customer.objects.get(customer_number=customer_number)
-                log.info(f"Admin {user.username} creating portfolio '{validated_data.get('name')}' for customer {customer_number}")
-            except ObjectDoesNotExist:
-                 log.error(f"CRITICAL: Admin {user.username} - Customer {customer_number} passed validation but not found in perform_create.")
-                 raise serializers.ValidationError({"internal_error": "Failed to find validated customer."})
-        else: # Regular user
-            user_customers = user.customers.all()
-            customer_count = user_customers.count()
-            if customer_count == 0:
-                log.warning(f"User {user.username} attempted portfolio creation with no associated customers.")
-                raise PermissionDenied("You are not associated with any customer and cannot create portfolios.")
-            elif customer_count == 1:
-                customer_to_assign = user_customers.first()
-                log.info(f"User {user.username} creating portfolio '{validated_data.get('name')}' for single associated customer {customer_to_assign.customer_number}")
-            else: # Multi-customer user
-                owner_instance = validated_data.get('owner') # Get owner instance set by owner_customer_id
-                if owner_instance is None:
-                    log.error(f"User {user.username} with multiple customers - 'owner' instance missing in validated_data.")
-                    raise serializers.ValidationError({"owner_customer_id": "Validated owner information is missing."})
-                # Ensure the owner is one the user is associated with (redundant check if validation is robust)
-                if owner_instance in user_customers:
-                     customer_to_assign = owner_instance
-                     log.info(f"User {user.username} creating portfolio '{validated_data.get('name')}' for specified customer ID {customer_to_assign.id}")
-                else:
-                     log.error(f"User {user.username} - Validated owner ID {owner_instance.id} is not in user's associated customers.")
-                     raise PermissionDenied("Invalid customer specified for portfolio ownership.")
+                initial_holding_ids = [int(id_val) for id_val in initial_holding_ids]
+            except (ValueError, TypeError):
+                 log.warning(f"Invalid format for initial_holding_ids provided by user {user.username}. Expected list of integers.")
+                 initial_holding_ids = [] # Reset to empty list if format is wrong
 
-        if not customer_to_assign:
-             log.error(f"Portfolio creation failed for user {user.username}: Could not determine owner in perform_create.")
-             raise serializers.ValidationError("Failed to determine the portfolio owner during creation.")
 
         # --- Create Portfolio and Copy Holdings (if applicable) ---
         new_portfolio = None
@@ -172,18 +166,19 @@ class PortfolioViewSet(viewsets.ModelViewSet):
         try:
             # Use a database transaction to ensure atomicity
             with transaction.atomic():
-                # 1. Save the new portfolio instance
-                new_portfolio = serializer.save(owner=customer_to_assign)
-                log.info(f"Portfolio '{new_portfolio.name}' (ID: {new_portfolio.id}) created for owner {customer_to_assign.customer_number}.")
+                # 1. Save the new portfolio instance using the serializer
+                # The serializer's create method handles owner assignment now.
+                new_portfolio = serializer.save() # owner is set within serializer.save() -> serializer.create()
+                log.info(f"Portfolio '{new_portfolio.name}' (ID: {new_portfolio.id}) created for owner {new_portfolio.owner.customer_number}.")
 
-                # 2. Copy initial holdings if IDs were provided
+                # 2. Copy initial holdings if IDs were provided and validated
                 if initial_holding_ids:
                     log.info(f"Copying {len(initial_holding_ids)} initial holdings into new portfolio {new_portfolio.id}...")
-                    # Fetch original holdings (already validated in serializer to belong to owner)
+                    # Fetch original holdings (validation ensures they belong to the owner)
                     holdings_to_copy = CustomerHolding.objects.filter(
                         id__in=initial_holding_ids,
-                        portfolio__owner=customer_to_assign # Redundant check for safety
-                    ).select_related('security')
+                        portfolio__owner=owner # Ensure owner matches
+                    ).select_related('security') # select_related for efficiency
 
                     new_holdings_to_create = []
                     for original_holding in holdings_to_copy:
@@ -191,20 +186,21 @@ class PortfolioViewSet(viewsets.ModelViewSet):
                         new_holding = CustomerHolding(
                             portfolio=new_portfolio, # Link to NEW portfolio
                             security=original_holding.security, # Link to SAME security
-                            customer=customer_to_assign, # Set customer based on new portfolio owner
-                            customer_number=customer_to_assign.customer_number,
+                            # customer=owner, # Removed redundant FK
+                            # customer_number=owner.customer_number, # Removed redundant field
                             # Copy other relevant fields
                             original_face_amount=original_holding.original_face_amount,
                             settlement_date=original_holding.settlement_date,
                             settlement_price=original_holding.settlement_price,
                             book_price=original_holding.book_price,
                             book_yield=original_holding.book_yield,
-                            # Copy potentially cached fields from original holding (or its security)
-                            wal=original_holding.wal,
-                            coupon=original_holding.coupon,
-                            call_date=original_holding.call_date,
-                            maturity_date=original_holding.maturity_date,
-                            description=original_holding.description,
+                            # Copy potentially cached fields from original holding (or its security)?
+                            # It's better to rely on the related Security object for these.
+                            # wal=original_holding.wal,
+                            # coupon=original_holding.coupon,
+                            # call_date=original_holding.call_date,
+                            # maturity_date=original_holding.maturity_date,
+                            # description=original_holding.description,
                         )
                         new_holdings_to_create.append(new_holding)
 
@@ -214,13 +210,16 @@ class PortfolioViewSet(viewsets.ModelViewSet):
                         copied_holdings_count = len(created_list)
                         log.info(f"Successfully copied {copied_holdings_count} holdings into portfolio {new_portfolio.id}.")
                     else:
-                         log.info(f"No valid holdings found to copy for portfolio {new_portfolio.id}.")
+                         log.info(f"No valid holdings found to copy for portfolio {new_portfolio.id} based on provided IDs: {initial_holding_ids}.")
 
         except Exception as e:
+            # If portfolio creation succeeded but holding copy failed, the transaction should roll back.
             log.error(f"Error during portfolio creation or holding copy for user {user.username}: {e}", exc_info=True)
+            # Raise DRF validation error to provide feedback to the user
             raise serializers.ValidationError("An error occurred while creating the portfolio or copying holdings.") from e
 
-    # --- ADDED perform_destroy method ---
+
+    # --- perform_destroy method ---
     def perform_destroy(self, instance):
         """
         Custom logic executed before deleting a Portfolio instance.
@@ -240,9 +239,10 @@ class PortfolioViewSet(viewsets.ModelViewSet):
         if instance.is_default:
             log.warning(f"User {user.username} denied deleting default portfolio '{instance.name}' (ID: {instance.id}).")
             # Use PermissionDenied for authorization failure
-            raise PermissionDenied("Cannot delete the default 'Primary Holdings' portfolio.")
-            # Alternatively, use ValidationError for a potentially friendlier message
-            # raise serializers.ValidationError("Cannot delete the default 'Primary Holdings' portfolio.")
+            # raise PermissionDenied("Cannot delete the default 'Primary Holdings' portfolio.")
+            # Use ValidationError for a potentially friendlier message in the UI
+            raise serializers.ValidationError({"detail": "Cannot delete the default 'Primary Holdings' portfolio."})
+
 
         # 3. Proceed with Deletion if checks pass
         log.info(f"Proceeding with deletion of portfolio '{instance.name}' (ID: {instance.id}) by user {user.username}.")
@@ -312,6 +312,7 @@ class CustomerHoldingViewSet(viewsets.ModelViewSet):
     # Enable filtering using django-filter backend
     filter_backends = [DjangoFilterBackend]
     # Define fields available for filtering via query parameters (e.g., /api/holdings/?portfolio=1)
+    # Filter by portfolio ID or by the portfolio's owner ID
     filterset_fields = ['portfolio', 'portfolio__owner']
     permission_classes = [permissions.IsAuthenticated] # Must be logged in
 
@@ -324,7 +325,7 @@ class CustomerHoldingViewSet(viewsets.ModelViewSet):
         user = self.request.user
         # Optimize query by prefetching related objects needed by the serializer
         base_queryset = CustomerHolding.objects.select_related(
-            'portfolio', 'security', 'customer', 'portfolio__owner'
+            'portfolio__owner', 'security' # Fetch owner via portfolio, and security
         )
         if user.is_staff or user.is_superuser:
             # Admins get all holdings
@@ -335,8 +336,7 @@ class CustomerHoldingViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """
         Custom logic executed when creating a CustomerHolding instance.
-        Validates that the user has permission to add to the selected portfolio
-        and automatically sets the redundant 'customer' and 'customer_number' fields.
+        Validates that the user has permission to add to the selected portfolio.
         """
         user = self.request.user
         # Get the Portfolio instance from the validated data (set via portfolio PK in request)
@@ -354,13 +354,9 @@ class CustomerHoldingViewSet(viewsets.ModelViewSet):
                  # Raise PermissionDenied for unauthorized access attempt
                  raise PermissionDenied("You do not have permission to add holdings to this portfolio.")
 
-        # --- Auto-set Customer Fields ---
-        # Set the redundant 'customer' foreign key and 'customer_number' field
-        # based on the owner of the portfolio where the holding is being added.
-        serializer.save(
-            customer=portfolio.owner,
-            customer_number=portfolio.owner.customer_number
-        )
+        # --- Save the holding ---
+        # No need to set customer/customer_number as they are removed from the model
+        serializer.save()
         log.info(f"User {user.username} created holding for security {serializer.instance.security.cusip} in portfolio {portfolio.id}")
 
 
@@ -387,12 +383,16 @@ class ImportExcelView(GenericAPIView):
 
         # --- Determine which import task to run based on filename ---
         task_to_run = None
+        task_name = "Unknown"
         if original_filename.startswith('securities') and original_filename.endswith('.xlsx'):
             task_to_run = import_securities_from_excel
+            task_name = "Securities Import"
         elif original_filename.startswith('customers') and original_filename.endswith('.xlsx'):
             task_to_run = import_customers_from_excel
+            task_name = "Customers Import"
         elif original_filename.startswith('holdings') and original_filename.endswith('.xlsx'):
             task_to_run = import_holdings_from_excel
+            task_name = "Holdings Import"
         else:
             # File doesn't match expected naming convention
             log.warning(f"Admin {request.user.username} uploaded file '{file_obj.name}' which does not match expected naming convention.")
@@ -410,7 +410,7 @@ class ImportExcelView(GenericAPIView):
              log.error(f"Error creating upload directory '{imports_dir}': {e}", exc_info=True)
              return Response({'error': 'Server configuration error: Cannot create upload directory.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # Generate a unique filename
+        # Generate a unique filename to avoid conflicts
         file_extension = os.path.splitext(file_obj.name)[1]
         unique_filename = f"{uuid.uuid4()}{file_extension}"
         file_path = imports_dir / unique_filename
@@ -438,7 +438,7 @@ class ImportExcelView(GenericAPIView):
 
             # Return a success response
             return Response({
-                'message': f'File "{file_obj.name}" uploaded successfully. Import task "{task_to_run.__name__}" started.',
+                'message': f'File "{file_obj.name}" uploaded successfully. {task_name} task ({task_result.id}) started.',
                 'task_id': task_result.id # Provide task ID for status tracking
             }, status=status.HTTP_202_ACCEPTED) # 202 Accepted
         except Exception as e:
@@ -453,3 +453,70 @@ class ImportExcelView(GenericAPIView):
             # Return an error response
             return Response({'error': f'File saved, but failed to trigger processing task: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+# --- NEW VIEW for Emailing Salesperson ---
+
+class EmailSalespersonInterestView(APIView):
+    """
+    API endpoint for users to notify a customer's salesperson about
+    their interest in selling selected bonds.
+    """
+    permission_classes = [permissions.IsAuthenticated] # Must be logged in
+
+    def post(self, request, *args, **kwargs):
+        """ Handles the POST request to send the interest email. """
+        serializer = SalespersonInterestSerializer(data=request.data)
+
+        # 1. Validate Input Data
+        if not serializer.is_valid():
+            log.warning(f"Invalid data received for email salesperson interest from user {request.user.username}. Errors: {serializer.errors}")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        validated_data = serializer.validated_data
+        customer_id = validated_data['customer_id']
+        selected_bonds = validated_data['selected_bonds']
+
+        # 2. Retrieve Customer
+        try:
+            customer = Customer.objects.get(id=customer_id)
+        except Customer.DoesNotExist:
+            log.warning(f"User {request.user.username} requested email for non-existent customer ID: {customer_id}")
+            # Return 404 Not Found if customer doesn't exist
+            return Response({"error": f"Customer with ID {customer_id} not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # 3. Verify User Permission
+        user = request.user
+        is_admin = user.is_staff or user.is_superuser
+        # Check if user is admin OR is associated with this specific customer
+        if not (is_admin or user.customers.filter(id=customer.id).exists()):
+            log.warning(f"User {user.username} permission denied trying to email salesperson for customer ID: {customer_id}")
+            # Return 403 Forbidden if user is not authorized for this customer
+            return Response({"error": "You do not have permission to perform this action for this customer."}, status=status.HTTP_403_FORBIDDEN)
+
+        # 4. Check for Salesperson Email
+        salesperson_email = customer.salesperson_email
+        if not salesperson_email:
+            log.warning(f"Attempted to email salesperson for customer {customer.customer_number} ({customer_id}), but no salesperson email is configured.")
+            # Return 400 Bad Request if email is missing
+            return Response({"error": "Salesperson email is not configured for this customer."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 5. Trigger Asynchronous Email Task
+        try:
+            task_signature = send_salesperson_interest_email.s(
+                salesperson_email=salesperson_email,
+                salesperson_name=customer.salesperson_name or '', # Pass name or empty string
+                customer_name=customer.name or '', # Pass name or empty string
+                customer_number=customer.customer_number or 'N/A', # Pass number or N/A
+                selected_bonds=selected_bonds
+            )
+            task_result = task_signature.delay()
+            log.info(f"User {user.username} triggered salesperson interest email task {task_result.id} for customer {customer.customer_number} to {salesperson_email}")
+
+            # Return 200 OK immediately, email is sent in background
+            return Response({"message": "Email task queued successfully. The salesperson will be notified."}, status=status.HTTP_200_OK) # Changed to 200 OK as per requirement
+
+        except Exception as e:
+            # Handle errors during task queuing (e.g., Celery broker down)
+            log.error(f"Error triggering Celery task 'send_salesperson_interest_email' for customer {customer.customer_number}: {e}", exc_info=True)
+            # Return 500 Internal Server Error if task queuing fails
+            return Response({"error": "Failed to queue email task. Please try again later."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -30,24 +30,26 @@ let activeFilters = []; // Array to store active filter objects
 let nextFilterId = 0; // Counter for generating unique filter IDs
 let availableCustomers = []; // Stores the full customer list fetched for the admin modal dropdown
 let selectedCustomerId = null; // Store the currently selected customer ID
+let selectedHoldingIds = new Set(); // NEW: Set to store IDs of selected holdings for email action
 
 // --- DOM Element References ---
 // Using const for elements that are expected to always exist
-const customerSelect = document.getElementById('customer-select'); // Renamed from portfolioSelect for clarity
-const portfolioFilterContainer = document.getElementById('portfolio-filter-container'); // New container for portfolio dropdown
-const portfolioFilterSelect = document.getElementById('portfolio-filter-select'); // New portfolio dropdown
-const deletePortfolioBtn = document.getElementById('delete-portfolio-btn'); // New delete button
-const portfolioNameEl = document.getElementById('portfolio-name'); // Displays the selected customer/portfolio name
+const customerSelect = document.getElementById('customer-select');
+const portfolioFilterContainer = document.getElementById('portfolio-filter-container');
+const portfolioFilterSelect = document.getElementById('portfolio-filter-select');
+const deletePortfolioBtn = document.getElementById('delete-portfolio-btn');
+const portfolioNameEl = document.getElementById('portfolio-name');
 const tableBody = document.querySelector('#holdings-table tbody');
 const tableHeaders = document.querySelectorAll('#holdings-table th[data-key]'); // Select only sortable headers
 const tableElement = document.getElementById('holdings-table');
+const selectAllCheckbox = document.getElementById('select-all-holdings'); // NEW: Select All Checkbox
 const filtersContainer = document.getElementById('filters-container');
 const addFilterBtn = document.getElementById('add-filter-btn');
 const clearAllFiltersBtn = document.getElementById('clear-all-filters-btn');
 const darkModeToggle = document.getElementById('dark-mode-toggle');
 const exportPdfBtn = document.getElementById('export-pdf-btn');
 // Modal Elements
-const createPortfolioBtn = document.getElementById('create-portfolio-btn'); // Consider renaming this button's text in HTML
+const createPortfolioBtn = document.getElementById('create-portfolio-btn');
 const createPortfolioModal = document.getElementById('create-portfolio-modal');
 const createPortfolioForm = document.getElementById('create-portfolio-form');
 const modalCloseBtn = document.getElementById('modal-close-btn');
@@ -56,6 +58,9 @@ const newPortfolioNameInput = document.getElementById('new-portfolio-name');
 const adminCustomerSelectGroup = document.getElementById('admin-customer-select-group');
 const adminCustomerSelect = document.getElementById('admin-customer-select');
 const modalErrorMessage = document.getElementById('modal-error-message');
+// NEW: Email Action Elements
+const emailInterestBtn = document.getElementById('email-interest-btn');
+const emailStatusMessage = document.getElementById('email-status-message');
 
 
 // --- Utility Functions ---
@@ -121,6 +126,35 @@ function generateDistinctColors(count) {
     return colors;
 }
 
+/**
+ * Displays a status message (success or error) in the email status area.
+ * @param {string} message - The message text to display.
+ * @param {boolean} isError - True if the message is an error, false for success.
+ * @param {number} duration - How long to display the message in milliseconds (0 = permanent).
+ */
+function showStatusMessage(message, isError = false, duration = 5000) {
+    if (!emailStatusMessage) return; // Exit if element doesn't exist
+
+    emailStatusMessage.textContent = message;
+    emailStatusMessage.className = 'status-message'; // Reset classes
+    if (isError) {
+        emailStatusMessage.classList.add('error');
+    } else {
+        emailStatusMessage.classList.add('success');
+    }
+    emailStatusMessage.style.display = 'block'; // Make it visible
+
+    // Clear message after duration (if duration > 0)
+    if (duration > 0) {
+        setTimeout(() => {
+            if (emailStatusMessage.textContent === message) { // Only clear if it's the same message
+                emailStatusMessage.textContent = '';
+                emailStatusMessage.style.display = 'none';
+            }
+        }, duration);
+    }
+}
+
 // --- Filter Functions ---
 
 /**
@@ -156,7 +190,7 @@ function addFilterRow(initialFilter = null) {
         <select class="filter-column" id="filter-column-${filterId}">${columnOptionsHtml}</select>
         <select class="filter-operator" id="filter-operator-${filterId}"></select>
         <input type="text" class="filter-value" id="filter-value-${filterId}" placeholder="Value...">
-        <button class="remove-filter-btn" title="Remove this filter">X</button>
+        <button class="remove-filter-btn btn-danger" title="Remove this filter">X</button>
     `;
 
     filtersContainer.appendChild(filterRow); // Add the row to the DOM
@@ -408,7 +442,7 @@ async function loadCustomers() {
             portfolioNameEl.textContent = "No customers available for this user.";
             clearTableAndCharts();
             portfolioFilterContainer.classList.add('hidden'); // Hide portfolio dropdown
-            const colSpan = tableHeaders.length || 10;
+            const colSpan = (tableHeaders.length || 10) + 1; // +1 for checkbox column
             tableBody.innerHTML = `<tr><td colspan="${colSpan}">No customers found.</td></tr>`;
         }
     } catch (error) {
@@ -416,7 +450,7 @@ async function loadCustomers() {
         portfolioNameEl.textContent = "Error loading customers";
         clearTableAndCharts();
         portfolioFilterContainer.classList.add('hidden'); // Hide portfolio dropdown
-        const colSpan = tableHeaders.length || 10;
+        const colSpan = (tableHeaders.length || 10) + 1; // +1 for checkbox column
         tableBody.innerHTML = `<tr><td colspan="${colSpan}">Error loading customer list. Check console.</td></tr>`;
     }
 }
@@ -428,6 +462,9 @@ async function loadCustomers() {
 async function handleCustomerSelection() {
     selectedCustomerId = customerSelect.value; // Get selected customer ID
     console.log(`Customer selected: ID ${selectedCustomerId}`);
+
+    // Clear selections when customer changes
+    clearHoldingSelection();
 
     if (!selectedCustomerId) {
         portfolioNameEl.textContent = "Please select a customer.";
@@ -504,7 +541,7 @@ async function loadPortfolios(customerId) {
             portfolioFilterContainer.classList.add('hidden'); // Hide dropdown
             deletePortfolioBtn.disabled = true; // Ensure delete is disabled
             clearTableAndCharts(); // Clear table/charts
-            const colSpan = tableHeaders.length || 10;
+            const colSpan = (tableHeaders.length || 10) + 1; // +1 for checkbox column
             tableBody.innerHTML = `<tr><td colspan="${colSpan}">No portfolios found for this customer.</td></tr>`;
         }
 
@@ -515,7 +552,7 @@ async function loadPortfolios(customerId) {
         portfolioFilterContainer.classList.add('hidden');
         deletePortfolioBtn.disabled = true; // Ensure delete is disabled
         clearTableAndCharts(); // Clear view on error
-        const colSpan = tableHeaders.length || 10;
+        const colSpan = (tableHeaders.length || 10) + 1; // +1 for checkbox column
         tableBody.innerHTML = `<tr><td colspan="${colSpan}">Error loading portfolio list. Check console.</td></tr>`;
     }
 }
@@ -533,6 +570,9 @@ async function handlePortfolioSelection() {
 
     console.log(`Portfolio selected: ID '${selectedPortfolioId}' (Default: ${isDefaultPortfolio}), Customer ID: ${selectedCustomerId}`);
 
+    // Clear selections when portfolio changes
+    clearHoldingSelection();
+
     // Enable delete button only if a specific, non-default portfolio is selected
     // Disable if no portfolio ID is selected (e.g., if the list was empty)
     deletePortfolioBtn.disabled = (!selectedPortfolioId || isDefaultPortfolio);
@@ -549,7 +589,7 @@ async function handlePortfolioSelection() {
         console.log("No specific portfolio selected.");
          portfolioNameEl.textContent = `${selectedCustomer.name || `Customer ${selectedCustomer.customer_number}`} - Select a Portfolio`;
          clearTableAndCharts();
-         const colSpan = tableHeaders.length || 10;
+         const colSpan = (tableHeaders.length || 10) + 1; // +1 for checkbox column
          tableBody.innerHTML = `<tr><td colspan="${colSpan}">Please select a portfolio.</td></tr>`;
          return;
     }
@@ -574,7 +614,7 @@ async function handlePortfolioSelection() {
             if (res.status === 404) { // Handle no holdings found
                 allHoldings = [];
                 portfolioNameEl.textContent = `${viewName} (No Holdings)`;
-                const colSpan = tableHeaders.length || 10;
+                const colSpan = (tableHeaders.length || 10) + 1; // +1 for checkbox column
                 tableBody.innerHTML = `<tr><td colspan="${colSpan}">No holdings found for this portfolio.</td></tr>`;
             } else { // Handle other errors
                 let errorText = `HTTP error! status: ${res.status}`;
@@ -598,7 +638,7 @@ async function handlePortfolioSelection() {
         portfolioNameEl.textContent = `Error loading holdings for ${viewName}`;
         allHoldings = []; // Reset holdings
         clearTableAndCharts();
-        const colSpan = tableHeaders.length || 10;
+        const colSpan = (tableHeaders.length || 10) + 1; // +1 for checkbox column
         tableBody.innerHTML = `<tr><td colspan="${colSpan}">Error loading holdings. Check console.</td></tr>`;
     }
 }
@@ -606,7 +646,7 @@ async function handlePortfolioSelection() {
 
 /**
  * Processes the raw holding data fetched from the API.
- * Calculates derived fields (e.g., estimated maturity year) and parses numbers/dates.
+ * Calculates derived fields (e.g., estimated maturity year, par) and parses numbers/dates.
  * Triggers a full UI update afterwards.
  */
 function processAndDisplayHoldings() {
@@ -618,14 +658,23 @@ function processAndDisplayHoldings() {
         h.estimated_maturity_date = !isNaN(wal) ? today.getFullYear() + Math.floor(wal) : null;
 
         // Ensure numeric fields are parsed correctly, defaulting to 0 if null/invalid
-        h.par = parseFloat(h.par) || 0;
+        h.original_face_amount = parseFloat(h.original_face_amount) || 0; // Ensure original face is parsed
         h.settlement_price = parseFloat(h.settlement_price) || 0;
         h.coupon = parseFloat(h.coupon) || 0;
         h.book_yield = parseFloat(h.book_yield) || 0;
 
+        // Get factor from security if available (ensure it's a number)
+        // The API serializer should provide this if 'security' is expanded or fetched separately
+        // For now, assume it might be present in the holding data if copied during creation, or use 1.0
+        h.security_factor = parseFloat(h.factor) || 1.0; // Assuming 'factor' comes from Security via serializer
+
+        // Calculate current par value (needed for display and email action)
+        // Note: The serializer also calculates 'par', but we need it here too for display consistency
+        // and potential use before filtering/sorting.
+        h.par_calculated = (h.original_face_amount * h.security_factor);
+
         // Determine the primary yield value to use (prefer book_yield if available)
-        // Ensure the field name 'yield' matches the API response if book_yield is null
-        h.yield_val = h.book_yield || parseFloat(h.yield) || 0;
+        h.yield_val = h.book_yield || parseFloat(h.yield) || 0; // API might send 'yield' if book_yield is null
         h.wal = parseFloat(h.wal) || 0; // Ensure WAL is also parsed as a number
 
         // Parse date strings into Date objects for easier manipulation/sorting
@@ -677,7 +726,12 @@ function checkFilter(holding, filter) {
                 default: return false; // Unknown operator
             }
         } else if (filter.type === 'number') {
-            compareHolding = parseFloat(holdingValue);
+            // Special handling for 'par' column - use calculated value
+            if (filter.column === 'par') {
+                compareHolding = parseFloat(holding.par_calculated);
+            } else {
+                compareHolding = parseFloat(holdingValue);
+            }
             compareFilter = parseFloat(filterValue);
             // If parsing fails, consider it a non-match
             if (isNaN(compareHolding) || isNaN(compareFilter)) return false;
@@ -750,7 +804,7 @@ function sortData(data, key, direction) {
 
 /**
  * Retrieves the appropriate value from a holding object for sorting/filtering.
- * Handles special cases like dates or calculated yield.
+ * Handles special cases like dates, calculated yield, or calculated par.
  * @param {object} holding - The holding object.
  * @param {string} key - The key representing the column/property.
  * @returns {*} The value to be used for comparison.
@@ -760,6 +814,7 @@ function getSortValue(holding, key) {
         case 'yield': return holding.yield_val; // Use the calculated yield value
         case 'maturity_date': return holding.maturity_date_obj; // Use the Date object
         case 'call_date': return holding.call_date_obj; // Use the Date object
+        case 'par': return holding.par_calculated; // Use the calculated par value
         default: return holding[key]; // Return the property directly
     }
 }
@@ -768,37 +823,61 @@ function getSortValue(holding, key) {
 
 /**
  * Renders the holdings data into the HTML table body.
+ * Includes checkboxes for selection.
  * @param {object[]} holdings - The array of holdings to render.
  */
 function renderTable(holdings) {
     console.log("Rendering table with holdings:", holdings.length);
-    const colSpan = tableHeaders.length || 10; // Calculate colspan for messages
+    const colSpan = (tableHeaders.length || 10) + 1; // +1 for checkbox column
+
+    // Clear previous selections when table re-renders (important!)
+    // Keep the selectedHoldingIds Set intact, but reset checkbox states based on it
+    // clearHoldingSelection(); // Don't clear the Set here, just the visual checks
 
     // Handle empty data state
     if (!holdings || holdings.length === 0) {
         const hasActiveFilters = activeFilters.some(f => f.value !== '');
-        // Adjust message based on whether a portfolio is selected
         const noDataMessage = portfolioFilterSelect.value ? 'No holdings match filter criteria.' : 'No holdings to display.';
         tableBody.innerHTML = `<tr><td colspan="${colSpan}">${noDataMessage}</td></tr>`;
+        // Ensure "Select All" is unchecked if table is empty
+        if (selectAllCheckbox) {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = false;
+        }
+        // Disable email button if table is empty
+        if (emailInterestBtn) {
+            emailInterestBtn.disabled = true;
+        }
         return;
     }
 
     // Generate table rows from holdings data
     tableBody.innerHTML = holdings.map(h => {
-        // Format dates for display
         const maturityDisplay = h.maturity_date_obj ? h.maturity_date_obj.toLocaleDateString() : (h.maturity_date || '');
         const callDisplay = h.call_date_obj ? h.call_date_obj.toLocaleDateString() : (h.call_date || '');
 
-        // Format numbers for display (using optional chaining and nullish coalescing for safety)
-        const parDisplay = (h.par ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        // Use calculated par for display, format it
+        const parDisplay = (h.par_calculated ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const priceDisplay = (h.settlement_price ?? 0).toFixed(2);
         const couponDisplay = (h.coupon ?? 0).toFixed(3);
         const yieldDisplay = (h.yield_val ?? 0).toFixed(3); // Use calculated yield
         const walDisplay = (h.wal ?? 0).toFixed(2);
 
+        // Check if this holding ID is in our selection Set
+        const isChecked = selectedHoldingIds.has(h.id);
+
         // Return the HTML string for the table row
         return `
-            <tr>
+            <tr data-holding-id="${h.id}">
+                <td class="checkbox-column">
+                    <input type="checkbox"
+                           class="holding-checkbox"
+                           data-holding-id="${h.id}"
+                           data-cusip="${h.security_cusip || ''}"
+                           data-par="${(h.par_calculated ?? 0).toFixed(2)}"
+                           ${isChecked ? 'checked' : ''}
+                           aria-label="Select holding ${h.security_cusip || 'N/A'}">
+                </td>
                 <td>${h.security_cusip || 'N/A'}</td>
                 <td>${h.description || ''}</td>
                 <td>${parDisplay}</td>
@@ -812,6 +891,11 @@ function renderTable(holdings) {
             </tr>
         `;
     }).join(''); // Join the array of row strings into a single HTML string
+
+    // Update the state of the "Select All" checkbox based on currently rendered rows
+    updateSelectAllCheckboxState();
+    // Update the email button state based on the selection Set
+    emailInterestBtn.disabled = selectedHoldingIds.size === 0;
 }
 
 /**
@@ -835,18 +919,19 @@ function updateSortIndicators() {
 
 /**
  * Calculates and renders the total values (Par, Yield, WAL) in the table footer.
+ * Uses the calculated par value for totals.
  * @param {object[]} holdings - The array of holdings to calculate totals from.
  */
 function renderTotals(holdings) {
-    // Calculate total Par value
-    const totalPar = holdings.reduce((sum, h) => sum + (h.par ?? 0), 0);
+    // Calculate total Par value using the calculated par
+    const totalPar = holdings.reduce((sum, h) => sum + (h.par_calculated ?? 0), 0);
 
-    // Calculate weighted average yield (weighted by Par)
-    const weightedYieldSum = holdings.reduce((sum, h) => sum + ((h.par ?? 0) * (h.yield_val ?? 0)), 0);
+    // Calculate weighted average yield (weighted by calculated Par)
+    const weightedYieldSum = holdings.reduce((sum, h) => sum + ((h.par_calculated ?? 0) * (h.yield_val ?? 0)), 0);
     const totalYield = totalPar > 0 ? weightedYieldSum / totalPar : 0; // Avoid division by zero
 
-    // Calculate weighted average WAL (weighted by Par)
-    const weightedWalSum = holdings.reduce((sum, h) => sum + ((h.par ?? 0) * (h.wal ?? 0)), 0);
+    // Calculate weighted average WAL (weighted by calculated Par)
+    const weightedWalSum = holdings.reduce((sum, h) => sum + ((h.par_calculated ?? 0) * (h.wal ?? 0)), 0);
     const totalWal = totalPar > 0 ? weightedWalSum / totalPar : 0; // Avoid division by zero
 
     // Update the DOM elements in the table footer
@@ -869,6 +954,7 @@ function destroyChart(chartId) {
 /**
  * Renders all the charts based on the provided holdings data.
  * Destroys existing charts before creating new ones.
+ * Uses calculated par value where appropriate.
  * @param {object[]} holdings - The array of holdings data to visualize.
  */
 function renderCharts(holdings) {
@@ -995,7 +1081,8 @@ function renderCharts(holdings) {
     holdings.forEach(h => {
         const year = h.estimated_maturity_date || (h.maturity_date_obj ? h.maturity_date_obj.getFullYear() : 'Unknown');
         if (year !== 'Unknown' && !isNaN(year)) { // Only include valid years
-            maturityBuckets[year] = (maturityBuckets[year] || 0) + (h.par ?? 0);
+            // Use calculated par value
+            maturityBuckets[year] = (maturityBuckets[year] || 0) + (h.par_calculated ?? 0);
         }
     });
     const sortedYears = Object.keys(maturityBuckets).map(Number).sort((a, b) => a - b); // Get sorted years
@@ -1036,7 +1123,8 @@ function renderCharts(holdings) {
     const couponBuckets = {}; // Object to store par sum per coupon rate
     holdings.forEach(h => {
         const couponRate = (h.coupon ?? 0).toFixed(3); // Group by coupon rate (formatted)
-        couponBuckets[couponRate] = (couponBuckets[couponRate] || 0) + (h.par ?? 0);
+        // Use calculated par value
+        couponBuckets[couponRate] = (couponBuckets[couponRate] || 0) + (h.par_calculated ?? 0);
     });
     const sortedCoupons = Object.keys(couponBuckets).sort((a, b) => parseFloat(a) - parseFloat(b)); // Sort coupon rates numerically
 
@@ -1164,11 +1252,12 @@ function applyFilterAndSort() {
  * Used before loading new data.
  */
 function clearTableAndCharts() {
-    const colSpan = tableHeaders.length || 10;
+    const colSpan = (tableHeaders.length || 10) + 1; // +1 for checkbox column
     tableBody.innerHTML = `<tr><td colspan="${colSpan}">Loading...</td></tr>`; // Show loading message
     renderTotals([]); // Clear totals
     Object.keys(chartInstances).forEach(destroyChart); // Destroy existing charts
     chartInstances = {}; // Reset chart instances object
+    clearHoldingSelection(); // Clear selections when table is cleared
 }
 
 // --- Theme Toggling ---
@@ -1218,6 +1307,7 @@ function toggleTheme() {
 
 /**
  * Exports the current view (charts and table) to a PDF document.
+ * Excludes the checkbox column from the PDF table.
  */
 async function exportToPdf() {
     // Initialize jsPDF
@@ -1294,6 +1384,20 @@ async function exportToPdf() {
         html: '#holdings-table', // Target the table element
         startY: margin + 25, // Start table below the title
         theme: 'grid', // Use grid theme for borders
+        // Exclude the first column (checkbox) from the PDF
+        columns: [
+            // Skip column 0 (checkbox)
+            { header: 'CUSIP', dataKey: 1 },
+            { header: 'Description', dataKey: 2 },
+            { header: 'Par', dataKey: 3 },
+            { header: 'Price', dataKey: 4 },
+            { header: 'Coupon', dataKey: 5 },
+            { header: 'Yield', dataKey: 6 },
+            { header: 'WAL', dataKey: 7 },
+            { header: 'Est. Maturity Year', dataKey: 8 },
+            { header: 'Maturity Date', dataKey: 9 },
+            { header: 'Call Date', dataKey: 10 },
+        ],
         styles: { // General cell styles
             fontSize: 7,
             cellPadding: 3,
@@ -1319,18 +1423,22 @@ async function exportToPdf() {
         alternateRowStyles: { // Zebra striping
             fillColor: pdfAlternateRowBg,
         },
-        columnStyles: { // Specific column widths and alignments
-            0: { cellWidth: 55, halign: 'left' }, // CUSIP
-            1: { cellWidth: 'auto', halign: 'left'}, // Description (auto width)
-            2: { cellWidth: 60, halign: 'right' }, // Par
-            3: { cellWidth: 40, halign: 'right' }, // Price
-            4: { cellWidth: 40, halign: 'right' }, // Coupon
-            5: { cellWidth: 40, halign: 'right' }, // Yield
-            6: { cellWidth: 40, halign: 'right' }, // WAL
-            7: { cellWidth: 55, halign: 'center' }, // Est. Maturity Year
-            8: { cellWidth: 55, halign: 'center' }, // Maturity Date
-            9: { cellWidth: 55, halign: 'center' }  // Call Date
+        // Adjust column styles indices because we removed the first column
+        columnStyles: {
+            0: { cellWidth: 55, halign: 'left' },    // CUSIP (was 1)
+            1: { cellWidth: 'auto', halign: 'left'}, // Description (was 2)
+            2: { cellWidth: 60, halign: 'right' },   // Par (was 3)
+            3: { cellWidth: 40, halign: 'right' },   // Price (was 4)
+            4: { cellWidth: 40, halign: 'right' },   // Coupon (was 5)
+            5: { cellWidth: 40, halign: 'right' },   // Yield (was 6)
+            6: { cellWidth: 40, halign: 'right' },   // WAL (was 7)
+            7: { cellWidth: 55, halign: 'center' },  // Est. Maturity Year (was 8)
+            8: { cellWidth: 55, halign: 'center' },  // Maturity Date (was 9)
+            9: { cellWidth: 55, halign: 'center' }   // Call Date (was 10)
         },
+        // Exclude the footer row from the PDF export as it includes the checkbox column colspan
+        // We could potentially add a custom footer row using `didDrawPage` if needed
+        // showFoot: 'never', // Option to hide footer
         margin: { left: margin, right: margin }, // Page margins for the table
         didDrawPage: function (data) { // Add page numbers in footer
             let footerStr = "Page " + doc.internal.getCurrentPageInfo().pageNumber;
@@ -1644,7 +1752,7 @@ async function handleDeletePortfolio() {
                 const selectedCustomer = customers.find(c => c.id == selectedCustomerId);
                 portfolioNameEl.textContent = `${selectedCustomer.name || `Customer ${selectedCustomer.customer_number}`} - No Portfolios Found`;
                 clearTableAndCharts();
-                const colSpan = tableHeaders.length || 10;
+                const colSpan = (tableHeaders.length || 10) + 1; // +1 for checkbox column
                 tableBody.innerHTML = `<tr><td colspan="${colSpan}">No portfolios found for this customer.</td></tr>`;
             }
 
@@ -1667,6 +1775,173 @@ async function handleDeletePortfolio() {
 }
 
 
+// --- NEW: Holding Selection and Email Action ---
+
+/**
+ * Handles changes to individual holding checkboxes and the "Select All" checkbox.
+ * Updates the selectedHoldingIds Set and the state of the email button.
+ * @param {Event} event - The change event object.
+ */
+function handleCheckboxChange(event) {
+    const target = event.target;
+
+    if (target === selectAllCheckbox) {
+        // Handle "Select All" checkbox click
+        const isChecked = target.checked;
+        const visibleCheckboxes = tableBody.querySelectorAll('.holding-checkbox');
+        visibleCheckboxes.forEach(checkbox => {
+            checkbox.checked = isChecked;
+            const holdingId = parseInt(checkbox.dataset.holdingId, 10);
+            if (!isNaN(holdingId)) { // Ensure ID is a valid number
+                if (isChecked) {
+                    selectedHoldingIds.add(holdingId);
+                } else {
+                    selectedHoldingIds.delete(holdingId);
+                }
+            }
+        });
+    } else if (target.classList.contains('holding-checkbox')) {
+        // Handle individual holding checkbox click
+        const holdingId = parseInt(target.dataset.holdingId, 10);
+         if (!isNaN(holdingId)) { // Ensure ID is a valid number
+            if (target.checked) {
+                selectedHoldingIds.add(holdingId);
+            } else {
+                selectedHoldingIds.delete(holdingId);
+            }
+            // Update "Select All" checkbox state based on individual selections
+            updateSelectAllCheckboxState();
+         }
+    }
+
+    // Enable/disable the email button based on selection
+    emailInterestBtn.disabled = selectedHoldingIds.size === 0;
+    console.log("Selected Holdings:", selectedHoldingIds); // Debug log
+}
+
+/**
+ * Updates the checked state and indeterminate state of the "Select All" checkbox
+ * based on the selection state of individual holding checkboxes currently visible.
+ */
+function updateSelectAllCheckboxState() {
+    if (!selectAllCheckbox) return; // Exit if element doesn't exist
+
+    const visibleCheckboxes = tableBody.querySelectorAll('.holding-checkbox');
+    const totalVisible = visibleCheckboxes.length;
+    const totalSelected = Array.from(visibleCheckboxes).filter(cb => cb.checked).length;
+
+    if (totalVisible === 0) {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
+    } else if (totalSelected === totalVisible) {
+        selectAllCheckbox.checked = true;
+        selectAllCheckbox.indeterminate = false;
+    } else if (totalSelected > 0) {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = true; // Partially selected
+    } else {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
+    }
+}
+
+
+/**
+ * Clears the holding selection Set, unchecks all checkboxes, and disables the email button.
+ */
+function clearHoldingSelection() {
+    selectedHoldingIds.clear(); // Clear the Set
+    // Uncheck all individual checkboxes
+    tableBody.querySelectorAll('.holding-checkbox').forEach(cb => cb.checked = false);
+    // Uncheck and remove indeterminate state from "Select All"
+    if (selectAllCheckbox) {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
+    }
+    // Disable the email button
+    if (emailInterestBtn) {
+        emailInterestBtn.disabled = true;
+    }
+    // Clear any previous status message
+    if (emailStatusMessage) {
+        emailStatusMessage.textContent = '';
+        emailStatusMessage.style.display = 'none';
+    }
+}
+
+/**
+ * Handles the click event for the "Sell Bonds" button.
+ * Gathers selected bond data and sends it to the backend API.
+ */
+async function handleEmailInterestClick() {
+    if (!selectedCustomerId) {
+        showStatusMessage("Error: No customer selected.", true);
+        return;
+    }
+    if (selectedHoldingIds.size === 0) {
+        showStatusMessage("Error: No bonds selected.", true);
+        return;
+    }
+
+    // Disable button and show processing message
+    emailInterestBtn.disabled = true;
+    showStatusMessage("Sending email...", false, 0); // Permanent message until response
+
+    // Prepare the list of selected bonds for the payload
+    const selectedBondsPayload = [];
+    // Iterate through the *currently filtered* holdings to find selected ones
+    // This ensures we use the correct calculated par value from the displayed data
+    filteredHoldings.forEach(holding => {
+        if (selectedHoldingIds.has(holding.id)) {
+            selectedBondsPayload.push({
+                cusip: holding.security_cusip || 'N/A', // Use the CUSIP from the holding data
+                par: (holding.par_calculated ?? 0).toFixed(2) // Use calculated par, format as string
+            });
+        }
+    });
+
+    // Construct the final payload
+    const payload = {
+        customer_id: parseInt(selectedCustomerId, 10),
+        selected_bonds: selectedBondsPayload
+    };
+
+    console.log("Sending email interest payload:", payload); // Debug log
+
+    try {
+        const response = await fetch(`${apiRoot}/email-salesperson-interest/`, { // Use the correct endpoint URL
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+            body: JSON.stringify(payload),
+        });
+
+        const responseData = await response.json(); // Attempt to parse JSON response
+
+        if (response.ok) {
+            console.log("Email sent successfully:", responseData);
+            showStatusMessage(responseData.message || "Email sent successfully!", false);
+            clearHoldingSelection(); // Clear selection on success
+        } else {
+            // Handle errors reported by the API
+            console.error("API Error sending email:", response.status, responseData);
+            const errorDetail = responseData.error || responseData.detail || response.statusText || 'Failed to send email.';
+            showStatusMessage(`Error: ${errorDetail}`, true);
+            // Re-enable button on failure (user might want to retry or fix config)
+            emailInterestBtn.disabled = false;
+        }
+
+    } catch (error) {
+        // Handle network errors or issues parsing JSON
+        console.error("Network/Fetch Error sending email:", error);
+        showStatusMessage("Network error. Please check connection and try again.", true);
+        emailInterestBtn.disabled = false; // Re-enable button for retry
+    }
+}
+
+
 // --- Event Listeners Setup ---
 
 /**
@@ -1680,10 +1955,10 @@ function setupEventListeners() {
     portfolioFilterSelect.addEventListener('change', handlePortfolioSelection);
 
     // Delete Portfolio button click
-    deletePortfolioBtn.addEventListener('click', handleDeletePortfolio); // Add listener for delete button
+    deletePortfolioBtn.addEventListener('click', handleDeletePortfolio);
 
     // Filter buttons
-    addFilterBtn.addEventListener('click', () => addFilterRow()); // Pass no args to add empty row
+    addFilterBtn.addEventListener('click', () => addFilterRow());
     clearAllFiltersBtn.addEventListener('click', handleClearAllFilters);
 
     // Table header clicks for sorting
@@ -1721,6 +1996,19 @@ function setupEventListeners() {
             hideCreatePortfolioModal();
         }
     });
+
+    // NEW: Event listener for checkbox changes (using event delegation on table body)
+    tableBody.addEventListener('change', handleCheckboxChange);
+
+    // NEW: Event listener for "Select All" checkbox
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', handleCheckboxChange);
+    }
+
+    // NEW: Event listener for Email Interest button
+    if (emailInterestBtn) {
+        emailInterestBtn.addEventListener('click', handleEmailInterestClick);
+    }
 }
 
 /**

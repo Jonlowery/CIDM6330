@@ -8,33 +8,46 @@ from rest_framework.authtoken.views import obtain_auth_token
 
 # Import the view needed for the root path and other views
 from portfolio.views import (
-    portfolio_analyzer_view, # <-- Ensure this is imported
-    ImportExcelView,
+    portfolio_analyzer_view, # Root view serving index.html
+    ImportExcelView,         # View for Excel imports
     CustomerViewSet,
     SecurityViewSet,
     PortfolioViewSet,
     CustomerHoldingViewSet,
+    EmailSalespersonInterestView, # <-- Import the new view
 )
 from rest_framework import routers
 
+# Setup the default router
 router = routers.DefaultRouter()
-# Ensure basenames are set for viewsets using get_queryset
+# Register ViewSets with the router
+# Ensure basenames are set for viewsets using get_queryset or custom querysets
 router.register(r'customers', CustomerViewSet, basename='customer')
-router.register(r'securities', SecurityViewSet)
+router.register(r'securities', SecurityViewSet, basename='security') # Added basename
 router.register(r'portfolios', PortfolioViewSet, basename='portfolio')
 router.register(r'holdings', CustomerHoldingViewSet, basename='customerholding')
 
+# Define URL patterns
 urlpatterns = [
-    # Remove the old redirect for the root path:
-    # path("", RedirectView.as_view(url="/static/index.html", permanent=False)),
+    # Root URL serving the main frontend application view
+    path("", portfolio_analyzer_view, name="portfolio-analyzer"),
 
-    # Add the new path for the root URL pointing to the protected view:
-    path("", portfolio_analyzer_view, name="portfolio-analyzer"), # <-- ADD THIS LINE
-
-    # --- Keep other paths ---
-    path('api-token-auth/', obtain_auth_token, name='api-token-auth'),
+    # Admin site URL
     path('admin/', admin.site.urls),
-    path('api-auth/', include('rest_framework.urls', namespace='rest_framework')), # Needed for login page
+
+    # DRF authentication URLs (login/logout views for browsable API)
+    path('api-auth/', include('rest_framework.urls', namespace='rest_framework')),
+
+    # API endpoint for token authentication (optional, if used)
+    path('api-token-auth/', obtain_auth_token, name='api-token-auth'),
+
+    # API endpoint for Excel file imports (admin only)
     path('api/imports/upload_excel/', ImportExcelView.as_view(), name='import-excel'),
+
+    # --- NEW API endpoint for emailing salesperson ---
+    path('api/email-salesperson-interest/', EmailSalespersonInterestView.as_view(), name='email-salesperson-interest'),
+
+    # Include URLs registered with the DRF router (for ViewSets)
+    # This should generally come after more specific paths
     path('api/', include(router.urls)),
 ]
