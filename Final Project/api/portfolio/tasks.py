@@ -1,4 +1,4 @@
-# api/portfolio/tasks.py (Added email task)
+# api/portfolio/tasks.py (Corrected S&P header map, added logging for missing headers)
 
 import os
 import logging
@@ -9,8 +9,11 @@ from celery import shared_task, chain
 from django.db import transaction, IntegrityError, OperationalError
 from django.conf import settings
 from django.core.mail import send_mail # For sending email
+from django.utils import timezone # For date/time operations
+from datetime import date, datetime # Import datetime for clean_date
+
 # Import models from the current app
-from .models import Security, Customer, Portfolio, CustomerHolding
+from .models import Security, Customer, Portfolio, CustomerHolding, MunicipalOffering # Import new model
 # Import Decimal for data cleaning
 from decimal import Decimal, InvalidOperation
 
@@ -24,39 +27,62 @@ def clean_decimal(value, default=None):
         return default
     try:
         # Handle potential percentage strings if needed
-        if isinstance(value, str) and '%' in value:
-            value = value.replace('%', '').strip()
-        return Decimal(value)
+        str_value = str(value).strip() # Convert to string first
+        if '%' in str_value:
+            str_value = str_value.replace('%', '').strip()
+        # Handle potential commas
+        str_value = str_value.replace(',', '')
+        # Handle potential parentheses for negatives if needed (e.g., '(100.00)')
+        if str_value.startswith('(') and str_value.endswith(')'):
+            str_value = '-' + str_value[1:-1]
+        return Decimal(str_value)
     except (InvalidOperation, TypeError, ValueError):
         log.warning(f"Could not convert '{value}' to Decimal, using default '{default}'")
         return default
 
 def clean_date(value, default=None):
     """ Safely convert value to Date, return default if conversion fails. """
-    from datetime import datetime # Import datetime locally for clarity
+    # from datetime import datetime # Already imported at top level
     if value is None:
         return default
     # Handle cases where openpyxl might return datetime objects
     if isinstance(value, datetime):
         return value.date()
-    try:
-        # Add specific parsing logic here if Excel dates are strings in known formats
-        # Example: return datetime.strptime(str(value), '%m/%d/%Y').date()
-        # If relying solely on openpyxl's conversion to datetime:
-        if not isinstance(value, datetime):
-             # Log if the value isn't a datetime object as expected from data_only=True
-             log.warning(f"Value '{value}' is not a datetime object from openpyxl. Attempting direct use, might fail.")
-             # If parsing is needed, add it here, otherwise return default
-             # For now, assume openpyxl handles it or return default
-             return default # Or attempt specific parsing if a format is known
-        # This part might not be reached if openpyxl handles conversion correctly
-        return value.date() # If it IS a datetime object, return its date part
-    except (ValueError, TypeError) as e:
-        log.warning(f"Could not convert '{value}' to Date: {e}. Using default '{default}'")
+    # Handle cases where openpyxl might return date objects
+    if isinstance(value, date):
+        return value
+    # Handle integer/float timestamps if they represent Excel dates
+    if isinstance(value, (int, float)):
+        try:
+            # openpyxl's utility to convert Excel serial date number to datetime
+            from openpyxl.utils.datetime import from_excel
+            # Handle potential large numbers that might not be dates
+            if value > 2958465: # Heuristic: Excel dates usually smaller than this
+                 log.warning(f"Excel number '{value}' too large, likely not a date. Skipping conversion.")
+                 return default
+            dt_value = from_excel(value)
+            return dt_value.date()
+        except (ValueError, TypeError, OverflowError) as e:
+             log.warning(f"Could not convert Excel number '{value}' to Date: {e}. Using default '{default}'")
+             return default
+    # Attempt to parse common string formats if it's a string
+    if isinstance(value, str):
+        value_str = value.strip()
+        if not value_str: # Skip empty strings
+            return default
+        for fmt in ('%Y-%m-%d', '%m/%d/%Y', '%m-%d-%Y', '%Y%m%d'):
+            try:
+                return datetime.strptime(value_str, fmt).date()
+            except (ValueError, TypeError):
+                continue # Try next format
+        log.warning(f"Could not parse date string '{value_str}' with known formats.")
         return default
 
-# --- Import Tasks ---
+    # If none of the above worked
+    log.warning(f"Value '{value}' type '{type(value)}' could not be converted to Date.")
+    return default
 
+# --- Standard Import Tasks (Securities, Customers, Holdings) ---
 @shared_task
 def import_securities_from_excel(file_path):
     """
@@ -112,7 +138,7 @@ def import_securities_from_excel(file_path):
             log.warning(f"Securities Row {row_idx}: Skipping row due to missing CUSIP.")
             skipped_rows += 1
             continue
-        cusip = str(cusip).strip() # Clean CUSIP
+        cusip = str(cusip).strip().upper() # Clean CUSIP, ensure uppercase
 
         # Prepare data dictionary for update_or_create defaults
         data_defaults = {
@@ -177,10 +203,9 @@ def import_securities_from_excel(file_path):
     wb.close() # Close the workbook to release resources
     result_message = f"Imported/Updated securities from {os.path.basename(file_path)}. Created: {created_count}, Updated: {updated_count}, Skipped: {skipped_rows}."
     log.info(result_message)
-    return result_message
+    return file_path # Or return a success message string
 
 
-# --- UPDATED import_customers_from_excel ---
 @shared_task
 def import_customers_from_excel(file_path):
     """
@@ -376,10 +401,9 @@ def import_customers_from_excel(file_path):
         f"Skipped Rows: {skipped_rows}."
     )
     log.info(result_message)
-    return result_message
+    return file_path # Or return a success message string
 
 
-# import_holdings_from_excel remains unchanged (operates on default portfolio)
 @shared_task(bind=True, autoretry_for=(OperationalError,), retry_backoff=5, max_retries=3)
 def import_holdings_from_excel(self, file_path):
     """
@@ -438,7 +462,7 @@ def import_holdings_from_excel(self, file_path):
             skipped_rows += 1; continue
 
         cust_no = str(cust_no).strip()
-        cusip = str(cusip).strip()
+        cusip = str(cusip).strip().upper() # Ensure CUSIP is uppercase for consistency
 
         # --- Get Customer (use cache) ---
         customer = customer_cache.get(cust_no)
@@ -493,16 +517,12 @@ def import_holdings_from_excel(self, file_path):
              skipped_rows += 1; continue
 
         # --- Prepare holding data defaults ---
-        # Note: We are removing the direct 'customer' and 'customer_number' FKs from Holding model
-        # They are derived from the portfolio owner.
         holding_defaults = {
             'original_face_amount': clean_decimal(raw_data.get('original_face_amount')),
             'settlement_date': clean_date(raw_data.get('settlement_date')),
             'settlement_price': clean_decimal(raw_data.get('settlement_price')),
             'book_price': clean_decimal(raw_data.get('book_price')),
             'book_yield': clean_decimal(raw_data.get('book_yield')),
-            # Copy potentially cached fields from security at time of import?
-            # Or rely on fetching from Security model always? Let's rely on Security model.
         }
         holding_defaults = {k: v for k, v in holding_defaults.items() if v is not None}
 
@@ -596,46 +616,77 @@ def import_holdings_from_excel(self, file_path):
     result_message = (f"Processed holdings (Primary Portfolio Only) from {os.path.basename(file_path)}. "
                       f"Created: {created_count}, Updated: {updated_count}, Deleted: {deleted_count}, Skipped Rows: {skipped_rows}.")
     log.info(result_message)
-    return result_message
+    return file_path # Or return a success message string
 
 
-# import_all_from_excel remains unchanged
+# --- CORRECTED import_all_from_excel ---
 @shared_task
 def import_all_from_excel():
     """
-    Orchestrates the three imports in sequence using hardcoded paths.
-    Now correctly marks default portfolios during customer import.
-    Consider if this task is still needed given the View-based trigger.
+    Orchestrates the import tasks in sequence using hardcoded paths.
+    Includes import for municipal offerings. Uses immutable signatures (.si)
+    to prevent passing results between unrelated tasks.
     """
     log.info("Scheduling chained non-destructive import from hardcoded paths...")
     base = settings.BASE_DIR / 'data' / 'imports'
     sec_file = base / 'sample_securities.xlsx'
     cust_file = base / 'customers.xlsx'
     hold_file = base / 'holdings.xlsx'
+    muni_file = base / 'muni_offerings.xlsx' # <-- Define path for muni offerings file
 
-    files_ok = True
-    if not sec_file.exists(): log.error(f"Chained Import: Security file not found: {sec_file}"); files_ok = False
-    if not cust_file.exists(): log.error(f"Chained Import: Customer file not found: {cust_file}"); files_ok = False
-    if not hold_file.exists(): log.error(f"Chained Import: Holdings file not found: {hold_file}"); files_ok = False
+    task_list = []
+    files_ok = True # Tracks if all *expected* files are found
 
-    if not files_ok: return "Error: One or more import files not found for chained import."
+    # Check securities file
+    if sec_file.exists():
+        # Use .si() - immutable signature, ignores previous results
+        task_list.append(import_securities_from_excel.si(str(sec_file)))
+    else:
+        log.error(f"Chained Import: Security file not found: {sec_file}")
+        files_ok = False
 
-    # Use .si() to pass arguments immutably if the task doesn't modify them
-    # Use .s() if the task might modify the argument (like a mutable object)
-    # or if you prefer the standard signature behavior.
-    import_chain = chain(
-        import_securities_from_excel.s(str(sec_file)),
-        import_customers_from_excel.s(str(cust_file)), # Using .s() is generally safer
-        import_holdings_from_excel.s(str(hold_file)),   # Using .s()
-    )
+    # Check customers file
+    if cust_file.exists():
+        # Use .si() - immutable signature
+        task_list.append(import_customers_from_excel.si(str(cust_file)))
+    else:
+        log.error(f"Chained Import: Customer file not found: {cust_file}")
+        files_ok = False
+
+    # Check holdings file
+    if hold_file.exists():
+        # Use .si() - immutable signature
+        task_list.append(import_holdings_from_excel.si(str(hold_file)))
+    else:
+        log.error(f"Chained Import: Holdings file not found: {hold_file}")
+        files_ok = False
+
+    # Check municipal offerings file
+    if muni_file.exists():
+        # Use .si() - immutable signature
+        task_list.append(import_muni_offerings_from_excel.si(str(muni_file)))
+    else:
+        # Log warning instead of error, as muni file might be optional for the chain
+        log.warning(f"Chained Import: Municipal offerings file not found: {muni_file}. Skipping muni import.")
+        # files_ok = False # Uncomment if missing muni file should be considered an error for the overall status
+
+    # --- Execute the chain if any tasks were added ---
+    if not task_list:
+        result_message = "Chained Import Error: No import files found or no tasks added to chain."
+        log.error(result_message)
+        return result_message
+
+    # Create the chain from the list of task signatures
+    # The tasks will run sequentially, but the result of one is NOT passed to the next
+    import_chain = chain(task_list)
     import_chain.apply_async()
 
-    result_message = "Scheduled chained non-destructive import of securities -> customers -> holdings from hardcoded paths."
+    result_message = f"Scheduled chained import tasks. File status OK: {files_ok}."
     log.info(result_message)
     return result_message
 
 
-# --- NEW TASK for Sending Salesperson Email ---
+# --- Email Task ---
 @shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
 def send_salesperson_interest_email(self, salesperson_email, salesperson_name, customer_name, customer_number, selected_bonds):
     """
@@ -694,5 +745,183 @@ Portfolio Analyzer System
     except Exception as e:
         log.error(f"Failed to send interest email to {salesperson_email} for customer {customer_number}. Error: {e}", exc_info=True)
         # Celery will retry based on task decorator settings
-        # You might want to raise the exception again if you want the task to be marked as failed after retries
+        # Raise the exception again to trigger retry
         raise self.retry(exc=e, countdown=60) # Retry after 60 seconds
+
+
+# --- Municipal Offerings Import Task ---
+@shared_task(bind=True, max_retries=1) # Don't retry data imports heavily by default
+def import_muni_offerings_from_excel(self, file_path):
+    """
+    Imports or updates municipal offerings from an Excel file based on CUSIP.
+    ASSUMPTION: This task DELETES all existing offerings before importing the new file.
+    """
+    log.info(f"Starting municipal offering import/update from {file_path}")
+    created_count = 0
+    updated_count = 0
+    skipped_rows = 0
+    deleted_count = 0
+    max_retries_per_row = 2 # Lower retry for data processing rows
+    retry_delay = 0.2 # seconds
+
+    try:
+        wb = openpyxl.load_workbook(filename=file_path, data_only=True, read_only=True)
+        ws = wb.active
+    except FileNotFoundError:
+        log.error(f"Municipal offering import file not found: {file_path}")
+        raise FileNotFoundError(f"Municipal offering import file not found: {file_path}")
+    except Exception as e:
+        log.error(f"Error opening municipal offering import file {file_path}: {e}", exc_info=True)
+        raise
+
+    # --- Delete existing offerings (Assumption: Replace logic) ---
+    try:
+        with transaction.atomic():
+            log.warning("Deleting ALL existing MunicipalOffering records before import...")
+            deleted_count, _ = MunicipalOffering.objects.all().delete()
+            log.info(f"Deleted {deleted_count} existing MunicipalOffering records.")
+    except OperationalError as e:
+         log.error(f"Database error during pre-import deletion of MunicipalOfferings: {e}", exc_info=True)
+         wb.close()
+         raise # Stop the import if deletion fails
+    except Exception as e:
+         log.error(f"Unexpected error during pre-import deletion of MunicipalOfferings: {e}", exc_info=True)
+         wb.close()
+         raise
+
+    # Read headers and normalize them
+    headers = [str(cell.value).lower().strip().replace(' ', '_').replace('&', 'and') if cell.value else None for cell in ws[1]] # Replace & too
+    headers = [h for h in headers if h]
+    log.info(f"Found muni offering headers: {headers}")
+
+    # Map expected headers to model fields (adjust keys if Excel headers differ)
+    # Make keys lowercase and replace spaces/& for robustness
+    header_map = {
+        'cusip': 'cusip',
+        'amount': 'amount',
+        'description': 'description',
+        'coupon': 'coupon',
+        'maturity': 'maturity_date', # Map 'maturity' header to 'maturity_date' field
+        'yield': 'yield_rate',      # Map 'yield' header to 'yield_rate' field
+        'price': 'price',
+        'moody': 'moody_rating',    # Map 'moody' header to 'moody_rating' field
+        's_and_p': 'sp_rating',     # CORRECTED: Map 's_and_p' (normalized from Excel) to 'sp_rating' field
+        'call_date': 'call_date',
+        'call_price': 'call_price',
+        'state': 'state',
+        'insurance': 'insurance',
+    }
+
+    # Check for mandatory CUSIP header
+    if 'cusip' not in headers:
+        log.error("Mandatory header 'cusip' not found in municipal offering import file.")
+        wb.close()
+        raise ValueError("Mandatory header 'cusip' not found in municipal offering import file.")
+
+    # Iterate through data rows
+    for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        if len(row) < len(headers):
+            log.warning(f"Muni Offerings Row {row_idx}: Skipping row due to insufficient columns (expected {len(headers)}, got {len(row)})")
+            skipped_rows += 1
+            continue
+
+        # Create dictionary from Excel headers and row data
+        # Use the *normalized* headers found in the file as keys
+        raw_data = dict(zip(headers, row))
+        cusip = raw_data.get('cusip')
+
+        if not cusip:
+            log.warning(f"Muni Offerings Row {row_idx}: Skipping row due to missing CUSIP.")
+            skipped_rows += 1
+            continue
+        cusip = str(cusip).strip().upper() # Clean CUSIP, ensure uppercase
+
+        # Prepare data defaults dictionary using the header_map
+        offering_defaults = {}
+        missing_headers_for_row = [] # Track missing headers for this row specifically
+
+        for map_key, model_field in header_map.items():
+            # Check if the normalized map_key exists in the normalized headers from the file
+            if map_key in raw_data:
+                raw_value = raw_data[map_key]
+                # Clean based on expected model field type
+                if model_field == 'amount': # Special handling for amount
+                    cleaned_value = clean_decimal(raw_value)
+                    if cleaned_value is not None:
+                        offering_defaults[model_field] = cleaned_value * 1000 # Multiply amount by 1000
+                    elif raw_value is not None: # Log if cleaning failed but value existed
+                         log.warning(f"Muni Row {row_idx} CUSIP {cusip}: Failed to clean amount '{raw_value}'")
+                elif model_field in ['coupon', 'yield_rate', 'price', 'call_price']:
+                    cleaned_value = clean_decimal(raw_value)
+                    if cleaned_value is not None:
+                        offering_defaults[model_field] = cleaned_value
+                    elif raw_value is not None:
+                         log.warning(f"Muni Row {row_idx} CUSIP {cusip}: Failed to clean decimal field '{model_field}' value '{raw_value}'")
+                elif model_field in ['maturity_date', 'call_date']:
+                    cleaned_value = clean_date(raw_value)
+                    if cleaned_value is not None:
+                        offering_defaults[model_field] = cleaned_value
+                    elif raw_value is not None:
+                         log.warning(f"Muni Row {row_idx} CUSIP {cusip}: Failed to clean date field '{model_field}' value '{raw_value}'")
+                elif model_field == 'cusip': # Already handled cusip above
+                    continue
+                else: # Assume string fields
+                    # Only assign if raw_value is not None, otherwise let model default handle it
+                    if raw_value is not None:
+                        offering_defaults[model_field] = str(raw_value).strip()
+            else:
+                # Log if a header defined in header_map is missing in the actual file headers for this row
+                missing_headers_for_row.append(map_key)
+                # Optional: Log only once per file instead of per row?
+                # Requires tracking headers seen across all rows.
+
+        # Log missing headers for the row if any were found
+        if missing_headers_for_row:
+            log.warning(f"Muni Row {row_idx} CUSIP {cusip}: Expected headers not found in Excel data: {', '.join(missing_headers_for_row)}")
+
+
+        # --- Retry logic for database lock ---
+        retries = 0
+        success = False
+        while retries < max_retries_per_row and not success:
+            try:
+                with transaction.atomic():
+                    # Use update_or_create for idempotency
+                    offering, created = MunicipalOffering.objects.update_or_create(
+                        cusip=cusip,          # Match based on CUSIP
+                        defaults=offering_defaults # Apply cleaned data
+                    )
+                success = True
+                if created:
+                    created_count += 1
+                    log.debug(f"Muni Row {row_idx}: Created Offering: {cusip}")
+                else:
+                    updated_count += 1
+                    log.debug(f"Muni Row {row_idx}: Updated Offering: {cusip}")
+            except OperationalError as e:
+                if 'database is locked' in str(e).lower() and retries < max_retries_per_row - 1:
+                    retries += 1
+                    wait_time = retry_delay * (2**retries)
+                    log.warning(f"Muni Row {row_idx}: DB locked for offering {cusip}. Retrying ({retries}/{max_retries_per_row-1}) in {wait_time:.2f}s...")
+                    time.sleep(wait_time)
+                else:
+                    log.error(f"Muni Row {row_idx}: OperationalError importing offering {cusip} after {retries} retries: {e}")
+                    skipped_rows += 1
+                    break # Exit retry loop
+            except IntegrityError as e:
+                log.error(f"Muni Row {row_idx}: IntegrityError importing offering {cusip}: {e}")
+                skipped_rows += 1
+                break # Exit retry loop
+            except Exception as e:
+                log.error(f"Muni Row {row_idx}: Unexpected error importing offering {cusip}: {e}", exc_info=True)
+                skipped_rows += 1
+                break # Exit retry loop
+
+    wb.close()
+    result_message = (
+        f"Imported/Updated municipal offerings from {os.path.basename(file_path)}. "
+        f"Deleted Existing: {deleted_count}, Created: {created_count}, Updated: {updated_count}, Skipped Rows: {skipped_rows}."
+    )
+    log.info(result_message)
+    return result_message
+

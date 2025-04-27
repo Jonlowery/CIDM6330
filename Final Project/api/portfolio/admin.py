@@ -1,8 +1,8 @@
-# portfolio/admin.py (Added Salesperson fields to CustomerAdmin)
+# portfolio/admin.py (Added MunicipalOfferingAdmin)
 
 from django.contrib import admin
 # Import models from the current app
-from .models import Customer, Security, Portfolio, CustomerHolding
+from .models import Customer, Security, Portfolio, CustomerHolding, MunicipalOffering # Import new model
 
 @admin.register(Customer)
 class CustomerAdmin(admin.ModelAdmin):
@@ -58,6 +58,7 @@ class SecurityAdmin(admin.ModelAdmin):
     list_filter = ('day_count', 'payment_frequency')
     # Define fields for the add/change form if needed, otherwise defaults are used
     # fields = ('cusip', 'description', ...)
+    readonly_fields = ('id',) # Make internal ID read-only
 
 @admin.register(Portfolio)
 class PortfolioAdmin(admin.ModelAdmin):
@@ -69,20 +70,17 @@ class PortfolioAdmin(admin.ModelAdmin):
         'created_at'
     )
     search_fields = ('name', 'owner__name', 'owner__customer_number')
-    list_filter = ('owner', 'is_default') # Allow filtering by owner and default status
+    list_filter = ('owner__name', 'is_default') # Allow filtering by owner and default status
     # Use raw_id_fields for ForeignKey owner for performance if there are many customers
     raw_id_fields = ('owner',)
     # Make is_default editable, but consider implications (should only be set by import?)
-    # readonly_fields = ('created_at',) # created_at is usually read-only
+    readonly_fields = ('id', 'created_at',) # created_at is usually read-only
 
     # Method to display owner's customer number in list_display
     @admin.display(description='Owner Customer No.', ordering='owner__customer_number')
     def owner_customer_number(self, obj):
         # Safely access owner and customer_number
         return obj.owner.customer_number if obj.owner else None
-    # owner_customer_number.short_description = 'Customer Number' # Set via @admin.display
-    # owner_customer_number.admin_order_field = 'owner__customer_number' # Set via @admin.display
-
 
 @admin.register(CustomerHolding)
 class CustomerHoldingAdmin(admin.ModelAdmin):
@@ -92,42 +90,87 @@ class CustomerHoldingAdmin(admin.ModelAdmin):
         'portfolio_name', # Custom display field
         'security_cusip', # Custom display field
         'original_face_amount',
-        'customer_number' # Custom display field (redundant customer number)
+        'owner_customer_number' # Display actual owner number
     )
     search_fields = (
         'ticket_id',
         'portfolio__name',
         'security__cusip',
         'security__description',
-        'customer__customer_number', # Search on redundant field
+        # 'customer__customer_number', # Removed redundant field search
         'portfolio__owner__name', # Search on actual owner name
         'portfolio__owner__customer_number' # Search on actual owner number
     )
-    list_filter = ('portfolio__owner', 'portfolio') # Filter by customer (via portfolio) or portfolio
+    list_filter = ('portfolio__owner__name', 'portfolio__name') # Filter by customer (via portfolio) or portfolio name
     # Use raw_id_fields for performance with large numbers of related objects
-    raw_id_fields = ('portfolio', 'security', 'customer')
+    raw_id_fields = ('portfolio', 'security') # Removed 'customer'
     # Make certain fields read-only if they shouldn't be edited directly here
-    readonly_fields = ('ticket_id', 'customer', 'customer_number') # Customer fields are set via portfolio
+    readonly_fields = ('id', 'ticket_id') # Removed customer fields
 
     # Method to display portfolio name
     @admin.display(description='Portfolio', ordering='portfolio__name')
     def portfolio_name(self, obj):
         return obj.portfolio.name if obj.portfolio else None
-    # portfolio_name.short_description = 'Portfolio' # Set via @admin.display
-    # portfolio_name.admin_order_field = 'portfolio__name' # Set via @admin.display
 
     # Method to display security CUSIP
     @admin.display(description='CUSIP', ordering='security__cusip')
     def security_cusip(self, obj):
         return obj.security.cusip if obj.security else None
-    # security_cusip.short_description = 'CUSIP' # Set via @admin.display
-    # security_cusip.admin_order_field = 'security__cusip' # Set via @admin.display
 
-    # Method to display customer number (from the redundant field)
-    @admin.display(description='Customer No.', ordering='customer_number')
-    def customer_number(self, obj):
-        # Display the potentially redundant customer number stored on the holding
-        return obj.customer_number
-    # customer_number.short_description = 'Customer Number' # Set via @admin.display
-    # customer_number.admin_order_field = 'customer__customer_number' # Set via @admin.display
+    # Method to display customer number (from portfolio owner)
+    @admin.display(description='Owner No.', ordering='portfolio__owner__customer_number')
+    def owner_customer_number(self, obj):
+        return obj.portfolio.owner.customer_number if obj.portfolio and obj.portfolio.owner else None
+
+
+# --- NEW Admin for Municipal Offerings ---
+@admin.register(MunicipalOffering)
+class MunicipalOfferingAdmin(admin.ModelAdmin):
+    """ Admin configuration for the MunicipalOffering model. """
+    list_display = (
+        'cusip',
+        'description',
+        'amount',
+        'coupon',
+        'maturity_date',
+        'yield_rate',
+        'price',
+        'state',
+        'moody_rating',
+        'sp_rating',
+        'last_updated',
+    )
+    search_fields = (
+        'cusip',
+        'description',
+        'state',
+        'insurance',
+    )
+    list_filter = (
+        'state',
+        'insurance',
+        'moody_rating',
+        'sp_rating',
+    )
+    readonly_fields = ('id', 'last_updated',) # Make auto fields read-only
+    # Define field layout for add/change form if desired
+    fieldsets = (
+        (None, {
+            'fields': ('cusip', 'description', 'amount', 'state', 'insurance')
+        }),
+        ('Financial Details', {
+            'fields': ('coupon', 'maturity_date', 'yield_rate', 'price')
+        }),
+        ('Call Information', {
+            'fields': ('call_date', 'call_price'),
+            'classes': ('collapse',) # Optional: collapse this section
+        }),
+        ('Ratings', {
+            'fields': ('moody_rating', 'sp_rating'),
+        }),
+         ('Meta', {
+            'fields': ('last_updated',),
+            'classes': ('collapse',)
+        }),
+    )
 

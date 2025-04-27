@@ -1,8 +1,8 @@
-# api/portfolio/serializers.py (Corrected CustomerHoldingSerializer)
+# api/portfolio/serializers.py (Added MunicipalOfferingSerializer)
 
 from rest_framework import serializers
 # Import models using relative path within the app
-from .models import Customer, Security, Portfolio, CustomerHolding
+from .models import Customer, Security, Portfolio, CustomerHolding, MunicipalOffering # Import new model
 # Import Decimal types for accurate calculations
 from decimal import Decimal, InvalidOperation
 
@@ -45,33 +45,19 @@ class CustomerHoldingSerializer(serializers.ModelSerializer):
     call_date = serializers.DateField(source='security.call_date', read_only=True, allow_null=True)
     description = serializers.CharField(source='security.description', read_only=True)
 
-    # --- CORRECTED FIELD RENAMING ---
     # Rename 'book_yield' to 'yield' in the output.
-    # The variable name 'yield' becomes the output field name.
-    # 'source' points to the actual model field.
-    # Removed the invalid 'field_name' argument.
-    yield_ = serializers.DecimalField( # Use yield_ temporarily if 'yield' is a reserved keyword issue in some contexts, otherwise use 'yield'
+    yield_rate = serializers.DecimalField( # Renamed variable to match model/API spec
         source='book_yield',
         max_digits=8,
         decimal_places=5,
         read_only=True,
         allow_null=True,
-        label='yield' # Use label for browsable API display if needed
+        # label='Yield' # Optional: label for browsable API
     )
-    # If 'yield' directly causes issues (rare in DRF field definition but possible),
-    # you might need to map it explicitly in fields list if using Meta.fields = '__all__'
-    # but here we list fields explicitly, so naming the variable is usually enough.
-    # Let's stick to naming the variable 'yield_' for safety, but output name will be 'yield'
-    # if mapped correctly or if DRF handles it. If output is 'yield_', change variable name to 'yield'.
 
     # Allow writing to foreign keys using PrimaryKeyRelatedField during create/update
     portfolio = serializers.PrimaryKeyRelatedField(queryset=Portfolio.objects.all())
     security = serializers.PrimaryKeyRelatedField(queryset=Security.objects.all())
-    # Customer is automatically set in the view's perform_create based on portfolio owner
-    # Making it read_only here prevents accidental direct setting via API
-    # We also don't need the redundant customer FK on the holding itself if portfolio owner is source of truth
-    # customer = serializers.PrimaryKeyRelatedField(read_only=True)
-
 
     class Meta:
         model = CustomerHolding
@@ -79,7 +65,6 @@ class CustomerHoldingSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'ticket_id',
-            # 'customer',             # Removed redundant FK if not needed
             'customer_number',      # Read-only derived field (from portfolio owner)
             'portfolio',            # Writable PK field (user selects portfolio)
             'security',             # Writable PK field (user selects security)
@@ -88,23 +73,21 @@ class CustomerHoldingSerializer(serializers.ModelSerializer):
             'settlement_date',      # Writable field
             'settlement_price',     # Writable field
             'book_price',           # Writable field
-            'book_yield',           # Writable field (source for yield_field)
+            'book_yield',           # Writable field (source for yield_rate)
             'par',                  # Read-only method field
             'maturity_date',        # Read-only derived field
             'wal',                  # Read-only derived field
             'coupon',               # Read-only derived field
             'call_date',            # Read-only derived field
             'description',          # Read-only derived field
-            'yield_',               # Include the yield field (will be named 'yield_' in output if variable is yield_)
-                                    # Rename variable to 'yield' if output should be 'yield'
+            'yield_rate',           # Renamed field in output
         ]
         # Fields that cannot be set directly via the API during creation/update
         read_only_fields = [
             'id', 'ticket_id', 'customer_number', 'security_cusip',
             'par', 'maturity_date', 'wal', 'coupon', 'call_date', 'description',
-            'yield_', # Add yield_ to read_only if variable is yield_
+            'yield_rate', # Add renamed field here
         ]
-        # If you named the variable 'yield', add 'yield' here instead.
 
     def get_par(self, obj):
         """ Calculate current par value based on original face and security factor. """
@@ -128,7 +111,6 @@ class CustomerHoldingSerializer(serializers.ModelSerializer):
                  return None # Return None or appropriate default on error
         return None # Return None if required data is missing
 
-# --- Updated PortfolioSerializer ---
 class PortfolioSerializer(serializers.ModelSerializer):
     # Display owner details using nested serializer (read-only)
     owner = CustomerSerializer(read_only=True)
@@ -142,7 +124,6 @@ class PortfolioSerializer(serializers.ModelSerializer):
         help_text="Admin Only: Specify the customer_number for the new portfolio's owner."
     )
     # Field for NON-ADMINS (with multiple customers) to specify owner by customer ID
-    # Using PrimaryKeyRelatedField handles validation and conversion to Customer instance
     owner_customer_id = serializers.PrimaryKeyRelatedField(
         queryset=Customer.objects.all(), # Base queryset for validation
         source='owner',         # On write, map this input to the 'owner' model field
@@ -151,7 +132,6 @@ class PortfolioSerializer(serializers.ModelSerializer):
         allow_null=True,        # Allow null initially
         help_text="Non-Admin (Multi-Customer) Only: Specify the ID of the customer to own this portfolio."
     )
-    # --- NEW FIELD ---
     # Field to accept list of existing holding IDs to copy
     initial_holding_ids = serializers.ListField(
         child=serializers.IntegerField(), # Expects a list of integers
@@ -171,16 +151,16 @@ class PortfolioSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         """
-        Custom validation for portfolio CREATION.
-        Validates owner assignment and the optional 'initial_holding_ids'.
+        Custom validation for portfolio CREATION and UPDATE.
+        Validates owner assignment (create only) and the optional 'initial_holding_ids' (create only).
+        Validates name on update.
         """
         request = self.context.get('request')
         if not request or not hasattr(request, 'user'):
              raise serializers.ValidationError("Validation Error: Request context is missing user information.")
 
         user = request.user
-        # Skip this validation during updates (PUT/PATCH)
-        # Check if it's a create operation (no instance)
+        # --- UPDATE Validation ---
         if self.instance is not None:
              # If updating, ensure name is provided if it's being changed
              if 'name' in data and not data.get('name'):
@@ -190,6 +170,8 @@ class PortfolioSerializer(serializers.ModelSerializer):
                  raise serializers.ValidationError("Cannot change the portfolio owner after creation.")
              if 'is_default' in data:
                  raise serializers.ValidationError("Cannot change the default status via the API.")
+             if 'initial_holding_ids' in data:
+                 raise serializers.ValidationError("Cannot add initial holdings during portfolio update.")
              return data # Skip create-specific validation
 
         # --- CREATE Validation ---
@@ -273,11 +255,10 @@ class PortfolioSerializer(serializers.ModelSerializer):
 
         return data
 
-    # --- REVISED create method ---
     def create(self, validated_data):
         """
         Override create to explicitly handle owner assignment and remove write-only fields.
-        Holding copy logic is now handled in the view's perform_create.
+        Holding copy logic is handled in the view's perform_create.
         """
         # Remove purely informational write-only fields before creating the model instance
         validated_data.pop('customer_number_input', None)
@@ -319,9 +300,6 @@ class ExcelUploadSerializer(serializers.Serializer):
     """ Serializer for the file upload endpoint in ImportExcelView. """
     file = serializers.FileField()
 
-
-# --- NEW SERIALIZER for Salesperson Email ---
-
 class SelectedBondSerializer(serializers.Serializer):
     """ Nested serializer for validating individual bonds in the email request. """
     cusip = serializers.CharField(max_length=9, required=True, allow_blank=False)
@@ -354,3 +332,40 @@ class SalespersonInterestSerializer(serializers.Serializer):
             # This ensures the ID is at least potentially valid before view logic.
             raise serializers.ValidationError(f"Customer with ID {value} not found.")
         return value
+
+
+# --- NEW SERIALIZER for Municipal Offerings ---
+class MunicipalOfferingSerializer(serializers.ModelSerializer):
+    """ Serializer for the MunicipalOffering model. """
+
+    # Explicitly define fields to ensure correct output types (strings for decimals)
+    amount = serializers.DecimalField(max_digits=15, decimal_places=2, coerce_to_string=True, allow_null=True)
+    coupon = serializers.DecimalField(max_digits=8, decimal_places=5, coerce_to_string=True, allow_null=True)
+    yield_rate = serializers.DecimalField(max_digits=8, decimal_places=5, coerce_to_string=True, allow_null=True)
+    price = serializers.DecimalField(max_digits=12, decimal_places=6, coerce_to_string=True, allow_null=True)
+    call_price = serializers.DecimalField(max_digits=12, decimal_places=6, coerce_to_string=True, allow_null=True)
+
+    # Dates will be formatted as YYYY-MM-DD by default or explicitly set format if needed
+    # maturity_date = serializers.DateField(format="%Y-%m-%d", allow_null=True)
+    # call_date = serializers.DateField(format="%Y-%m-%d", allow_null=True)
+
+    class Meta:
+        model = MunicipalOffering
+        fields = [
+            'id',
+            'cusip',
+            'amount',
+            'description',
+            'coupon',
+            'maturity_date',
+            'yield_rate', # Matches API spec field name
+            'price',
+            'moody_rating',
+            'sp_rating',
+            'call_date',
+            'call_price',
+            'state',
+            'insurance',
+            # 'last_updated', # Typically not included in public API response
+        ]
+        read_only_fields = fields # Make all fields read-only for the API endpoint

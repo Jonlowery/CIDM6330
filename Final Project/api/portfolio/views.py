@@ -1,4 +1,4 @@
-# api/portfolio/views.py (Added EmailSalespersonInterestView)
+# api/portfolio/views.py (Added MunicipalOfferingViewSet, updated ImportExcelView)
 
 import os
 import logging
@@ -20,22 +20,24 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 from rest_framework import serializers # For raising validation errors
 
-# Import Celery tasks for the import view AND the new email task
+# Import Celery tasks
 from .tasks import (
     import_securities_from_excel,
     import_customers_from_excel,
     import_holdings_from_excel,
-    send_salesperson_interest_email, # <-- Import the new task
+    send_salesperson_interest_email,
+    import_muni_offerings_from_excel, # <-- Import the new task
 )
 # Import models and serializers
-from .models import Customer, Security, Portfolio, CustomerHolding
+from .models import Customer, Security, Portfolio, CustomerHolding, MunicipalOffering # Import new model
 from .serializers import (
     ExcelUploadSerializer,
     CustomerSerializer,
     SecuritySerializer,
     PortfolioSerializer,
     CustomerHoldingSerializer,
-    SalespersonInterestSerializer, # <-- Import the new serializer
+    SalespersonInterestSerializer,
+    MunicipalOfferingSerializer, # <-- Import the new serializer
 )
 
 # Setup logging
@@ -186,21 +188,12 @@ class PortfolioViewSet(viewsets.ModelViewSet):
                         new_holding = CustomerHolding(
                             portfolio=new_portfolio, # Link to NEW portfolio
                             security=original_holding.security, # Link to SAME security
-                            # customer=owner, # Removed redundant FK
-                            # customer_number=owner.customer_number, # Removed redundant field
                             # Copy other relevant fields
                             original_face_amount=original_holding.original_face_amount,
                             settlement_date=original_holding.settlement_date,
                             settlement_price=original_holding.settlement_price,
                             book_price=original_holding.book_price,
                             book_yield=original_holding.book_yield,
-                            # Copy potentially cached fields from original holding (or its security)?
-                            # It's better to rely on the related Security object for these.
-                            # wal=original_holding.wal,
-                            # coupon=original_holding.coupon,
-                            # call_date=original_holding.call_date,
-                            # maturity_date=original_holding.maturity_date,
-                            # description=original_holding.description,
                         )
                         new_holdings_to_create.append(new_holding)
 
@@ -218,8 +211,6 @@ class PortfolioViewSet(viewsets.ModelViewSet):
             # Raise DRF validation error to provide feedback to the user
             raise serializers.ValidationError("An error occurred while creating the portfolio or copying holdings.") from e
 
-
-    # --- perform_destroy method ---
     def perform_destroy(self, instance):
         """
         Custom logic executed before deleting a Portfolio instance.
@@ -238,8 +229,6 @@ class PortfolioViewSet(viewsets.ModelViewSet):
         # 2. Prevent Deletion of Default Portfolio
         if instance.is_default:
             log.warning(f"User {user.username} denied deleting default portfolio '{instance.name}' (ID: {instance.id}).")
-            # Use PermissionDenied for authorization failure
-            # raise PermissionDenied("Cannot delete the default 'Primary Holdings' portfolio.")
             # Use ValidationError for a potentially friendlier message in the UI
             raise serializers.ValidationError({"detail": "Cannot delete the default 'Primary Holdings' portfolio."})
 
@@ -355,7 +344,6 @@ class CustomerHoldingViewSet(viewsets.ModelViewSet):
                  raise PermissionDenied("You do not have permission to add holdings to this portfolio.")
 
         # --- Save the holding ---
-        # No need to set customer/customer_number as they are removed from the model
         serializer.save()
         log.info(f"User {user.username} created holding for security {serializer.instance.security.cusip} in portfolio {portfolio.id}")
 
@@ -379,25 +367,29 @@ class ImportExcelView(GenericAPIView):
         serializer.is_valid(raise_exception=True)
         # Get the uploaded file object
         file_obj = serializer.validated_data['file']
-        original_filename = file_obj.name.lower() # Use lowercase for consistent checking
+        original_filename = file_obj.name # Keep original case for exact match if needed
 
         # --- Determine which import task to run based on filename ---
         task_to_run = None
-        task_name = "Unknown"
-        if original_filename.startswith('securities') and original_filename.endswith('.xlsx'):
+        task_name = "Unknown Import"
+        # Use exact match for muni offerings, startswith for others
+        if original_filename == 'muni_offerings.xlsx': # Exact match
+             task_to_run = import_muni_offerings_from_excel
+             task_name = "Municipal Offerings Import"
+        elif original_filename.lower().startswith('securities') and original_filename.lower().endswith('.xlsx'):
             task_to_run = import_securities_from_excel
             task_name = "Securities Import"
-        elif original_filename.startswith('customers') and original_filename.endswith('.xlsx'):
+        elif original_filename.lower().startswith('customers') and original_filename.lower().endswith('.xlsx'):
             task_to_run = import_customers_from_excel
             task_name = "Customers Import"
-        elif original_filename.startswith('holdings') and original_filename.endswith('.xlsx'):
+        elif original_filename.lower().startswith('holdings') and original_filename.lower().endswith('.xlsx'):
             task_to_run = import_holdings_from_excel
             task_name = "Holdings Import"
         else:
             # File doesn't match expected naming convention
             log.warning(f"Admin {request.user.username} uploaded file '{file_obj.name}' which does not match expected naming convention.")
             return Response({
-                'error': "Filename must start with 'securities', 'customers', or 'holdings' and end with '.xlsx'."
+                'error': "Filename must be 'muni_offerings.xlsx' or start with 'securities', 'customers', or 'holdings' and end with '.xlsx'."
             }, status=status.HTTP_400_BAD_REQUEST)
 
         # --- Save the uploaded file securely ---
@@ -453,8 +445,6 @@ class ImportExcelView(GenericAPIView):
             # Return an error response
             return Response({'error': f'File saved, but failed to trigger processing task: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-# --- NEW VIEW for Emailing Salesperson ---
 
 class EmailSalespersonInterestView(APIView):
     """
@@ -520,3 +510,22 @@ class EmailSalespersonInterestView(APIView):
             log.error(f"Error triggering Celery task 'send_salesperson_interest_email' for customer {customer.customer_number}: {e}", exc_info=True)
             # Return 500 Internal Server Error if task queuing fails
             return Response({"error": "Failed to queue email task. Please try again later."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# --- NEW VIEWSET for Municipal Offerings ---
+class MunicipalOfferingViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    API endpoint that allows municipal offerings to be viewed.
+    Provides read-only access.
+    """
+    queryset = MunicipalOffering.objects.all().order_by('maturity_date', 'cusip') # Default ordering
+    serializer_class = MunicipalOfferingSerializer
+    permission_classes = [permissions.IsAuthenticated] # Require login to view offerings
+    filter_backends = [DjangoFilterBackend] # Enable filtering
+    filterset_fields = ['state', 'moody_rating', 'sp_rating', 'insurance'] # Allow filtering on these fields
+
+    # Add search capabilities if needed
+    # from rest_framework import filters
+    # search_fields = ['cusip', 'description', 'state']
+    # filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+

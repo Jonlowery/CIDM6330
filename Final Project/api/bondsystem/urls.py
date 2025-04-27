@@ -14,7 +14,8 @@ from portfolio.views import (
     SecurityViewSet,
     PortfolioViewSet,
     CustomerHoldingViewSet,
-    EmailSalespersonInterestView, # <-- Import the new view
+    EmailSalespersonInterestView,
+    MunicipalOfferingViewSet, # <-- Import the new viewset
 )
 from rest_framework import routers
 
@@ -23,9 +24,10 @@ router = routers.DefaultRouter()
 # Register ViewSets with the router
 # Ensure basenames are set for viewsets using get_queryset or custom querysets
 router.register(r'customers', CustomerViewSet, basename='customer')
-router.register(r'securities', SecurityViewSet, basename='security') # Added basename
+router.register(r'securities', SecurityViewSet, basename='security')
 router.register(r'portfolios', PortfolioViewSet, basename='portfolio')
 router.register(r'holdings', CustomerHoldingViewSet, basename='customerholding')
+router.register(r'muni-offerings', MunicipalOfferingViewSet, basename='munioffering') # <-- Register new viewset
 
 # Define URL patterns
 urlpatterns = [
@@ -44,10 +46,10 @@ urlpatterns = [
     # API endpoint for Excel file imports (admin only)
     path('api/imports/upload_excel/', ImportExcelView.as_view(), name='import-excel'),
 
-    # --- NEW API endpoint for emailing salesperson ---
+    # API endpoint for emailing salesperson
     path('api/email-salesperson-interest/', EmailSalespersonInterestView.as_view(), name='email-salesperson-interest'),
 
     # Include URLs registered with the DRF router (for ViewSets)
-    # This should generally come after more specific paths
-    path('api/', include(router.urls)),
+    # This should generally come after more specific paths like imports/email
+    path('api/', include(router.urls)), # This now includes /api/muni-offerings/
 ]
