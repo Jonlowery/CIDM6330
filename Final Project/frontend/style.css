@@ -1,4 +1,4 @@
-/* --- CSS (Includes styles for new modal) --- */
+/* --- CSS (Includes styles for new modal and delete button) --- */
 
 /* Define CSS variables for theming (light and dark modes) */
 :root {
@@ -52,7 +52,7 @@ body.dark-mode {
     --input-bg-color: #333;
     --button-primary-bg: #0d6efd;
     --button-secondary-bg: #5c636a;
-    --button-danger-bg: #dc3545;
+    --button-danger-bg: #e34d5a; /* Slightly adjusted danger color for dark mode */
     --button-info-bg: #20c997;
     /* PDF specific colors */
     --pdf-header-bg: '#3a3a3a';
@@ -287,11 +287,19 @@ button.control-action-btn {
     border: none;
     cursor: pointer;
     font-weight: bold;
-    transition: background-color 0.2s ease;
+    transition: background-color 0.2s ease, opacity 0.2s ease; /* Add opacity transition */
     height: 38px; /* Match input height */
     box-sizing: border-box;
     color: var(--button-primary-text); /* Default text color */
+    flex-shrink: 0; /* Prevent buttons from shrinking too much */
 }
+
+/* Disabled state for buttons */
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 
 #add-filter-btn {
     background-color: var(--button-primary-bg);
@@ -300,7 +308,7 @@ button.control-action-btn {
     margin-top: 0.5em;
 }
 
-#add-filter-btn:hover {
+#add-filter-btn:hover:not(:disabled) { /* Apply hover only if not disabled */
     background-color: color-mix(in srgb, var(--button-primary-bg) 80%, black);
 }
 
@@ -311,7 +319,7 @@ button.control-action-btn {
     margin-top: 0.5em;
 }
 
-#clear-all-filters-btn:hover {
+#clear-all-filters-btn:hover:not(:disabled) {
     background-color: color-mix(in srgb, var(--button-secondary-bg) 80%, black);
 }
 
@@ -322,9 +330,21 @@ button.control-action-btn {
     margin-top: 0.5em;
 }
 
-#create-portfolio-btn:hover {
+#create-portfolio-btn:hover:not(:disabled) {
     background-color: color-mix(in srgb, var(--button-info-bg) 80%, black);
 }
+
+/* Delete button specific styles */
+#delete-portfolio-btn {
+    background-color: var(--button-danger-bg);
+    color: var(--button-danger-text);
+    margin-left: 0.5em; /* Add some space next to the dropdown */
+    flex-grow: 0; /* Don't allow delete button to grow */
+}
+#delete-portfolio-btn:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--button-danger-bg) 80%, black);
+}
+
 
 /* Remove filter button styling */
 button.remove-filter-btn {
@@ -337,7 +357,7 @@ button.remove-filter-btn {
     flex-basis: auto; /* Base size on content */
 }
 
-button.remove-filter-btn:hover {
+button.remove-filter-btn:hover:not(:disabled) {
     background-color: color-mix(in srgb, var(--button-danger-bg) 80%, black);
 }
 
@@ -553,7 +573,7 @@ body.dark-mode .chart-container {
     color: var(--button-primary-text);
 }
 
-.modal-footer .btn-primary:hover {
+.modal-footer .btn-primary:hover:not(:disabled) {
     background-color: color-mix(in srgb, var(--button-primary-bg) 80%, black);
 }
 
@@ -562,7 +582,7 @@ body.dark-mode .chart-container {
     color: var(--button-secondary-text);
 }
 
-.modal-footer .btn-secondary:hover {
+.modal-footer .btn-secondary:hover:not(:disabled) {
     background-color: color-mix(in srgb, var(--button-secondary-bg) 80%, black);
 }
 
@@ -602,14 +622,19 @@ body.dark-mode .chart-container {
     .filter-row select,
     .filter-row input,
     .control-row select,
+    .control-row button, /* Stack delete button */
     button.remove-filter-btn {
         width: 100%; /* Make inputs/buttons full width */
         flex-basis: auto; /* Reset flex-basis */
+        margin-left: 0; /* Remove margin for delete button */
     }
     .filter-row label:first-child, .control-row label {
         text-align: left; /* Align label left */
         margin-bottom: 0.2em;
         flex-basis: auto; /* Reset label basis */
+    }
+    #delete-portfolio-btn {
+        margin-top: 0.5em; /* Add space above delete button when stacked */
     }
     header.app-header {
         padding: 0 1em; /* Reduce header padding */

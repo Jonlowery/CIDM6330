@@ -30,12 +30,13 @@
             <select id="portfolio-filter-select">
                 <option value="">-- Select Portfolio --</option>
             </select>
+            <button id="delete-portfolio-btn" class="control-action-btn btn-danger" title="Delete selected portfolio" disabled>Delete Portfolio</button>
         </div>
         <div id="filters-container"></div>
         <div class="filter-buttons-container">
             <button id="add-filter-btn" class="filter-action-btn">Add Filter</button>
             <button id="clear-all-filters-btn" class="filter-action-btn">Clear All Filters</button>
-            <button id="create-portfolio-btn" class="control-action-btn">Create Sub-Portfolio</button>
+            <button id="create-portfolio-btn" class="control-action-btn">Save Filtered View as Portfolio</button>
         </div>
     </div>
 
@@ -80,14 +81,14 @@
 <div id="create-portfolio-modal" class="modal-overlay">
     <div class="modal-content">
         <div class="modal-header">
-            <h3>Create New Sub-Portfolio</h3>
+            <h3>Save View as New Portfolio</h3>
             <button class="modal-close-btn" id="modal-close-btn">&times;</button>
         </div>
         <form id="create-portfolio-form">
             <div class="modal-body">
                 <div class="form-group">
-                    <label for="new-portfolio-name">Portfolio Name:</label>
-                    <input type="text" id="new-portfolio-name" name="name" required placeholder="e.g., Q3 High Yield">
+                    <label for="new-portfolio-name">New Portfolio Name:</label>
+                    <input type="text" id="new-portfolio-name" name="name" required placeholder="e.g., Q3 High Yield Filtered">
                 </div>
                 <div class="form-group hidden" id="admin-customer-select-group">
                     <label for="admin-customer-select">Assign to Customer:</label>
@@ -99,7 +100,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn-secondary" id="modal-cancel-btn">Cancel</button>
-                <button type="submit" class="btn-primary">Create Portfolio</button>
+                <button type="submit" class="btn-primary">Save Portfolio</button>
             </div>
         </form>
     </div>

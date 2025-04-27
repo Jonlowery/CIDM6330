@@ -1,28 +1,28 @@
-# api/portfolio/tasks.py
+# api/portfolio/tasks.py (Set is_default=True on customer import)
 
 import os
 import logging
 import time # Added for retry delay
 import openpyxl
 from celery import shared_task, chain
+# Import necessary Django components
 from django.db import transaction, IntegrityError, OperationalError
 from django.conf import settings
-# Removed unused slugify import
-# from django.utils.text import slugify
-
+# Import models from the current app
 from .models import Security, Customer, Portfolio, CustomerHolding
-# Removed old comment about services.py
-# from .services import load_securities, load_customers, load_holdings
+# Import Decimal for data cleaning
+from decimal import Decimal, InvalidOperation
 
+# Setup logging
 log = logging.getLogger(__name__)
 
-# --- Helper Functions remain the same ---
+# --- Helper Functions ---
 def clean_decimal(value, default=None):
     """ Safely convert value to Decimal, return default if conversion fails. """
-    from decimal import Decimal, InvalidOperation
     if value is None:
         return default
     try:
+        # Handle potential percentage strings if needed
         if isinstance(value, str) and '%' in value:
             value = value.replace('%', '').strip()
         return Decimal(value)
@@ -32,28 +32,29 @@ def clean_decimal(value, default=None):
 
 def clean_date(value, default=None):
     """ Safely convert value to Date, return default if conversion fails. """
-    from datetime import datetime
+    from datetime import datetime # Import datetime locally for clarity
     if value is None:
         return default
-    if isinstance(value, datetime): # Excel might return datetime objects
+    # Handle cases where openpyxl might return datetime objects
+    if isinstance(value, datetime):
         return value.date()
     try:
-        # Add specific parsing logic here if needed:
+        # Add specific parsing logic here if Excel dates are strings in known formats
         # Example: return datetime.strptime(str(value), '%m/%d/%Y').date()
-        # For now, rely on openpyxl providing datetime objects or None
+        # If relying solely on openpyxl's conversion to datetime:
         if not isinstance(value, datetime):
+             # Log if the value isn't a datetime object as expected from data_only=True
              log.warning(f"Value '{value}' is not a datetime object from openpyxl. Attempting direct use, might fail.")
-             # Add specific parsing here if you expect strings, e.g.
-             # return datetime.strptime(str(value), '%m/%d/%Y').date()
-             return default # Return default if no specific parsing is added
+             # If parsing is needed, add it here, otherwise return default
+             return default
+        # This part might not be reached if openpyxl handles conversion correctly
         return default
     except (ValueError, TypeError) as e:
         log.warning(f"Could not convert '{value}' to Date: {e}. Using default '{default}'")
         return default
 
-# --- Updated Import Tasks ---
+# --- Import Tasks ---
 
-# import_securities_from_excel remains unchanged
 @shared_task
 def import_securities_from_excel(file_path):
     """
@@ -68,100 +69,128 @@ def import_securities_from_excel(file_path):
     retry_delay = 0.5 # seconds
 
     try:
+        # Load workbook in read-only mode and get data values directly
         wb = openpyxl.load_workbook(filename=file_path, data_only=True, read_only=True)
         ws = wb.active
     except FileNotFoundError:
         log.error(f"Security import file not found: {file_path}")
-        # Use Celery's exception handling for task failure
+        # Raise error to mark task as failed in Celery
         raise FileNotFoundError(f"Security import file not found: {file_path}")
     except Exception as e:
         log.error(f"Error opening security import file {file_path}: {e}", exc_info=True)
         raise # Reraise unexpected errors
 
-    # Read headers
+    # Read headers from the first row
     headers = [str(cell.value).lower().strip().replace(' ', '_') if cell.value else None for cell in ws[1]]
-    headers = [h for h in headers if h]
+    headers = [h for h in headers if h] # Remove None values from empty header cells
     log.info(f"Found security headers: {headers}")
 
+    # Create a map of header names to column indices for easy access
     col_map = {header: idx for idx, header in enumerate(headers)}
+    # Ensure mandatory 'cusip' header exists
     if 'cusip' not in col_map:
         log.error("Mandatory header 'cusip' not found in security import file.")
         wb.close()
         raise ValueError("Mandatory header 'cusip' not found in security import file.")
 
+    # Iterate through rows, starting from the second row
     for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        # Basic row validation: check if row has enough columns
         if len(row) < len(headers):
             log.warning(f"Securities Row {row_idx}: Skipping row due to insufficient columns (expected {len(headers)}, got {len(row)})")
             skipped_rows += 1
             continue
 
+        # Create dictionary from headers and row data
         raw_data = dict(zip(headers, row))
         cusip = raw_data.get('cusip')
 
+        # Skip row if CUSIP is missing
         if not cusip:
             log.warning(f"Securities Row {row_idx}: Skipping row due to missing CUSIP.")
             skipped_rows += 1
             continue
-        cusip = str(cusip).strip()
+        cusip = str(cusip).strip() # Clean CUSIP
 
+        # Prepare data dictionary for update_or_create defaults
         data_defaults = {
             'description': raw_data.get('description', ''),
             'issue_date': clean_date(raw_data.get('issue_date')),
             'maturity_date': clean_date(raw_data.get('maturity_date')),
-            'call_date': clean_date(raw_data.get('call_date')),
+            'call_date': clean_date(raw_data.get('call_date')), # Assuming call_date might exist
             'coupon': clean_decimal(raw_data.get('coupon')),
             'wal': clean_decimal(raw_data.get('wal')),
-            'payment_frequency': int(clean_decimal(raw_data.get('payment_frequency'))) if raw_data.get('payment_frequency') else Security.PAYMENT_FREQ_CHOICES[1][0], # Default Semiannual
-            'day_count': raw_data.get('day_count', Security.DAY_COUNT_CHOICES[0][0]), # Default 30/360
-            'factor': clean_decimal(raw_data.get('factor'), default=1.0),
+            # Safely get payment frequency, default to Semiannual (2)
+            'payment_frequency': int(clean_decimal(raw_data.get('payment_frequency'))) if raw_data.get('payment_frequency') else 2,
+            # Safely get day count, default to 30/360
+            'day_count': raw_data.get('day_count', '30/360'),
+            # Safely get factor, default to 1.0
+            'factor': clean_decimal(raw_data.get('factor'), default=Decimal('1.0')),
         }
+        # Remove None values from defaults to avoid overwriting existing data with None during update
         data_defaults = {k: v for k, v in data_defaults.items() if v is not None}
 
+        # --- Retry logic for database lock ---
         retries = 0
         success = False
         while retries < max_retries_per_row and not success:
             try:
+                # Use transaction.atomic for atomic update or create
                 with transaction.atomic():
                     security, created = Security.objects.update_or_create(
-                        cusip=cusip,
-                        defaults=data_defaults
+                        cusip=cusip,      # Match based on CUSIP
+                        defaults=data_defaults # Apply cleaned data
                     )
-                success = True
-                if created: created_count += 1; log.debug(f"Sec Row {row_idx}: Created Security: {cusip}")
-                else: updated_count += 1; log.debug(f"Sec Row {row_idx}: Updated Security: {cusip}")
+                success = True # Mark as successful if transaction completes
+                if created:
+                    created_count += 1
+                    log.debug(f"Sec Row {row_idx}: Created Security: {cusip}")
+                else:
+                    updated_count += 1
+                    log.debug(f"Sec Row {row_idx}: Updated Security: {cusip}")
             except OperationalError as e:
+                # Handle database lock errors specifically for retrying
                 if 'database is locked' in str(e) and retries < max_retries_per_row - 1:
                     retries += 1
-                    log.warning(f"Sec Row {row_idx}: DB locked for security {cusip}. Retrying ({retries}/{max_retries_per_row-1})...")
-                    time.sleep(retry_delay * (2**retries))
+                    wait_time = retry_delay * (2**retries) # Exponential backoff
+                    log.warning(f"Sec Row {row_idx}: DB locked for security {cusip}. Retrying ({retries}/{max_retries_per_row-1}) in {wait_time:.2f}s...")
+                    time.sleep(wait_time)
                 else:
+                    # Persistent lock or other OperationalError
                     log.error(f"Sec Row {row_idx}: OperationalError importing security {cusip} after {retries} retries: {e}")
-                    skipped_rows += 1; break
+                    skipped_rows += 1
+                    break # Exit retry loop for this row
             except IntegrityError as e:
+                # Handle potential integrity errors (e.g., unique constraints if model changes)
                 log.error(f"Sec Row {row_idx}: IntegrityError importing security {cusip}: {e}")
-                skipped_rows += 1; break
+                skipped_rows += 1
+                break # Exit retry loop for this row
             except Exception as e:
-                log.error(f"Sec Row {row_idx}: Unexpected error importing security {cusip}: {e}", exc_info=True)
-                skipped_rows += 1; break
+                # Catch any other unexpected errors
+                log.error(f"Sec Row {row_idx}: Unexpected error importing security {cusip}: {e}", exc_info=True) # Log traceback
+                skipped_rows += 1
+                break # Exit retry loop for this row
 
-    wb.close()
+    wb.close() # Close the workbook to release resources
     result_message = f"Imported/Updated securities from {os.path.basename(file_path)}. Created: {created_count}, Updated: {updated_count}, Skipped: {skipped_rows}."
     log.info(result_message)
     return result_message
 
 
-# import_customers_from_excel remains unchanged
+# --- UPDATED import_customers_from_excel ---
 @shared_task
 def import_customers_from_excel(file_path):
     """
     Imports or updates customers from an Excel file based on customer_number.
-    Creates a default "Primary Holdings" portfolio for each customer if it doesn't exist.
-    Does NOT delete existing customers or portfolios. Includes basic retry for DB locks.
+    Ensures a default "Primary Holdings" portfolio exists for each customer
+    and marks it with is_default=True.
+    Includes basic retry for DB locks.
     """
     log.info(f"Starting customer import/update from {file_path}")
     updated_count = 0
     created_count = 0
     portfolio_created_count = 0
+    portfolio_marked_default_count = 0
     skipped_rows = 0
     max_retries_per_row = 3
     retry_delay = 0.5 # seconds
@@ -200,63 +229,105 @@ def import_customers_from_excel(file_path):
             continue
         customer_number = str(customer_number).strip()
 
+        # Prepare customer data defaults
         customer_defaults = {}
         if 'name' in raw_data: customer_defaults['name'] = raw_data['name']
         if 'address' in raw_data: customer_defaults['address'] = raw_data['address']
         if 'city' in raw_data: customer_defaults['city'] = raw_data['city']
         if 'state' in raw_data: customer_defaults['state'] = raw_data['state']
         if 'zip_code' in raw_data: customer_defaults['zip_code'] = raw_data['zip_code']
+        # Only include fields that were actually present in the row
         customer_defaults = {k: v for k, v in customer_defaults.items() if v is not None}
 
+        # --- Retry logic for database lock ---
         retries = 0
         success = False
         customer = None
-        created = False
+        customer_created = False # Renamed for clarity
+        portfolio = None
         portfolio_created = False
+        portfolio_updated = False # Track if existing default portfolio was updated
+
         while retries < max_retries_per_row and not success:
             try:
+                # Use a single transaction for customer and default portfolio operations
                 with transaction.atomic():
-                    customer, created = Customer.objects.update_or_create(
+                    # Update or create the customer
+                    customer, customer_created = Customer.objects.update_or_create(
                         customer_number=customer_number,
                         defaults=customer_defaults
                     )
-                    # Standardized default portfolio name
+
+                    # Define the standard name for the default portfolio
                     portfolio_name = f"{customer.name or customer_number} - Primary Holdings"
+
+                    # --- Ensure default portfolio exists AND is marked as default ---
+                    # Define the defaults for get_or_create, including is_default=True
+                    portfolio_defaults = {'is_default': True}
                     portfolio, portfolio_created = Portfolio.objects.get_or_create(
                         owner=customer,
-                        name=portfolio_name
+                        name=portfolio_name, # Match based on owner and name
+                        defaults=portfolio_defaults # Apply defaults ONLY if creating
                     )
-                success = True
+
+                    # If the portfolio was NOT created (it already existed),
+                    # ensure its is_default flag is True.
+                    if not portfolio_created and not portfolio.is_default:
+                        portfolio.is_default = True
+                        portfolio.save(update_fields=['is_default']) # Efficiently update only the flag
+                        portfolio_updated = True # Mark that we updated the flag
+
+                success = True # Mark transaction as successful
+
             except OperationalError as e:
                  if 'database is locked' in str(e) and retries < max_retries_per_row -1:
                     retries += 1
-                    log.warning(f"Cust Row {row_idx}: DB locked for customer {customer_number}. Retrying ({retries}/{max_retries_per_row-1})...")
-                    time.sleep(retry_delay * (2**retries))
+                    wait_time = retry_delay * (2**retries)
+                    log.warning(f"Cust Row {row_idx}: DB locked for customer {customer_number}. Retrying ({retries}/{max_retries_per_row-1}) in {wait_time:.2f}s...")
+                    time.sleep(wait_time)
                  else:
                     log.error(f"Cust Row {row_idx}: OperationalError importing customer {customer_number} after {retries} retries: {e}")
-                    skipped_rows += 1; break
+                    skipped_rows += 1
+                    break # Exit retry loop
             except IntegrityError as e:
-                log.error(f"Cust Row {row_idx}: IntegrityError importing customer {customer_number}: {e}")
-                skipped_rows += 1; break
+                # Could be unique constraint on portfolio (owner, is_default=True) if logic is flawed
+                log.error(f"Cust Row {row_idx}: IntegrityError importing customer {customer_number} or default portfolio: {e}", exc_info=True)
+                skipped_rows += 1
+                break # Exit retry loop
             except Exception as e:
                 log.error(f"Cust Row {row_idx}: Unexpected error importing customer {customer_number}: {e}", exc_info=True)
-                skipped_rows += 1; break
+                skipped_rows += 1
+                break # Exit retry loop
 
+        # Log results outside the retry loop if successful
         if success:
-            if created: created_count += 1; log.debug(f"Cust Row {row_idx}: Created Customer: {customer_number}")
-            else: updated_count += 1; log.debug(f"Cust Row {row_idx}: Updated Customer: {customer_number}")
-            if portfolio_created: portfolio_created_count += 1; log.debug(f"Cust Row {row_idx}: Created default Portfolio for Customer: {customer_number}")
+            if customer_created:
+                created_count += 1
+                log.debug(f"Cust Row {row_idx}: Created Customer: {customer_number}")
+            else:
+                updated_count += 1
+                log.debug(f"Cust Row {row_idx}: Updated Customer: {customer_number}")
+            if portfolio_created:
+                portfolio_created_count += 1
+                log.debug(f"Cust Row {row_idx}: Created default Portfolio '{portfolio.name}' for Customer: {customer_number}")
+            elif portfolio_updated:
+                portfolio_marked_default_count += 1
+                log.debug(f"Cust Row {row_idx}: Marked existing Portfolio '{portfolio.name}' as default for Customer: {customer_number}")
 
     wb.close()
-    result_message = (f"Imported/Updated customers from {os.path.basename(file_path)}. "
-                      f"Created: {created_count}, Updated: {updated_count}. "
-                      f"Default Portfolios Created: {portfolio_created_count}, Skipped: {skipped_rows}.")
+    result_message = (
+        f"Imported/Updated customers from {os.path.basename(file_path)}. "
+        f"Customers Created: {created_count}, Updated: {updated_count}. "
+        f"Default Portfolios Created: {portfolio_created_count}, "
+        f"Existing Portfolios Marked Default: {portfolio_marked_default_count}, "
+        f"Skipped Rows: {skipped_rows}."
+    )
     log.info(result_message)
     return result_message
 
 
-# --- MODIFIED import_holdings_from_excel ---
-@shared_task(bind=True, autoretry_for=(OperationalError,), retry_backoff=5, max_retries=3) # Retry on OperationalError (lock)
+# import_holdings_from_excel remains unchanged (operates on default portfolio)
+@shared_task(bind=True, autoretry_for=(OperationalError,), retry_backoff=5, max_retries=3)
 def import_holdings_from_excel(self, file_path):
     """
     Imports or updates holdings from an Excel file ONLY into the default
@@ -269,10 +340,10 @@ def import_holdings_from_excel(self, file_path):
     created_count = 0
     deleted_count = 0
     skipped_rows = 0
-    # Stores (customer_id, security_id) tuples processed from the file FOR THE DEFAULT PORTFOLIO
-    processed_holding_keys_in_default_portfolio = {} # Dict: {customer_id: set(security_id)}
+    # Stores {customer_id: set(security_id)} processed from the file FOR THE DEFAULT PORTFOLIO
+    processed_holding_keys_in_default_portfolio = {}
 
-    max_retries_per_row = 3 # Reduced retries per row as main retry is on task level
+    max_retries_per_row = 3
     retry_delay = 0.5 # seconds
 
     try:
@@ -303,8 +374,7 @@ def import_holdings_from_excel(self, file_path):
     for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
         if len(row) < len(headers):
             log.warning(f"Holdings Row {row_idx}: Skipping row due to insufficient columns (expected {len(headers)}, got {len(row)})")
-            skipped_rows += 1
-            continue
+            skipped_rows += 1; continue
 
         raw_data = dict(zip(headers, row))
         cust_no = raw_data.get('customer_number')
@@ -326,7 +396,7 @@ def import_holdings_from_excel(self, file_path):
             except Customer.DoesNotExist:
                 log.warning(f"Holdings Row {row_idx}: Skipping holding for unknown customer_number {cust_no}")
                 skipped_rows += 1; continue
-            except Exception as e: # Catch potential errors during lookup
+            except Exception as e:
                  log.error(f"Holdings Row {row_idx}: Error fetching customer {cust_no}: {e}")
                  skipped_rows += 1; continue
 
@@ -343,17 +413,22 @@ def import_holdings_from_excel(self, file_path):
                  log.error(f"Holdings Row {row_idx}: Error fetching security {cusip}: {e}")
                  skipped_rows += 1; continue
 
-        # --- Get Default Portfolio (use cache) ---
+        # --- Get Default Portfolio (use cache, ensure it's marked default) ---
         default_portfolio = default_portfolio_cache.get(customer.id)
-        if customer.id not in default_portfolio_cache: # Check cache first before querying
-            portfolio_name = f"{customer.name or cust_no} - Primary Holdings"
+        if customer.id not in default_portfolio_cache: # Check cache first
             try:
-                 # Only get, do not create here. Assume it exists from customer import.
-                default_portfolio = Portfolio.objects.get(owner=customer, name=portfolio_name)
+                 # Find the portfolio marked as default for this owner
+                default_portfolio = Portfolio.objects.get(owner=customer, is_default=True)
                 default_portfolio_cache[customer.id] = default_portfolio
             except Portfolio.DoesNotExist:
-                 log.warning(f"Holdings Row {row_idx}: Default portfolio '{portfolio_name}' not found for customer {cust_no}. Skipping holding.")
-                 default_portfolio_cache[customer.id] = None # Cache None to avoid requery
+                 # This should ideally not happen if customer import ran correctly
+                 log.warning(f"Holdings Row {row_idx}: Default portfolio not found for customer {cust_no}. Skipping holding. Run customer import first.")
+                 default_portfolio_cache[customer.id] = None # Cache None
+                 skipped_rows += 1; continue
+            except Portfolio.MultipleObjectsReturned:
+                 # This indicates a data integrity issue (more than one default portfolio)
+                 log.error(f"Holdings Row {row_idx}: CRITICAL - Multiple default portfolios found for customer {cust_no}. Skipping holding.")
+                 default_portfolio_cache[customer.id] = None # Cache None
                  skipped_rows += 1; continue
             except Exception as e:
                  log.error(f"Holdings Row {row_idx}: Error fetching default portfolio for customer {cust_no}: {e}")
@@ -374,8 +449,6 @@ def import_holdings_from_excel(self, file_path):
             'customer': customer, # Redundant field
             'customer_number': cust_no # Redundant field
         }
-        # Use Decimal('NaN') or similar if you need to explicitly null out fields
-        # For now, filter out None to only update provided fields
         holding_defaults = {k: v for k, v in holding_defaults.items() if v is not None}
 
         # --- Perform update_or_create within the DEFAULT portfolio ---
@@ -383,7 +456,6 @@ def import_holdings_from_excel(self, file_path):
         success = False
         while retries < max_retries_per_row and not success:
             try:
-                # Use transaction.atomic for safety on update_or_create
                 with transaction.atomic():
                     holding, created = CustomerHolding.objects.update_or_create(
                         portfolio=default_portfolio, # Target specific default portfolio
@@ -400,123 +472,95 @@ def import_holdings_from_excel(self, file_path):
                 else: updated_count += 1; log.debug(f"Hold Row {row_idx}: Updated Holding in '{default_portfolio.name}', Sec: {security.cusip}")
 
             except OperationalError as e:
-                 # Let celery handle retry for OperationalError based on task decorator
-                 if retries < max_retries_per_row -1 : # Log intermediate retries
+                 # Let celery handle retry based on task decorator
+                 if retries < max_retries_per_row -1 :
                     log.warning(f"Hold Row {row_idx}: DB locked for holding P:{default_portfolio.id}/S:{security.id}. Celery will retry...")
                  retries += 1
-                 time.sleep(retry_delay * (2**retries)) # Manual backoff if needed before Celery retry
-                 # If it persists, Celery's autoretry_for should catch it. If max retries exceed, task fails.
+                 time.sleep(retry_delay * (2**retries)) # Optional manual backoff
                  if retries >= max_retries_per_row :
                       log.error(f"Hold Row {row_idx}: DB lock persisted for holding P:{default_portfolio.id}/S:{security.id}. Raising error.")
-                      raise # Raise error to let Celery handle final failure state
+                      raise # Raise error to let Celery handle final failure
             except IntegrityError as e:
-                log.error(f"Hold Row {row_idx}: IntegrityError on holding P:{default_portfolio.id}, S:{security.cusip}: {e}")
-                skipped_rows += 1; break # Break retry loop for this row
+                log.error(f"Hold Row {row_idx}: IntegrityError on holding P:{default_portfolio.id}, S:{security.cusip}: {e}", exc_info=True)
+                skipped_rows += 1; break
             except Exception as e:
                 log.error(f"Hold Row {row_idx}: Unexpected error on holding P:{default_portfolio.id}, S:{security.cusip}: {e}", exc_info=True)
-                skipped_rows += 1; break # Break retry loop for this row
+                skipped_rows += 1; break
 
     # --- Second Pass: Delete obsolete holdings from relevant DEFAULT portfolios ---
     log.info("Holdings Pass 2: Deleting obsolete holdings from default portfolios...")
 
-    # Iterate through customers whose default portfolios were processed
     for customer_id, processed_security_ids in processed_holding_keys_in_default_portfolio.items():
-        # Get the default portfolio instance again (should be cached)
         default_portfolio = default_portfolio_cache.get(customer_id)
         if not default_portfolio:
             log.warning(f"Holdings Deletion: Could not find default portfolio for customer ID {customer_id} during deletion phase. Skipping.")
             continue
 
         log.info(f"Holdings Deletion: Checking default portfolio '{default_portfolio.name}' (ID: {default_portfolio.id}) for obsolete holdings.")
-
         try:
-            # Find all holdings currently in the DB for this specific default portfolio
-            holdings_in_db = CustomerHolding.objects.filter(portfolio=default_portfolio)
-            obsolete_holding_ids = []
+            # Find holdings in the DB for this specific default portfolio NOT present in the file
+            obsolete_holdings = CustomerHolding.objects.filter(portfolio=default_portfolio).exclude(security_id__in=processed_security_ids)
+            obsolete_count = obsolete_holdings.count()
 
-            for holding in holdings_in_db:
-                # Check if the security ID of this DB holding was found in the file *for this customer*
-                if holding.security_id not in processed_security_ids:
-                    obsolete_holding_ids.append(holding.id)
-                    log.debug(f"Holdings Deletion: Marking holding ID {holding.id} (Sec ID: {holding.security_id}) in portfolio {default_portfolio.id} for deletion.")
-
-            if obsolete_holding_ids:
-                log.info(f"Holdings Deletion: Attempting to delete {len(obsolete_holding_ids)} obsolete holdings from portfolio {default_portfolio.id}.")
-                # Perform deletion within a transaction and handle potential locks
+            if obsolete_count > 0:
+                log.info(f"Holdings Deletion: Attempting to delete {obsolete_count} obsolete holdings from portfolio {default_portfolio.id}.")
+                # Perform deletion within a transaction
                 retries = 0
                 success = False
                 deleted_batch_count = 0
                 while retries < max_retries_per_row and not success:
                     try:
                         with transaction.atomic():
-                            deleted_batch_count, _ = CustomerHolding.objects.filter(id__in=obsolete_holding_ids).delete()
+                            # Use the queryset's delete method
+                            deleted_batch_count, _ = obsolete_holdings.delete()
                         success = True
-                        deleted_count += deleted_batch_count # Add to total deleted count
+                        deleted_count += deleted_batch_count
                         log.info(f"Holdings Deletion: Successfully deleted {deleted_batch_count} holdings from portfolio '{default_portfolio.name}'.")
                     except OperationalError as e:
                         if 'database is locked' in str(e) and retries < max_retries_per_row -1:
                             retries += 1
-                            log.warning(f"Holdings Deletion: DB locked deleting holdings for portfolio {default_portfolio.id}. Retrying ({retries}/{max_retries_per_row-1})...")
-                            time.sleep(retry_delay * (2**retries))
+                            wait_time = retry_delay * (2**retries)
+                            log.warning(f"Holdings Deletion: DB locked deleting holdings for portfolio {default_portfolio.id}. Retrying ({retries}/{max_retries_per_row-1}) in {wait_time:.2f}s...")
+                            time.sleep(wait_time)
                         else:
                             log.error(f"Holdings Deletion: OperationalError deleting holdings for portfolio {default_portfolio.id} after {retries} retries: {e}")
-                            # If deletion fails, don't stop the whole task, just log and move on
                             break # Exit retry loop for this portfolio's deletion
                     except Exception as e:
                          log.error(f"Holdings Deletion: Error deleting obsolete holdings for portfolio '{default_portfolio.name}': {e}", exc_info=True)
-                         break # Exit retry loop for this portfolio's deletion
+                         break # Exit retry loop
             else:
                 log.info(f"Holdings Deletion: No obsolete holdings found in portfolio '{default_portfolio.name}'.")
-
         except Exception as e:
-             # Catch errors fetching holdings or other unexpected issues during deletion phase
              log.error(f"Holdings Deletion: Unexpected error processing portfolio ID {default_portfolio.id}: {e}", exc_info=True)
 
-
-    wb.close() # Close the workbook
+    wb.close()
     result_message = (f"Processed holdings (Primary Portfolio Only) from {os.path.basename(file_path)}. "
                       f"Created: {created_count}, Updated: {updated_count}, Deleted: {deleted_count}, Skipped Rows: {skipped_rows}.")
     log.info(result_message)
     return result_message
 
 
-# import_all_from_excel remains unchanged - NOTE: This task still uses hardcoded paths
-# and might not be the primary way imports are triggered anymore if using the View.
+# import_all_from_excel remains unchanged
 @shared_task
 def import_all_from_excel():
     """
-    Orchestrate the three non-destructive imports in sequence using hardcoded paths:
-      1) securities (update/create)
-      2) customers (update/create) + ensure default portfolio
-      3) holdings (update/create/delete within default portfolios) - uses the modified logic
-
-    Ensure the file paths point to the correct Excel files.
-    Uses immutable signatures (.si) for chained tasks.
+    Orchestrates the three imports in sequence using hardcoded paths.
+    Now correctly marks default portfolios during customer import.
     Consider if this task is still needed given the View-based trigger.
     """
     log.info("Scheduling chained non-destructive import from hardcoded paths...")
-    base = settings.BASE_DIR / 'data' / 'imports' # Use Path object directly
-    sec_file = base / 'sample_securities.xlsx' # Adjust filename if needed
-    cust_file = base / 'customers.xlsx'       # Adjust filename if needed
-    hold_file = base / 'holdings.xlsx'        # Adjust filename if needed
+    base = settings.BASE_DIR / 'data' / 'imports'
+    sec_file = base / 'sample_securities.xlsx'
+    cust_file = base / 'customers.xlsx'
+    hold_file = base / 'holdings.xlsx'
 
-    # Check if files exist before chaining
     files_ok = True
-    if not sec_file.exists():
-        log.error(f"Chained Import: Security file not found: {sec_file}")
-        files_ok = False
-    if not cust_file.exists():
-        log.error(f"Chained Import: Customer file not found: {cust_file}")
-        files_ok = False
-    if not hold_file.exists():
-        log.error(f"Chained Import: Holdings file not found: {hold_file}")
-        files_ok = False
+    if not sec_file.exists(): log.error(f"Chained Import: Security file not found: {sec_file}"); files_ok = False
+    if not cust_file.exists(): log.error(f"Chained Import: Customer file not found: {cust_file}"); files_ok = False
+    if not hold_file.exists(): log.error(f"Chained Import: Holdings file not found: {hold_file}"); files_ok = False
 
-    if not files_ok:
-         return "Error: One or more import files not found for chained import."
+    if not files_ok: return "Error: One or more import files not found for chained import."
 
-    # Use .s() for the first task. Use .si() for subsequent tasks
-    # to prevent the result of the previous task being passed as an argument.
     import_chain = chain(
         import_securities_from_excel.s(str(sec_file)),
         import_customers_from_excel.si(str(cust_file)), # Use .si()

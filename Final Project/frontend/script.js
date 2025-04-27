@@ -36,6 +36,7 @@ let selectedCustomerId = null; // Store the currently selected customer ID
 const customerSelect = document.getElementById('customer-select'); // Renamed from portfolioSelect for clarity
 const portfolioFilterContainer = document.getElementById('portfolio-filter-container'); // New container for portfolio dropdown
 const portfolioFilterSelect = document.getElementById('portfolio-filter-select'); // New portfolio dropdown
+const deletePortfolioBtn = document.getElementById('delete-portfolio-btn'); // New delete button
 const portfolioNameEl = document.getElementById('portfolio-name'); // Displays the selected customer/portfolio name
 const tableBody = document.querySelector('#holdings-table tbody');
 const tableHeaders = document.querySelectorAll('#holdings-table th[data-key]'); // Select only sortable headers
@@ -364,12 +365,13 @@ function handleClearAllFilters() {
     activeFilters = []; // Clear the state array
     filtersContainer.innerHTML = ''; // Clear the filter rows from the DOM
     addFilterRow(); // Add back a single, empty filter row
-    // Reset portfolio dropdown if visible and trigger update
-    if (!portfolioFilterContainer.classList.contains('hidden')) {
-         portfolioFilterSelect.value = ""; // Reset to default/all
-         handlePortfolioSelection(); // Trigger update based on default selection ("All Portfolios")
+
+    // Reset portfolio dropdown to the first option if visible and trigger update
+    if (!portfolioFilterContainer.classList.contains('hidden') && portfolioFilterSelect.options.length > 0) {
+         portfolioFilterSelect.value = portfolioFilterSelect.options[0].value; // Select first portfolio
+         handlePortfolioSelection(); // Trigger update based on the first portfolio
     } else if (selectedCustomerId) {
-        // If only customer was selected, trigger update for that customer
+        // If only customer was selected, trigger update for that customer (will reload portfolios)
         handleCustomerSelection();
     }
     // No need for separate triggerFullUpdate() as handlePortfolioSelection/handleCustomerSelection does it
@@ -431,6 +433,7 @@ async function handleCustomerSelection() {
         portfolioNameEl.textContent = "Please select a customer.";
         clearTableAndCharts();
         portfolioFilterContainer.classList.add('hidden'); // Hide portfolio dropdown
+        deletePortfolioBtn.disabled = true; // Disable delete button
         return;
     }
 
@@ -441,6 +444,7 @@ async function handleCustomerSelection() {
         portfolioNameEl.textContent = "Error: Selected customer not found.";
         clearTableAndCharts();
         portfolioFilterContainer.classList.add('hidden');
+        deletePortfolioBtn.disabled = true; // Disable delete button
         return;
     }
 
@@ -448,6 +452,7 @@ async function handleCustomerSelection() {
     portfolioNameEl.textContent = `Loading portfolios for ${selectedCustomer.name || `Customer ${selectedCustomer.customer_number}`}...`;
     clearTableAndCharts(); // Clear previous view
     portfolioFilterContainer.classList.add('hidden'); // Hide portfolio dropdown while loading
+    deletePortfolioBtn.disabled = true; // Disable delete button while loading
 
     // Load portfolios for this customer
     await loadPortfolios(selectedCustomerId);
@@ -477,31 +482,38 @@ async function loadPortfolios(customerId) {
         // Populate the portfolio dropdown
         portfolioFilterSelect.innerHTML = ''; // Clear existing options
 
-        // Add a default option to show all holdings for the customer
-        const allOption = document.createElement('option');
-        allOption.value = ""; // Use empty value to signify "all"
-        allOption.textContent = "-- All Portfolios --";
-        portfolioFilterSelect.appendChild(allOption);
+        if (customerPortfolios.length > 0) {
+            // Add options for each specific portfolio
+            customerPortfolios.forEach(p => {
+                const option = document.createElement('option');
+                option.value = p.id; // Use portfolio ID as value
+                option.textContent = p.name || `Portfolio ${p.id}`;
+                // Store is_default flag on the option element for the delete check later
+                option.dataset.isDefault = p.is_default || false;
+                portfolioFilterSelect.appendChild(option);
+            });
 
-        // Add options for each specific portfolio
-        customerPortfolios.forEach(p => {
-            const option = document.createElement('option');
-            option.value = p.id; // Use portfolio ID as value
-            option.textContent = p.name || `Portfolio ${p.id}`;
-            portfolioFilterSelect.appendChild(option);
-        });
-
-        // Show the portfolio dropdown
-        portfolioFilterContainer.classList.remove('hidden');
-
-        // Trigger the initial holdings display based on the default selection ("All Portfolios")
-        handlePortfolioSelection();
+            // Show the portfolio dropdown
+            portfolioFilterContainer.classList.remove('hidden');
+            // Trigger the holdings display for the first portfolio in the list
+            handlePortfolioSelection();
+        } else {
+            // No portfolios found for this customer
+            const selectedCustomer = customers.find(c => c.id == customerId);
+            portfolioNameEl.textContent = `${selectedCustomer.name || `Customer ${selectedCustomer.customer_number}`} - No Portfolios Found`;
+            portfolioFilterContainer.classList.add('hidden'); // Hide dropdown
+            deletePortfolioBtn.disabled = true; // Ensure delete is disabled
+            clearTableAndCharts(); // Clear table/charts
+            const colSpan = tableHeaders.length || 10;
+            tableBody.innerHTML = `<tr><td colspan="${colSpan}">No portfolios found for this customer.</td></tr>`;
+        }
 
     } catch (error) {
         console.error("Failed to load or process portfolios:", error);
         portfolioNameEl.textContent = "Error loading portfolios";
         // Keep portfolio dropdown hidden on error
         portfolioFilterContainer.classList.add('hidden');
+        deletePortfolioBtn.disabled = true; // Ensure delete is disabled
         clearTableAndCharts(); // Clear view on error
         const colSpan = tableHeaders.length || 10;
         tableBody.innerHTML = `<tr><td colspan="${colSpan}">Error loading portfolio list. Check console.</td></tr>`;
@@ -511,11 +523,19 @@ async function loadPortfolios(customerId) {
 
 /**
  * Handles the selection of a portfolio from the dropdown.
- * Fetches and displays holdings for the selected portfolio or customer.
+ * Fetches and displays holdings for the selected portfolio.
+ * Enables/disables the delete button.
  */
 async function handlePortfolioSelection() {
-    const selectedPortfolioId = portfolioFilterSelect.value;
-    console.log(`Portfolio selected: ID '${selectedPortfolioId}' (Customer ID: ${selectedCustomerId})`);
+    const selectedPortfolioId = portfolioFilterSelect.value; // This will now always be an ID if portfolios exist
+    const selectedOption = portfolioFilterSelect.options[portfolioFilterSelect.selectedIndex];
+    const isDefaultPortfolio = selectedOption?.dataset?.isDefault === 'true'; // Check if it's the default portfolio
+
+    console.log(`Portfolio selected: ID '${selectedPortfolioId}' (Default: ${isDefaultPortfolio}), Customer ID: ${selectedCustomerId}`);
+
+    // Enable delete button only if a specific, non-default portfolio is selected
+    // Disable if no portfolio ID is selected (e.g., if the list was empty)
+    deletePortfolioBtn.disabled = (!selectedPortfolioId || isDefaultPortfolio);
 
     // Find the selected customer object again (needed for display name)
     const selectedCustomer = customers.find(c => c.id == selectedCustomerId);
@@ -524,23 +544,23 @@ async function handlePortfolioSelection() {
          return; // Should not happen if customer was selected first
     }
 
-    let fetchUrl = '';
-    let viewName = '';
-
-    // Determine the API URL and display name based on selection
-    if (selectedPortfolioId === "") {
-        // "-- All Portfolios --" selected: Fetch holdings by customer owner ID
-        fetchUrl = `${apiRoot}/holdings/?portfolio__owner=${selectedCustomerId}`;
-        viewName = `${selectedCustomer.name || `Customer ${selectedCustomer.customer_number}`} - All Holdings`;
-        console.log("Fetching all holdings for customer:", fetchUrl);
-    } else {
-        // Specific portfolio selected: Fetch holdings by portfolio ID
-        fetchUrl = `${apiRoot}/holdings/?portfolio=${selectedPortfolioId}`;
-        const selectedPortfolio = currentPortfolios.find(p => p.id == selectedPortfolioId);
-        const portfolioDisplayName = selectedPortfolio?.name || `Portfolio ${selectedPortfolioId}`;
-        viewName = `${selectedCustomer.name || `Customer ${selectedCustomer.customer_number}`} - ${portfolioDisplayName}`;
-        console.log("Fetching holdings for specific portfolio:", fetchUrl);
+    // If no portfolio ID is selected (e.g., after deleting the last one), don't fetch holdings
+    if (!selectedPortfolioId) {
+        console.log("No specific portfolio selected.");
+         portfolioNameEl.textContent = `${selectedCustomer.name || `Customer ${selectedCustomer.customer_number}`} - Select a Portfolio`;
+         clearTableAndCharts();
+         const colSpan = tableHeaders.length || 10;
+         tableBody.innerHTML = `<tr><td colspan="${colSpan}">Please select a portfolio.</td></tr>`;
+         return;
     }
+
+    // --- Fetch holdings for the selected portfolio ---
+    const fetchUrl = `${apiRoot}/holdings/?portfolio=${selectedPortfolioId}`;
+    const selectedPortfolio = currentPortfolios.find(p => p.id == selectedPortfolioId);
+    const portfolioDisplayName = selectedPortfolio?.name || `Portfolio ${selectedPortfolioId}`;
+    const viewName = `${selectedCustomer.name || `Customer ${selectedCustomer.customer_number}`} - ${portfolioDisplayName}`;
+    console.log("Fetching holdings for specific portfolio:", fetchUrl);
+
 
     portfolioNameEl.textContent = `Loading ${viewName}...`;
     clearTableAndCharts(); // Clear previous view
@@ -555,7 +575,7 @@ async function handlePortfolioSelection() {
                 allHoldings = [];
                 portfolioNameEl.textContent = `${viewName} (No Holdings)`;
                 const colSpan = tableHeaders.length || 10;
-                tableBody.innerHTML = `<tr><td colspan="${colSpan}">No holdings found for this view.</td></tr>`;
+                tableBody.innerHTML = `<tr><td colspan="${colSpan}">No holdings found for this portfolio.</td></tr>`;
             } else { // Handle other errors
                 let errorText = `HTTP error! status: ${res.status}`;
                 try {
@@ -757,7 +777,9 @@ function renderTable(holdings) {
     // Handle empty data state
     if (!holdings || holdings.length === 0) {
         const hasActiveFilters = activeFilters.some(f => f.value !== '');
-        tableBody.innerHTML = `<tr><td colspan="${colSpan}">${hasActiveFilters ? 'No holdings match filter criteria.' : 'No holdings to display.'}</td></tr>`;
+        // Adjust message based on whether a portfolio is selected
+        const noDataMessage = portfolioFilterSelect.value ? 'No holdings match filter criteria.' : 'No holdings to display.';
+        tableBody.innerHTML = `<tr><td colspan="${colSpan}">${noDataMessage}</td></tr>`;
         return;
     }
 
@@ -1570,6 +1592,80 @@ async function handleCreatePortfolioSubmit(event) {
     }
 }
 
+/**
+ * Handles the click event for the delete portfolio button.
+ */
+async function handleDeletePortfolio() {
+    const portfolioIdToDelete = portfolioFilterSelect.value;
+    const selectedOption = portfolioFilterSelect.options[portfolioFilterSelect.selectedIndex];
+    const portfolioNameToDelete = selectedOption ? selectedOption.textContent : `Portfolio ID ${portfolioIdToDelete}`;
+
+    // Double-check that a specific portfolio is selected and it's not marked as default
+    if (!portfolioIdToDelete || selectedOption?.dataset?.isDefault === 'true') { // Ensure ID is not empty
+        alert("Please select a non-default portfolio to delete.");
+        return;
+    }
+
+    // Confirm deletion with the user
+    if (!confirm(`Are you sure you want to delete portfolio "${portfolioNameToDelete}"? This action cannot be undone and will delete all holdings within it.`)) {
+        return; // User cancelled
+    }
+
+    console.log(`Attempting to delete portfolio ID: ${portfolioIdToDelete}`);
+
+    try {
+        const response = await fetch(`${apiRoot}/portfolios/${portfolioIdToDelete}/`, {
+            method: 'DELETE',
+            headers: {
+                'X-CSRFToken': csrfToken, // Include CSRF token
+                'Accept': 'application/json',
+            }
+        });
+
+        console.log(`Delete portfolio response status: ${response.status}`);
+
+        // Check if deletion was successful (status 204 No Content is typical for successful DELETE)
+        if (response.status === 204) {
+            alert(`Portfolio "${portfolioNameToDelete}" deleted successfully.`);
+
+            // Remove the portfolio from the dropdown
+            selectedOption.remove();
+
+            // Check if any portfolios remain
+            if (portfolioFilterSelect.options.length > 0) {
+                // Select the first remaining portfolio
+                portfolioFilterSelect.value = portfolioFilterSelect.options[0].value;
+                // Refresh the view to show the newly selected portfolio
+                await handlePortfolioSelection();
+            } else {
+                // No portfolios left, hide dropdown and show message
+                portfolioFilterContainer.classList.add('hidden');
+                deletePortfolioBtn.disabled = true;
+                const selectedCustomer = customers.find(c => c.id == selectedCustomerId);
+                portfolioNameEl.textContent = `${selectedCustomer.name || `Customer ${selectedCustomer.customer_number}`} - No Portfolios Found`;
+                clearTableAndCharts();
+                const colSpan = tableHeaders.length || 10;
+                tableBody.innerHTML = `<tr><td colspan="${colSpan}">No portfolios found for this customer.</td></tr>`;
+            }
+
+        } else {
+            // Handle errors (e.g., 403 Forbidden, 404 Not Found, 500 Server Error)
+            let errorMsg = `Error ${response.status}: Failed to delete portfolio.`;
+            try {
+                 const errorData = await response.json();
+                 errorMsg += ` ${errorData.detail || JSON.stringify(errorData)}`;
+            } catch (e) {
+                 errorMsg += ` ${response.statusText}`;
+            }
+            throw new Error(errorMsg);
+        }
+
+    } catch (error) {
+        console.error("Failed to delete portfolio:", error);
+        alert(`Error deleting portfolio: ${error.message}`);
+    }
+}
+
 
 // --- Event Listeners Setup ---
 
@@ -1582,6 +1678,9 @@ function setupEventListeners() {
 
     // Portfolio dropdown change
     portfolioFilterSelect.addEventListener('change', handlePortfolioSelection);
+
+    // Delete Portfolio button click
+    deletePortfolioBtn.addEventListener('click', handleDeletePortfolio); // Add listener for delete button
 
     // Filter buttons
     addFilterBtn.addEventListener('click', () => addFilterRow()); // Pass no args to add empty row

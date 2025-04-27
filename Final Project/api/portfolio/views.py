@@ -1,4 +1,4 @@
-# api/portfolio/views.py (Added Holding Copy Logic)
+# api/portfolio/views.py (Added Portfolio Deletion Logic)
 
 import os
 import logging
@@ -89,8 +89,7 @@ class PortfolioViewSet(viewsets.ModelViewSet):
     """
     API endpoint for viewing and editing Portfolio instances.
     Handles filtering based on user's associated customers and
-    custom logic for portfolio creation based on user role, including
-    copying initial holdings if requested.
+    custom logic for portfolio creation and deletion based on user role.
     """
     serializer_class = PortfolioSerializer
     permission_classes = [permissions.IsAuthenticated] # Must be logged in
@@ -119,7 +118,6 @@ class PortfolioViewSet(viewsets.ModelViewSet):
         context['request'] = self.request
         return context
 
-    # --- UPDATED perform_create with Holding Copy Logic ---
     def perform_create(self, serializer):
         """
         Custom logic to determine and assign the 'owner' when creating a Portfolio.
@@ -132,7 +130,7 @@ class PortfolioViewSet(viewsets.ModelViewSet):
         validated_data = serializer.validated_data
         initial_holding_ids = validated_data.get('initial_holding_ids') # Get validated IDs
 
-        # --- Determine Owner (same logic as before) ---
+        # --- Determine Owner (logic remains same as previous update) ---
         is_admin = user.is_staff or user.is_superuser
         if is_admin:
             customer_number = validated_data.get('customer_number_input')
@@ -165,7 +163,6 @@ class PortfolioViewSet(viewsets.ModelViewSet):
                      raise PermissionDenied("Invalid customer specified for portfolio ownership.")
 
         if not customer_to_assign:
-             # This indicates a logic error if no owner was assigned.
              log.error(f"Portfolio creation failed for user {user.username}: Could not determine owner in perform_create.")
              raise serializers.ValidationError("Failed to determine the portfolio owner during creation.")
 
@@ -173,33 +170,28 @@ class PortfolioViewSet(viewsets.ModelViewSet):
         new_portfolio = None
         copied_holdings_count = 0
         try:
-            # Use a database transaction to ensure portfolio creation and holding copy succeed or fail together
+            # Use a database transaction to ensure atomicity
             with transaction.atomic():
-                # 1. Save the new portfolio instance, passing the determined owner
-                # serializer.save() calls serializer.create(), which removes write-only fields
+                # 1. Save the new portfolio instance
                 new_portfolio = serializer.save(owner=customer_to_assign)
                 log.info(f"Portfolio '{new_portfolio.name}' (ID: {new_portfolio.id}) created for owner {customer_to_assign.customer_number}.")
 
-                # 2. Copy initial holdings if IDs were provided and validated
+                # 2. Copy initial holdings if IDs were provided
                 if initial_holding_ids:
                     log.info(f"Copying {len(initial_holding_ids)} initial holdings into new portfolio {new_portfolio.id}...")
-                    # Fetch the original holdings to copy (already validated in serializer)
-                    # Ensure we only fetch holdings belonging to the correct owner again for safety
+                    # Fetch original holdings (already validated in serializer to belong to owner)
                     holdings_to_copy = CustomerHolding.objects.filter(
                         id__in=initial_holding_ids,
-                        portfolio__owner=customer_to_assign
-                    ).select_related('security') # Select related security for efficiency
+                        portfolio__owner=customer_to_assign # Redundant check for safety
+                    ).select_related('security')
 
                     new_holdings_to_create = []
                     for original_holding in holdings_to_copy:
                         # Create a new holding instance, copying relevant fields
                         new_holding = CustomerHolding(
-                            # Link to the NEW portfolio
-                            portfolio=new_portfolio,
-                            # Link to the SAME security
-                            security=original_holding.security,
-                            # Set the customer fields based on the new portfolio's owner
-                            customer=customer_to_assign,
+                            portfolio=new_portfolio, # Link to NEW portfolio
+                            security=original_holding.security, # Link to SAME security
+                            customer=customer_to_assign, # Set customer based on new portfolio owner
                             customer_number=customer_to_assign.customer_number,
                             # Copy other relevant fields
                             original_face_amount=original_holding.original_face_amount,
@@ -207,35 +199,55 @@ class PortfolioViewSet(viewsets.ModelViewSet):
                             settlement_price=original_holding.settlement_price,
                             book_price=original_holding.book_price,
                             book_yield=original_holding.book_yield,
-                            # Note: Do NOT copy 'id' or 'ticket_id', let them be generated
-                            # Copy derived fields from original holding's security (or re-fetch if needed)
-                            # These might be slightly out of date if security changed, but simplest approach
-                            wal=original_holding.security.wal,
-                            coupon=original_holding.security.coupon,
-                            call_date=original_holding.security.call_date,
-                            maturity_date=original_holding.security.maturity_date,
-                            description=original_holding.security.description,
+                            # Copy potentially cached fields from original holding (or its security)
+                            wal=original_holding.wal,
+                            coupon=original_holding.coupon,
+                            call_date=original_holding.call_date,
+                            maturity_date=original_holding.maturity_date,
+                            description=original_holding.description,
                         )
                         new_holdings_to_create.append(new_holding)
 
-                    # Bulk create the new holdings for efficiency
+                    # Bulk create the new holdings
                     if new_holdings_to_create:
                         created_list = CustomerHolding.objects.bulk_create(new_holdings_to_create)
                         copied_holdings_count = len(created_list)
                         log.info(f"Successfully copied {copied_holdings_count} holdings into portfolio {new_portfolio.id}.")
                     else:
-                         log.info(f"No valid holdings found to copy for portfolio {new_portfolio.id} despite initial IDs being provided.")
+                         log.info(f"No valid holdings found to copy for portfolio {new_portfolio.id}.")
 
         except Exception as e:
-            # Catch any error during the transaction (portfolio save or holding copy)
             log.error(f"Error during portfolio creation or holding copy for user {user.username}: {e}", exc_info=True)
-            # Raise a generic error to the user
-            # If new_portfolio was created but copy failed, the transaction rollback handles cleanup
             raise serializers.ValidationError("An error occurred while creating the portfolio or copying holdings.") from e
 
-        # Note: The serializer instance (`serializer`) still refers to the Portfolio being created.
-        # Its `data` attribute will be used for the response, which should now reflect the created portfolio.
-        # The copied holdings won't be in the immediate response unless the serializer is configured to show them deeply.
+    # --- ADDED perform_destroy method ---
+    def perform_destroy(self, instance):
+        """
+        Custom logic executed before deleting a Portfolio instance.
+        Prevents deletion of the default portfolio.
+        """
+        user = self.request.user
+        log.info(f"User {user.username} attempting to delete portfolio '{instance.name}' (ID: {instance.id}, Default: {instance.is_default})")
+
+        # 1. Permission Check (Standard DRF permissions handle basic access)
+        # Add explicit check for non-admins to ensure they are linked to the owner
+        if not (user.is_staff or user.is_superuser):
+            if not user.customers.filter(id=instance.owner_id).exists():
+                log.warning(f"User {user.username} permission denied attempting to delete portfolio {instance.id} (owner: {instance.owner.customer_number}).")
+                raise PermissionDenied("You do not have permission to delete this portfolio.")
+
+        # 2. Prevent Deletion of Default Portfolio
+        if instance.is_default:
+            log.warning(f"User {user.username} denied deleting default portfolio '{instance.name}' (ID: {instance.id}).")
+            # Use PermissionDenied for authorization failure
+            raise PermissionDenied("Cannot delete the default 'Primary Holdings' portfolio.")
+            # Alternatively, use ValidationError for a potentially friendlier message
+            # raise serializers.ValidationError("Cannot delete the default 'Primary Holdings' portfolio.")
+
+        # 3. Proceed with Deletion if checks pass
+        log.info(f"Proceeding with deletion of portfolio '{instance.name}' (ID: {instance.id}) by user {user.username}.")
+        # The actual deletion happens here, cascading to holdings
+        instance.delete()
 
 
     @action(
@@ -389,8 +401,7 @@ class ImportExcelView(GenericAPIView):
             }, status=status.HTTP_400_BAD_REQUEST)
 
         # --- Save the uploaded file securely ---
-        # Define a subdirectory within MEDIA_ROOT or a specific BASE_DIR path for uploads
-        # Ensure this path is secure and ideally outside the main codebase directory
+        # Define a subdirectory within BASE_DIR for uploads
         imports_dir = settings.BASE_DIR / 'data' / 'imports' / 'uploads'
         try:
             # Create the directory if it doesn't exist
@@ -399,12 +410,12 @@ class ImportExcelView(GenericAPIView):
              log.error(f"Error creating upload directory '{imports_dir}': {e}", exc_info=True)
              return Response({'error': 'Server configuration error: Cannot create upload directory.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # Generate a unique filename to prevent overwrites and potential path traversal issues
+        # Generate a unique filename
         file_extension = os.path.splitext(file_obj.name)[1]
         unique_filename = f"{uuid.uuid4()}{file_extension}"
         file_path = imports_dir / unique_filename
 
-        # Write the uploaded file content to the unique path
+        # Write the uploaded file content
         try:
             with open(file_path, 'wb+') as destination:
                 for chunk in file_obj.chunks():
@@ -412,29 +423,28 @@ class ImportExcelView(GenericAPIView):
             log.info(f"Admin {request.user.username} uploaded file '{file_obj.name}', saved securely as '{file_path}'.")
         except Exception as e:
             log.error(f"Error saving uploaded file '{file_obj.name}' to '{file_path}': {e}", exc_info=True)
-            # Attempt to clean up partially saved file if error occurs
-            if file_path.exists():
+            if file_path.exists(): # Attempt cleanup
                 try: os.remove(file_path)
                 except OSError: pass
             return Response({'error': f'Failed to save uploaded file: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         # --- Trigger the appropriate Celery task ---
         try:
-            # Pass the absolute path of the saved file (as a string) to the task
+            # Pass the absolute path string to the Celery task
             task_signature = task_to_run.s(str(file_path))
-            # Queue the task for asynchronous execution by a Celery worker
+            # Queue the task for asynchronous execution
             task_result = task_signature.delay()
             log.info(f"Triggered Celery task {task_to_run.__name__} with ID {task_result.id} for file {file_path}")
 
-            # Return a success response indicating the task has been queued
+            # Return a success response
             return Response({
                 'message': f'File "{file_obj.name}" uploaded successfully. Import task "{task_to_run.__name__}" started.',
-                'task_id': task_result.id # Provide task ID for potential status tracking
-            }, status=status.HTTP_202_ACCEPTED) # 202 Accepted indicates processing started
+                'task_id': task_result.id # Provide task ID for status tracking
+            }, status=status.HTTP_202_ACCEPTED) # 202 Accepted
         except Exception as e:
-            # Handle errors during task queuing (e.g., Celery broker connection issue)
+            # Handle errors during task queuing
             log.error(f"Error triggering Celery task for file '{file_path}': {e}", exc_info=True)
-            # Attempt to clean up the saved file if task triggering fails
+            # Attempt cleanup
             try:
                 os.remove(file_path)
                 log.info(f"Cleaned up saved file '{file_path}' after task trigger failure.")
