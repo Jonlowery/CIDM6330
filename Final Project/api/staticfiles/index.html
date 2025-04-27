@@ -3,97 +3,150 @@
 <head>
   <meta charset="utf-8">
   <title>Portfolio Viewer</title>
-  <!-- Chart.js from CDN -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body { font-family: sans-serif; margin: 2em; }
     #filter { margin-bottom: 1em; }
     table { border-collapse: collapse; width: 100%; margin-bottom: 2em; }
     th, td { border: 1px solid #ccc; padding: 0.5em; text-align: left; }
+    tfoot { font-weight: bold; }
+    .chart-container { width: 600px; margin-bottom: 2em; }
   </style>
 </head>
 <body>
 
   <h1>Portfolio Viewer</h1>
+
+  <label for="portfolio-select">Choose Portfolio:</label>
+  <select id="portfolio-select"></select>
+
+  <h2 id="portfolio-name">Loading…</h2>
+
   <label for="filter">Filter by CUSIP:</label>
   <input id="filter" placeholder="enter cusip…" />
 
-  <h2 id="portfolio-name">Loading…</h2>
   <table id="holdings-table">
     <thead>
       <tr>
         <th>CUSIP</th>
-        <th>Face Amount</th>
-        <th>Book Price</th>
-        <th>Book Yield</th>
+        <th>Par</th>
+        <th>Maturity Date</th>
+        <th>Price</th>
+        <th>Yield</th>
+        <th>WAL</th>
       </tr>
     </thead>
     <tbody></tbody>
+    <tfoot>
+      <tr>
+        <td>Totals</td>
+        <td id="totals-par">0</td>
+        <td></td>
+        <td></td>
+        <td id="totals-yield">0</td>
+        <td id="totals-wal">0</td>
+      </tr>
+    </tfoot>
   </table>
 
-  <canvas id="faceChart" width="600" height="300"></canvas>
+  <div class="chart-container">
+    <canvas id="parChart"></canvas>
+  </div>
+  <div class="chart-container">
+    <canvas id="yieldCurveChart"></canvas>
+  </div>
+  <div class="chart-container">
+    <canvas id="maturityChart"></canvas>
+  </div>
 
   <script>
-    const apiRoot = 'http://localhost:8000/api';
-    let allHoldings = [];
-    let chart;
+    const apiRoot = '/api';
+    let portfolios = [], allHoldings = [];
+    let parChart, yieldCurveChart, maturityChart;
 
-    async function loadPortfolio() {
-      // fetch portfolios
-      const pr = await fetch(`${apiRoot}/portfolios/`);
-      const portfolios = await pr.json();
-      if (!portfolios.length) {
-        document.getElementById('portfolio-name').textContent = 'No portfolios found';
-        return;
-      }
-      const p = portfolios[0];
+    async function loadPortfolios() {
+      const res = await fetch(`${apiRoot}/portfolios/`, { credentials:'include' });
+      portfolios = await res.json();
+      const select = document.getElementById('portfolio-select');
+      select.innerHTML = portfolios.map(p=>
+        `<option value="${p.id}">${p.name}</option>`
+      ).join('');
+      select.addEventListener('change', ()=> updatePortfolio(select.value));
+      updatePortfolio(select.value);
+    }
+
+    async function updatePortfolio(id) {
+      const p = portfolios.find(x=>x.id==id);
       document.getElementById('portfolio-name').textContent = p.name;
-
-      // fetch holdings filtered by portfolio
-      const hr = await fetch(`${apiRoot}/holdings/?portfolio=${p.id}`);
-      const holdings = await hr.json();
-      allHoldings = holdings;
-      renderTable(holdings);
-      renderChart(holdings);
+      allHoldings = await fetch(
+        `${apiRoot}/holdings/?portfolio=${p.id}`, 
+        { credentials:'include' }
+      ).then(r=>r.json());
+      renderTable(allHoldings);
+      renderTotals(allHoldings);
+      renderParChart(allHoldings);
+      renderYieldCurve(allHoldings);
+      renderMaturityDist(allHoldings);
     }
 
-    function renderTable(holdings) {
-      const tbody = document.querySelector('#holdings-table tbody');
-      tbody.innerHTML = '';
-      holdings.forEach(h => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${h.security_cusip}</td>
-          <td>${parseFloat(h.original_face_amount).toFixed(2)}</td>
-          <td>${h.book_price || ''}</td>
-          <td>${h.book_yield || ''}</td>
-        `;
-        tbody.appendChild(tr);
-      });
+    function renderTable(h) {
+      document.querySelector('#holdings-table tbody').innerHTML =
+        h.map(x=>`
+          <tr>
+            <td>${x.security_cusip}</td>
+            <td>${x.par.toFixed(2)}</td>
+            <td>${x.maturity_date}</td>
+            <td>${x.settlement_price.toFixed(2)}</td>
+            <td>${(x.book_yield||x.yield||0).toFixed(3)}</td>
+            <td>${x.wal.toFixed(2)}</td>
+          </tr>
+        `).join('');
     }
 
-    function renderChart(holdings) {
-      const ctx = document.getElementById('faceChart').getContext('2d');
-      const labels = holdings.map(h => h.security_cusip);
-      const data = holdings.map(h => parseFloat(h.original_face_amount));
-      if (chart) chart.destroy();
-      chart = new Chart(ctx, {
-        type: 'bar',
-        data: { labels, datasets: [{ label: 'Face Amount', data }] },
-        options: { scales: { y: { beginAtZero: true } } }
-      });
+    function renderTotals(h) {
+      const totalPar   = h.reduce((s,x)=>s + x.par,0);
+      const totalYield = h.reduce((s,x)=>s + x.par*(x.book_yield||x.yield||0),0)/totalPar;
+      const totalWal   = h.reduce((s,x)=>s + x.par*x.wal,0)/totalPar;
+      document.getElementById('totals-par').textContent   = totalPar.toFixed(2);
+      document.getElementById('totals-yield').textContent = totalYield.toFixed(3);
+      document.getElementById('totals-wal').textContent   = totalWal.toFixed(2);
     }
 
-    // live filter
-    document.getElementById('filter').addEventListener('input', e => {
-      const term = e.target.value.toUpperCase();
-      const filtered = allHoldings.filter(h => h.security_cusip.includes(term));
+    function renderParChart(h) {
+      const ctx = document.getElementById('parChart').getContext('2d');
+      const labels = h.map(x=>x.security_cusip), data = h.map(x=>x.par);
+      if (parChart) parChart.destroy();
+      parChart = new Chart(ctx,{ type:'bar', data:{labels,datasets:[{label:'Par by CUSIP',data}]}, options:{scales:{y:{beginAtZero:true}}}});
+    }
+
+    function renderYieldCurve(h) {
+      const ctx = document.getElementById('yieldCurveChart').getContext('2d');
+      const sorted = [...h].sort((a,b)=>new Date(a.maturity_date)-new Date(b.maturity_date));
+      const labels=sorted.map(x=>x.maturity_date), data=sorted.map(x=>x.book_yield||x.yield||0);
+      if (yieldCurveChart) yieldCurveChart.destroy();
+      yieldCurveChart = new Chart(ctx,{ type:'line', data:{labels,datasets:[{label:'Yield Curve',data,fill:false}]}, options:{scales:{y:{beginAtZero:true}}}});
+    }
+
+    function renderMaturityDist(h) {
+      const ctx = document.getElementById('maturityChart').getContext('2d');
+      const counts = {};
+      h.forEach(x=>{ const y=new Date(x.maturity_date).getFullYear(); counts[y]=(counts[y]||0)+x.par; });
+      const labels=Object.keys(counts).sort(), data=labels.map(y=>counts[y]);
+      if (maturityChart) maturityChart.destroy();
+      maturityChart = new Chart(ctx,{ type:'bar', data:{labels,datasets:[{label:'Par by Maturity Year',data}]}, options:{scales:{y:{beginAtZero:true}}}});
+    }
+
+    document.getElementById('filter').addEventListener('input', e=>{
+      const term=e.target.value.toUpperCase();
+      const filtered=allHoldings.filter(x=>x.security_cusip.includes(term));
       renderTable(filtered);
-      renderChart(filtered);
+      renderTotals(filtered);
+      renderParChart(filtered);
+      renderYieldCurve(filtered);
+      renderMaturityDist(filtered);
     });
 
-    // start
-    loadPortfolio();
+    loadPortfolios();
   </script>
 
 </body>

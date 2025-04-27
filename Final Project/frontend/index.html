@@ -1,130 +1,925 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>Portfolio Viewer</title>
-  <!-- Chart.js from CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
-    body { font-family: sans-serif; margin: 2em; }
-    #filter { margin-bottom: 1em; }
-    table { border-collapse: collapse; width: 100%; margin-bottom: 2em; }
-    th, td { border: 1px solid #ccc; padding: 0.5em; text-align: left; }
-  </style>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portfolio Viewer</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-trendline"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <style>
+        /* Basic styling for the page */
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            margin: 0;
+            padding: 1em;
+            background-color: #f8f9fa;
+            color: #333;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1em;
+        }
+        h1, h2 {
+            color: #0056b3;
+            text-align: center;
+            margin-bottom: 1em;
+        }
+        h2 {
+            min-height: 1.2em; /* Prevent layout shift */
+        }
+        /* Controls Section */
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 1em; /* Gap between portfolio and filter sections */
+            margin-bottom: 1.5em;
+            padding: 1em;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .portfolio-selector {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.8em;
+        }
+        #filters-container {
+            display: flex;
+            flex-direction: column;
+            gap: 0.8em; /* Gap between filter rows */
+            border-top: 1px solid #eee;
+            padding-top: 1em;
+        }
+        .filter-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.8em;
+        }
+
+        label {
+            margin-right: 0.5em;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+        select, input[type="text"], input[type="number"], input[type="date"] {
+            padding: 0.6em 0.8em;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            flex-grow: 1;
+            min-width: 100px;
+            height: 38px; /* Consistent height */
+            box-sizing: border-box; /* Include padding/border in height */
+        }
+        #portfolio-select {
+             flex-grow: 2;
+        }
+        .filter-row select, .filter-row input {
+             flex-basis: 150px; /* Base width for filter elements */
+        }
+        .filter-row label:first-child {
+             flex-basis: 60px; /* Fixed width for "Filter by:" */
+             text-align: right;
+        }
+         button.filter-action-btn, button.remove-filter-btn {
+            padding: 0.6em 1em;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.2s ease;
+            height: 38px; /* Match input height */
+            box-sizing: border-box;
+         }
+         #add-filter-btn {
+             background-color: #007bff; /* Blue */
+             color: white;
+             align-self: flex-start; /* Align button nicely */
+             margin-top: 0.5em;
+         }
+         #add-filter-btn:hover {
+             background-color: #0056b3;
+         }
+         #clear-all-filters-btn {
+             background-color: #6c757d; /* Grey */
+             color: white;
+             align-self: flex-start;
+             margin-top: 0.5em;
+         }
+         #clear-all-filters-btn:hover {
+             background-color: #5a6268;
+         }
+         button.remove-filter-btn {
+             background-color: #dc3545; /* Red */
+             color: white;
+             padding: 0.4em 0.8em; /* Smaller padding */
+             font-size: 0.9em;
+             height: auto; /* Adjust height */
+             flex-grow: 0; /* Don't grow */
+             flex-basis: auto;
+         }
+          button.remove-filter-btn:hover {
+             background-color: #c82333;
+         }
+         .filter-buttons-container {
+             display: flex;
+             gap: 0.8em;
+             margin-top: 1em;
+             border-top: 1px solid #eee;
+             padding-top: 1em;
+         }
+
+
+        /* Table Styles */
+        .table-container {
+            overflow-x: auto; /* Enable horizontal scrolling ONLY if content overflows */
+            margin-bottom: 2em;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            table-layout: auto;
+        }
+        th, td {
+            border: 1px solid #dee2e6;
+            padding: 0.6em 0.8em;
+            text-align: center;
+            white-space: nowrap; /* Prevent text wrapping */
+            vertical-align: middle;
+            font-size: 0.95em;
+        }
+        th {
+            background-color: #e9ecef;
+            color: #495057;
+            cursor: pointer;
+            position: relative;
+            user-select: none;
+        }
+        th:hover {
+            background-color: #d1d9e0;
+        }
+        /* Style for sort indicators */
+        th .sort-arrow {
+            font-size: 0.8em;
+            margin-left: 5px;
+            display: inline-block;
+            opacity: 0.5;
+            min-width: 1em;
+            text-align: left;
+        }
+        th.sorted .sort-arrow {
+             opacity: 1;
+        }
+        /* Align specific columns */
+        td:nth-child(1), td:nth-child(2) { text-align: left; } /* CUSIP, Description */
+        td:nth-child(3), td:nth-child(4), td:nth-child(5), td:nth-child(6), td:nth-child(7) { text-align: right; } /* Numeric */
+        td:nth-child(8), td:nth-child(9), td:nth-child(10) { text-align: center; } /* Dates/Year */
+
+        tbody tr:nth-child(odd) { background-color: #f8f9fa; }
+        tbody tr:hover { background-color: #e2e6ea; }
+        tfoot { font-weight: bold; background-color: #e9ecef; }
+        tfoot td { text-align: right; }
+        tfoot td:nth-child(1) { text-align: left; }
+
+        /* Grid layout for charts */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 1.5em;
+            justify-items: center;
+            align-items: start;
+            /* Changed margin-top to margin-bottom */
+            margin-bottom: 2em;
+            width: 100%;
+        }
+        .chart-container {
+            width: 100%;
+            height: 350px;
+            background-color: #fff;
+            padding: 1em;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        /* --- Responsive adjustments --- */
+        @media (max-width: 992px) { /* Adjust breakpoint for filter controls */
+             .filter-row {
+                 flex-direction: column;
+                 align-items: stretch;
+             }
+             .filter-row select, .filter-row input, button.remove-filter-btn {
+                 width: 100%;
+                 flex-basis: auto;
+             }
+             .filter-row label:first-child {
+                 text-align: left;
+                 margin-bottom: 0.2em;
+             }
+        }
+
+        @media (max-width: 768px) {
+             body { padding: 0.5em; }
+             h1 { font-size: 1.5em; }
+             .controls { gap: 1em; }
+             .portfolio-selector { flex-direction: column; align-items: stretch; }
+             select, input[type="text"], input[type="number"], input[type="date"], button.filter-action-btn { width: 100%; max-width: none; }
+             th, td { font-size: 0.9em; padding: 0.5em 0.6em; }
+             .charts-grid { grid-template-columns: 1fr; }
+             .chart-container { height: 300px; }
+        }
+        @media (max-width: 480px) {
+             th, td { font-size: 0.85em; padding: 0.4em 0.5em; }
+        }
+
+    </style>
 </head>
 <body>
 
-  <h1>Portfolio Viewer</h1>
-  <label for="filter">Filter by CUSIP:</label>
-  <input id="filter" placeholder="enter cusip…" />
+<div class="container">
+    <h1>Portfolio Viewer</h1>
 
-<label for="portfolio-select">Choose Portfolio:</label>
-<select id="portfolio-select">
-  <option value="" disabled selected>Loading…</option>
-</select>
+    <div class="controls">
+        <div class="portfolio-selector">
+            <label for="portfolio-select">Portfolio:</label>
+            <select id="portfolio-select"></select>
+        </div>
+        <div id="filters-container">
+            </div>
+        <div class="filter-buttons-container">
+            <button id="add-filter-btn" class="filter-action-btn">Add Filter</button>
+            <button id="clear-all-filters-btn" class="filter-action-btn">Clear All Filters</button>
+        </div>
+    </div>
 
-  <h2 id="portfolio-name">Loading…</h2>
-  <table id="holdings-table">
-    <thead>
-      <tr>
-        <th>CUSIP</th>
-        <th>Face Amount</th>
-        <th>Book Price</th>
-        <th>Book Yield</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+    <h2 id="portfolio-name">Loading…</h2>
 
-  <canvas id="faceChart" width="600" height="300"></canvas>
+    <div class="charts-grid">
+        <div class="chart-container"><canvas id="yieldVsMaturityChart"></canvas></div>
+        <div class="chart-container"><canvas id="parByMaturityYearChart"></canvas></div>
+        <div class="chart-container"><canvas id="couponPieChart"></canvas></div>
+        <div class="chart-container"><canvas id="priceVsYieldChart"></canvas></div>
+    </div>
 
-  <script>
-  const apiRoot = 'http://localhost:8000/api';
-  let allHoldings = [];
-  let chart;
+    <div class="table-container">
+        <table id="holdings-table">
+            <thead>
+                <tr>
+                    <th data-key="security_cusip" data-type="string">CUSIP<span class="sort-arrow"></span></th>
+                    <th data-key="description" data-type="string">Description<span class="sort-arrow"></span></th>
+                    <th data-key="par" data-type="number">Par<span class="sort-arrow"></span></th>
+                    <th data-key="settlement_price" data-type="number">Price<span class="sort-arrow"></span></th>
+                    <th data-key="coupon" data-type="number">Coupon<span class="sort-arrow"></span></th>
+                    <th data-key="yield" data-type="number">Yield<span class="sort-arrow"></span></th>
+                    <th data-key="wal" data-type="number">WAL<span class="sort-arrow"></span></th>
+                    <th data-key="estimated_maturity_date" data-type="number">Est. Maturity Year<span class="sort-arrow"></span></th>
+                    <th data-key="maturity_date" data-type="date">Maturity Date<span class="sort-arrow"></span></th>
+                    <th data-key="call_date" data-type="date">Call Date<span class="sort-arrow"></span></th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="2">Totals</td>
+                    <td id="totals-par">0</td>
+                    <td></td> <td></td> <td id="totals-yield">0</td>
+                    <td id="totals-wal">0</td>
+                    <td colspan="3"></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
 
-  // New: store fetched portfolios
-  let portfolios = [];
+</div>
 
-  async function loadPortfolios() {
-    const res = await fetch(`${apiRoot}/portfolios/`);
-    portfolios = await res.json();
+<script>
+    // API endpoint root
+    const apiRoot = '/api'; // Replace if needed
+    let portfolios = [];
+    let allHoldings = [];
+    let filteredHoldings = [];
+    let chartInstances = {};
+    let columnOptionsHtml = ''; // Store generated column options
 
-    const select = document.getElementById('portfolio-select');
-    select.innerHTML = '';  // clear “Loading…” option
+    // --- State for Sorting & Filtering ---
+    let currentSortKey = 'security_cusip';
+    let currentSortDir = 'asc';
+    let activeFilters = []; // Array to hold filter objects: { id: uniqueId, column: 'par', operator: '>', value: '10000', type: 'number' }
+    let nextFilterId = 0; // Simple unique ID generator for filters
 
-    if (!portfolios.length) {
-      select.innerHTML = '<option value="">No portfolios</option>';
-      return;
+    // --- DOM Elements ---
+    const portfolioSelect = document.getElementById('portfolio-select');
+    const portfolioNameEl = document.getElementById('portfolio-name');
+    const tableBody = document.querySelector('#holdings-table tbody');
+    const tableHeaders = document.querySelectorAll('#holdings-table th[data-key]');
+    const filtersContainer = document.getElementById('filters-container');
+    const addFilterBtn = document.getElementById('add-filter-btn');
+    const clearAllFiltersBtn = document.getElementById('clear-all-filters-btn');
+
+    /**
+     * Generates HTML string for column select options.
+     */
+    function generateColumnOptions() {
+        columnOptionsHtml = ''; // Clear existing
+        tableHeaders.forEach(th => {
+            const key = th.dataset.key;
+            const type = th.dataset.type || 'string';
+            const text = th.textContent.replace('▲', '').replace('▼', '').trim(); // Clean header text
+            if (key) {
+                columnOptionsHtml += `<option value="${key}" data-type="${type}">${text}</option>`;
+            }
+        });
     }
 
-    portfolios.forEach(p => {
-      const opt = document.createElement('option');
-      opt.value = p.id;
-      opt.textContent = p.name;
-      select.appendChild(opt);
+    /**
+     * Creates and adds a new filter row to the UI.
+     * @param {object|null} initialFilter - Optional filter object to pre-populate the row.
+     */
+    function addFilterRow(initialFilter = null) {
+        const filterId = nextFilterId++;
+        const filterRow = document.createElement('div');
+        filterRow.className = 'filter-row';
+        filterRow.dataset.filterId = filterId;
+
+        // Generate the HTML for the new filter row
+        filterRow.innerHTML = `
+            <label for="filter-column-${filterId}">Filter by:</label>
+            <select class="filter-column" id="filter-column-${filterId}">
+                ${columnOptionsHtml}
+            </select>
+            <select class="filter-operator" id="filter-operator-${filterId}">
+                </select>
+            <input type="text" class="filter-value" id="filter-value-${filterId}" placeholder="Value...">
+            <button class="remove-filter-btn" title="Remove this filter">X</button>
+        `;
+
+        filtersContainer.appendChild(filterRow);
+
+        // Get references to the newly created elements within this row
+        const columnSelect = filterRow.querySelector('.filter-column');
+        const operatorSelect = filterRow.querySelector('.filter-operator');
+        const valueInput = filterRow.querySelector('.filter-value');
+        const removeBtn = filterRow.querySelector('.remove-filter-btn');
+
+        // Add event listeners for instant filtering
+        columnSelect.addEventListener('change', handleFilterInputChange);
+        operatorSelect.addEventListener('change', handleFilterInputChange);
+        valueInput.addEventListener('input', handleFilterInputChange); // Use 'input' for instant update on typing
+        removeBtn.addEventListener('click', removeFilterRow);
+
+        // Initialize state object for this new filter
+        const newFilter = {
+            id: filterId,
+            column: initialFilter?.column || columnSelect.value,
+            operator: initialFilter?.operator, // Will be set by updateOperators
+            value: initialFilter?.value || '',
+            type: initialFilter?.type || columnSelect.options[columnSelect.selectedIndex]?.dataset.type || 'string'
+        };
+        activeFilters.push(newFilter);
+
+        // Pre-populate fields if an initialFilter object was passed
+        if (initialFilter) {
+             columnSelect.value = initialFilter.column;
+             valueInput.value = initialFilter.value;
+        }
+
+        // Set the initial operator options based on the selected column type
+        // Pass the preferred operator (if any) to try and preserve it
+        updateOperatorOptionsForRow(filterRow, newFilter.operator);
+
+        // Trigger filter application if the row was added with a pre-populated value
+        if (newFilter.value) {
+            triggerFilterApplication();
+        }
+    }
+
+    /**
+     * Removes a filter row from the UI and the activeFilters array.
+     * @param {Event} event - The click event from the remove button.
+     */
+    function removeFilterRow(event) {
+        const filterRow = event.target.closest('.filter-row');
+        if (!filterRow) return;
+
+        const filterIdToRemove = parseInt(filterRow.dataset.filterId, 10);
+
+        // Remove the filter state object from the array
+        activeFilters = activeFilters.filter(f => f.id !== filterIdToRemove);
+
+        // Remove the filter row element from the DOM
+        filterRow.remove();
+
+        // Re-apply filters and update the view
+        triggerFilterApplication();
+    }
+
+     /**
+     * Updates available filter operators for a specific row based on its selected column's data type.
+     * Also updates the input type (text, number, date).
+     * @param {HTMLElement} filterRow - The filter row element containing the inputs.
+     * @param {string|null} preferredOperator - The operator to attempt to select after updating options.
+     */
+    function updateOperatorOptionsForRow(filterRow, preferredOperator = null) {
+        const columnSelect = filterRow.querySelector('.filter-column');
+        const operatorSelect = filterRow.querySelector('.filter-operator');
+        const valueInput = filterRow.querySelector('.filter-value');
+        const selectedOption = columnSelect.options[columnSelect.selectedIndex];
+        const columnType = selectedOption ? selectedOption.dataset.type : 'string';
+
+        // Define available operators for each data type
+        const numberOperators = ['=', '!=', '>', '<', '>=', '<='];
+        const stringOperators = ['contains', '=', '!=', 'startsWith', 'endsWith'];
+        const dateOperators = ['=', '!=', '>', '<', '>=', '<=']; // Dates compared like numbers/timestamps
+
+        let availableOperators;
+        let defaultOperator;
+
+        // Set available operators and input type based on column type
+        switch (columnType) {
+            case 'number':
+                availableOperators = numberOperators;
+                valueInput.type = 'number';
+                valueInput.step = 'any'; // Allow decimals
+                defaultOperator = '=';
+                break;
+            case 'date':
+                availableOperators = dateOperators;
+                valueInput.type = 'date';
+                valueInput.step = '';
+                defaultOperator = '=';
+                break;
+            case 'string':
+            default:
+                availableOperators = stringOperators;
+                valueInput.type = 'text';
+                valueInput.step = '';
+                defaultOperator = 'contains';
+                break;
+        }
+
+        // Store the current value before clearing options
+        const currentOperatorValue = operatorSelect.value;
+        operatorSelect.innerHTML = ''; // Clear existing options
+
+        // Populate the operator dropdown
+        availableOperators.forEach(op => {
+            const option = document.createElement('option');
+            option.value = op;
+            // Display symbols for comparison operators
+            option.textContent = op.replace('>=', '≥').replace('<=', '≤').replace('!=', '≠');
+            operatorSelect.appendChild(option);
+        });
+
+        // Try to re-select the preferred operator, then the previous value, then the default
+        if (preferredOperator && availableOperators.includes(preferredOperator)) {
+            operatorSelect.value = preferredOperator;
+        } else if (availableOperators.includes(currentOperatorValue)) {
+             operatorSelect.value = currentOperatorValue;
+        } else {
+            operatorSelect.value = defaultOperator;
+        }
+    }
+
+    /**
+     * Handles changes in any filter input/select within a filter row.
+     * Updates the corresponding filter state in the activeFilters array.
+     * @param {Event} event - The input or change event object.
+     */
+    function handleFilterInputChange(event) {
+        const filterRow = event.target.closest('.filter-row');
+        if (!filterRow) return;
+
+        const filterId = parseInt(filterRow.dataset.filterId, 10);
+        const filterIndex = activeFilters.findIndex(f => f.id === filterId);
+        if (filterIndex === -1) {
+            console.error("Filter state not found for ID:", filterId);
+            return; // Should not happen if row exists
+        }
+
+        const columnSelect = filterRow.querySelector('.filter-column');
+        const operatorSelect = filterRow.querySelector('.filter-operator');
+        const valueInput = filterRow.querySelector('.filter-value');
+
+        // If the column select itself triggered the change, update operators and input type first
+        if (event.target === columnSelect) {
+             updateOperatorOptionsForRow(filterRow);
+             // The operator might have changed, so read the *new* operator value for the state update below
+        }
+
+        // Update the state object for this filter row
+        activeFilters[filterIndex] = {
+            id: filterId,
+            column: columnSelect.value,
+            operator: operatorSelect.value, // Read the potentially updated operator
+            value: valueInput.value.trim(),
+            type: columnSelect.options[columnSelect.selectedIndex]?.dataset.type || 'string'
+        };
+
+        // Apply all filters and update the view
+        triggerFilterApplication();
+    }
+
+    /**
+     * Central function to trigger the filtering/sorting and rendering process.
+     */
+    function triggerFilterApplication() {
+        // Debounce or throttle this if performance becomes an issue on very large datasets
+        applyFilterAndSort();
+        renderTotals(filteredHoldings);
+        renderCharts(filteredHoldings);
+    }
+
+    /** Fetches the list of portfolios from the API. */
+    async function loadPortfolios() {
+        try {
+            const res = await fetch(`${apiRoot}/portfolios/`);
+            if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+            portfolios = await res.json();
+            portfolioSelect.innerHTML = portfolios.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+            if (portfolios.length > 0) {
+                await updatePortfolio(portfolioSelect.value); // Load data for the first portfolio
+            } else {
+                portfolioNameEl.textContent = "No portfolios available";
+                clearTableAndCharts();
+            }
+        } catch (error) {
+            console.error("Failed to load portfolios:", error);
+            portfolioNameEl.textContent = "Error loading portfolios";
+            clearTableAndCharts();
+        }
+    }
+
+    /** Fetches and updates holdings data for the selected portfolio ID. */
+    async function updatePortfolio(portfolioId) {
+         const selectedPortfolio = portfolios.find(p => p.id == portfolioId);
+        if (!selectedPortfolio) return;
+        portfolioNameEl.textContent = `Loading ${selectedPortfolio.name}...`;
+        clearAllActiveFilters(); // Clear filters when changing portfolio
+        clearTableAndCharts(); // Clear table/charts immediately
+        try {
+            const res = await fetch(`${apiRoot}/holdings/?portfolio=${selectedPortfolio.id}`);
+            if (!res.ok) {
+                if (res.status === 404) {
+                    allHoldings = []; // Ensure holdings are empty
+                    portfolioNameEl.textContent = `${selectedPortfolio.name} (No Holdings)`;
+                    tableBody.innerHTML = `<tr><td colspan="${tableHeaders.length}">No holdings found for this portfolio.</td></tr>`;
+                } else { throw new Error(`HTTP error! status: ${res.status}`); }
+            } else {
+                allHoldings = await res.json();
+                portfolioNameEl.textContent = selectedPortfolio.name;
+            }
+            processAndDisplayHoldings(); // Process data (even if empty) and trigger render
+        } catch (error) {
+            console.error("Failed to update portfolio holdings:", error);
+            portfolioNameEl.textContent = `Error loading holdings for ${selectedPortfolio.name}`;
+            allHoldings = [];
+            clearTableAndCharts();
+            tableBody.innerHTML = `<tr><td colspan="${tableHeaders.length}">Error loading holdings.</td></tr>`;
+        }
+    }
+
+    /** Processes raw holdings data (calculations, type conversions). */
+    function processAndDisplayHoldings() {
+        const today = new Date();
+        allHoldings.forEach(h => {
+            // Calculate estimated maturity year
+            const wal = parseFloat(h.wal);
+            h.estimated_maturity_date = !isNaN(wal) ? today.getFullYear() + Math.floor(wal) : null;
+            // Ensure numeric types, default to 0 or null
+            h.par = parseFloat(h.par) || 0;
+            h.settlement_price = parseFloat(h.settlement_price) || 0;
+            h.coupon = parseFloat(h.coupon) || 0;
+            h.book_yield = parseFloat(h.book_yield) || 0;
+            h.yield_val = h.book_yield || parseFloat(h.yield) || 0; // Consistent yield field
+            h.wal = parseFloat(h.wal) || 0;
+            // Create Date objects for sorting/filtering, handle invalid dates
+            h.maturity_date_obj = parseDate(h.maturity_date);
+            h.call_date_obj = parseDate(h.call_date);
+        });
+        triggerFilterApplication(); // Apply filters/sort and render
+    }
+
+    /** Safely parses a date string into a Date object or null. */
+    function parseDate(dateString) {
+         if (!dateString) return null;
+        try {
+            // Attempt to create a date object. Add time component for timezone consistency if needed.
+            // new Date('YYYY-MM-DD') can sometimes be interpreted as UTC, while new Date('YYYY/MM/DD') is local.
+            // Be mindful of the format from your API. Assuming 'YYYY-MM-DD'.
+            const date = new Date(dateString + 'T00:00:00'); // Assume local time if just date part
+            return isNaN(date.getTime()) ? null : date; // Return null for invalid dates
+        } catch (e) {
+            return null;
+        }
+    }
+
+    /** Clears the table body, resets totals, and destroys existing charts. */
+    function clearTableAndCharts() {
+         const colSpan = tableHeaders.length || 10;
+        tableBody.innerHTML = `<tr><td colspan="${colSpan}">Loading...</td></tr>`;
+        renderTotals([]); // Clear totals display
+        renderCharts([]); // Clear charts display
+    }
+
+    /** Clears all filter rows from UI and resets state. */
+    function clearAllActiveFilters() {
+        activeFilters = []; // Clear state array
+        filtersContainer.innerHTML = ''; // Clear UI rows
+        addFilterRow(); // Add back one empty default row
+        // Don't trigger application here, let the calling function do it
+    }
+
+    /**
+     * Checks if a single holding passes a single filter condition.
+     * @param {object} holding - The holding data object.
+     * @param {object} filter - The filter state object { id, column, operator, value, type }.
+     * @returns {boolean} - True if the holding passes the filter, false otherwise.
+     */
+    function checkFilter(holding, filter) {
+        // If filter value is empty, the filter is inactive/passes
+        if (!filter || filter.value === null || filter.value === '') return true;
+
+        const holdingValue = getSortValue(holding, filter.column); // Use helper to get potentially processed value (like Date obj)
+        let filterValue = filter.value; // The raw value from the input
+
+        // Generally, if the holding's value for the column is null/undefined, it shouldn't match a specific filter
+        if (holdingValue === null || holdingValue === undefined) {
+            return false;
+        }
+
+        try {
+            // Prepare values for comparison based on type
+            let compareHolding = holdingValue;
+            let compareFilter = filterValue;
+
+            // String comparisons (case-insensitive)
+            if (filter.type === 'string') {
+                compareHolding = String(holdingValue).toLowerCase();
+                compareFilter = String(filterValue).toLowerCase();
+
+                switch (filter.operator) {
+                    case 'contains': return compareHolding.includes(compareFilter);
+                    case 'startsWith': return compareHolding.startsWith(compareFilter);
+                    case 'endsWith': return compareHolding.endsWith(compareFilter);
+                    case '=': return compareHolding === compareFilter;
+                    case '!=': return compareHolding !== compareFilter;
+                    default: return false; // Unsupported string operator
+                }
+            }
+            // Numeric comparisons
+            else if (filter.type === 'number') {
+                compareHolding = parseFloat(holdingValue);
+                compareFilter = parseFloat(filterValue);
+                // Check if parsing failed
+                if (isNaN(compareHolding) || isNaN(compareFilter)) return false;
+
+                switch (filter.operator) {
+                    case '=': return compareHolding === compareFilter;
+                    case '!=': return compareHolding !== compareFilter;
+                    case '>': return compareHolding > compareFilter;
+                    case '<': return compareHolding < compareFilter;
+                    case '>=': return compareHolding >= compareFilter;
+                    case '<=': return compareHolding <= compareFilter;
+                    default: return false; // Unsupported number operator
+                }
+            }
+            // Date comparisons (compare timestamps)
+            else if (filter.type === 'date') {
+                // holdingValue should already be a Date object from getSortValue
+                compareHolding = holdingValue instanceof Date ? holdingValue.getTime() : null;
+                // Parse the filter value string into a Date object
+                compareFilter = parseDate(filterValue)?.getTime(); // Get timestamp or null
+
+                // If either date is invalid, comparison fails
+                if (compareHolding === null || compareFilter === null) return false;
+
+                switch (filter.operator) {
+                    case '=': return compareHolding === compareFilter;
+                    case '!=': return compareHolding !== compareFilter;
+                    case '>': return compareHolding > compareFilter;
+                    case '<': return compareHolding < compareFilter;
+                    case '>=': return compareHolding >= compareFilter;
+                    case '<=': return compareHolding <= compareFilter;
+                    default: return false; // Unsupported date operator
+                }
+            }
+        } catch (e) {
+            console.error("Error during filter comparison:", e, { holdingValue, filter });
+            return false; // Error during comparison means no match
+        }
+        return false; // Should not be reached if logic is sound
+    }
+
+
+    /** Applies all active filters and current sort settings. */
+    function applyFilterAndSort() {
+        // 1. Filtering - Apply ALL active filters that have a value entered
+        const filtersToApply = activeFilters.filter(f => f.value !== null && f.value !== '');
+        if (filtersToApply.length > 0) {
+            filteredHoldings = allHoldings.filter(holding => {
+                // Holding must pass ALL active filters (AND logic)
+                return filtersToApply.every(filter => checkFilter(holding, filter));
+            });
+        } else {
+            // No active filters with values, show all holdings
+            filteredHoldings = [...allHoldings];
+        }
+
+        // 2. Sorting
+        sortData(filteredHoldings, currentSortKey, currentSortDir);
+
+        // 3. Render Table
+        renderTable(filteredHoldings);
+    }
+
+    /** Sorts an array of holding objects in place. */
+    function sortData(data, key, direction) {
+        data.sort((a, b) => {
+            let valA = getSortValue(a, key);
+            let valB = getSortValue(b, key);
+            const nullOrder = direction === 'asc' ? 1 : -1; // Sort nulls last ascending, first descending
+
+            if (valA === null || valA === undefined) return (valB === null || valB === undefined) ? 0 : nullOrder;
+            if (valB === null || valB === undefined) return -nullOrder;
+
+            let comparison = 0;
+            if (valA instanceof Date && valB instanceof Date) {
+                 comparison = valA.getTime() - valB.getTime(); // Date comparison
+            } else if (typeof valA === 'number' && typeof valB === 'number') {
+                comparison = valA - valB; // Numeric comparison
+            } else {
+                // Default to case-insensitive string comparison
+                valA = String(valA).toUpperCase();
+                valB = String(valB).toUpperCase();
+                if (valA < valB) comparison = -1;
+                else if (valA > valB) comparison = 1;
+            }
+            return direction === 'desc' ? (comparison * -1) : comparison;
+        });
+    }
+
+    /** Helper to get the correct value for sorting/filtering. */
+    function getSortValue(holding, key) {
+         switch (key) {
+            case 'yield': return holding.yield_val; // Use the consistent yield value
+            case 'maturity_date': return holding.maturity_date_obj; // Use the Date object
+            case 'call_date': return holding.call_date_obj; // Use the Date object
+            // Add cases for other specific types if needed
+            default: return holding[key]; // Default to the direct property value
+        }
+    }
+
+    /** Renders the holdings data into the table body. */
+    function renderTable(holdings) {
+         const colSpan = tableHeaders.length || 10;
+        if (!holdings || holdings.length === 0) {
+            const hasActiveFilters = activeFilters.some(f => f.value !== '');
+            tableBody.innerHTML = `<tr><td colspan="${colSpan}">${hasActiveFilters ? 'No holdings match filter criteria.' : 'No holdings to display.'}</td></tr>`;
+            return;
+        }
+        // Generate table row HTML for each holding
+        tableBody.innerHTML = holdings.map(h => {
+            // Format dates for display if they exist
+            const maturityDisplay = h.maturity_date_obj ? h.maturity_date_obj.toLocaleDateString() : (h.maturity_date || '');
+            const callDisplay = h.call_date_obj ? h.call_date_obj.toLocaleDateString() : (h.call_date || '');
+
+            return `
+            <tr>
+                <td>${h.security_cusip || 'N/A'}</td>
+                <td>${h.description || ''}</td>
+                <td>${h.par.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td>${h.settlement_price.toFixed(2)}</td>
+                <td>${h.coupon.toFixed(3)}</td>
+                <td>${h.yield_val.toFixed(3)}</td>
+                <td>${h.wal.toFixed(2)}</td>
+                <td>${h.estimated_maturity_date ?? 'N/A'}</td>
+                <td>${maturityDisplay}</td>
+                <td>${callDisplay}</td>
+            </tr>
+        `}).join('');
+        updateSortIndicators(); // Update sort arrows after rendering
+    }
+
+     /** Updates the visual indicators (arrows) on table headers. */
+    function updateSortIndicators() {
+        tableHeaders.forEach(th => {
+            const key = th.dataset.key;
+            const arrowSpan = th.querySelector('.sort-arrow');
+            if (!arrowSpan) return;
+            if (key === currentSortKey) {
+                th.classList.add('sorted');
+                arrowSpan.textContent = currentSortDir === 'asc' ? ' ▲' : ' ▼';
+            } else {
+                th.classList.remove('sorted');
+                arrowSpan.textContent = '';
+            }
+        });
+    }
+
+    /** Calculates and renders the total values in the table footer. */
+    function renderTotals(holdings) {
+        const totalPar = holdings.reduce((sum, h) => sum + h.par, 0);
+        const weightedYieldSum = holdings.reduce((sum, h) => sum + (h.par * h.yield_val), 0);
+        const totalYield = totalPar > 0 ? weightedYieldSum / totalPar : 0;
+        const weightedWalSum = holdings.reduce((sum, h) => sum + (h.par * h.wal), 0);
+        const totalWal = totalPar > 0 ? weightedWalSum / totalPar : 0;
+        document.getElementById('totals-par').textContent = totalPar.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        document.getElementById('totals-yield').textContent = totalYield.toFixed(3);
+        document.getElementById('totals-wal').textContent = totalWal.toFixed(2);
+    }
+
+    /** Destroys an existing Chart instance. */
+    function destroyChart(chartId) {
+         if (chartInstances[chartId]?.destroy) {
+            chartInstances[chartId].destroy();
+            delete chartInstances[chartId];
+        }
+    }
+
+    /** Renders all charts based on FILTERED holdings data. */
+    function renderCharts(holdings) {
+         Object.keys(chartInstances).forEach(destroyChart); // Clear existing charts
+        const contexts = {
+            yieldVsMaturityChart: document.getElementById('yieldVsMaturityChart')?.getContext('2d'),
+            parByMaturityYearChart: document.getElementById('parByMaturityYearChart')?.getContext('2d'),
+            couponPieChart: document.getElementById('couponPieChart')?.getContext('2d'),
+            priceVsYieldChart: document.getElementById('priceVsYieldChart')?.getContext('2d'),
+         };
+        if (Object.values(contexts).some(ctx => !ctx)) {
+             console.error("One or more chart canvas elements not found.");
+             return; // Exit if any canvas is missing
+        }
+
+        // Chart 1: Yield vs Maturity
+        const yieldMaturityPoints = holdings.filter(h => h.estimated_maturity_date !== null && typeof h.yield_val === 'number').map(h => ({ x: h.estimated_maturity_date, y: h.yield_val }));
+        if (yieldMaturityPoints.length > 0 && contexts.yieldVsMaturityChart) {
+             chartInstances.yieldVsMaturityChart = new Chart(contexts.yieldVsMaturityChart, { type: 'scatter', data: { datasets: [{ label: 'Yield vs Est Maturity Year', data: yieldMaturityPoints, backgroundColor: 'rgba(0, 123, 255, 0.5)', borderColor: 'rgba(0, 123, 255, 1)', pointRadius: 5, pointHoverRadius: 7, showLine: false, trendlineLinear: { style: "rgba(255, 50, 50, 0.8)", lineStyle: "solid", width: 2, projection: false } }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: 'Yield vs. Estimated Maturity Year' }, tooltip: { callbacks: { label: ctx => `Year: ${ctx.parsed.x}, Yield: ${ctx.parsed.y.toFixed(3)}` } } }, scales: { x: { type: 'linear', position: 'bottom', title: { display: true, text: 'Estimated Maturity Year' }, ticks: { stepSize: 1, callback: value => Math.round(value) } }, y: { beginAtZero: false, title: { display: true, text: 'Yield (%)' } } } } });
+        }
+
+        // Chart 2: Par by Maturity Year
+        const maturityBuckets = {}; holdings.forEach(h => { const year = h.estimated_maturity_date || (h.maturity_date_obj ? h.maturity_date_obj.getFullYear() : 'Unknown'); if (year !== 'Unknown' && !isNaN(year)) { maturityBuckets[year] = (maturityBuckets[year] || 0) + h.par; } }); const sortedYears = Object.keys(maturityBuckets).map(Number).sort((a, b) => a - b);
+        if (sortedYears.length > 0 && contexts.parByMaturityYearChart) {
+             chartInstances.parByMaturityYearChart = new Chart(contexts.parByMaturityYearChart, { type: 'bar', data: { labels: sortedYears, datasets: [{ label: 'Total Par by Est. Maturity Year', data: sortedYears.map(year => maturityBuckets[year]), backgroundColor: 'rgba(40, 167, 69, 0.7)', borderColor: 'rgba(40, 167, 69, 1)', borderWidth: 1 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: 'Total Par by Estimated Maturity Year' }, tooltip: { callbacks: { label: ctx => `Year: ${ctx.label}, Par: ${ctx.parsed.y.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` } } }, scales: { x: { title: { display: true, text: 'Year' } }, y: { beginAtZero: true, title: { display: true, text: 'Total Par Value' }, ticks: { callback: value => value.toLocaleString() } } } } });
+        }
+
+        // Chart 3: Coupon Distribution
+        const couponBuckets = {}; holdings.forEach(h => { const couponRate = h.coupon.toFixed(3); couponBuckets[couponRate] = (couponBuckets[couponRate] || 0) + h.par; }); const sortedCoupons = Object.keys(couponBuckets).sort((a, b) => parseFloat(a) - parseFloat(b));
+        if (sortedCoupons.length > 0 && contexts.couponPieChart) {
+            const pieColors = generateDistinctColors(sortedCoupons.length); chartInstances.couponPieChart = new Chart(contexts.couponPieChart, { type: 'pie', data: { labels: sortedCoupons.map(c => `${c}% Coupon`), datasets: [{ label: 'Par by Coupon Rate', data: sortedCoupons.map(c => couponBuckets[c]), backgroundColor: pieColors, hoverOffset: 4 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: 'Portfolio Par Distribution by Coupon Rate' }, legend: { position: 'right' }, tooltip: { callbacks: { label: ctx => { const label = ctx.label || ''; const value = ctx.parsed || 0; const total = ctx.dataset.data.reduce((acc, val) => acc + val, 0); const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0; return `${label}: ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${percentage}%)`; } } } } } });
+        }
+
+        // Chart 4: Price vs Yield
+        const priceYieldPoints = holdings.filter(h => typeof h.settlement_price === 'number' && h.settlement_price > 0 && typeof h.yield_val === 'number').map(h => ({ x: h.settlement_price, y: h.yield_val }));
+        if (priceYieldPoints.length > 0 && contexts.priceVsYieldChart) {
+             chartInstances.priceVsYieldChart = new Chart(contexts.priceVsYieldChart, { type: 'scatter', data: { datasets: [{ label: 'Price vs Yield', data: priceYieldPoints, backgroundColor: 'rgba(255, 193, 7, 0.6)', borderColor: 'rgba(255, 193, 7, 1)', pointRadius: 5, pointHoverRadius: 7, showLine: false }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: 'Settlement Price vs. Yield' }, tooltip: { callbacks: { label: ctx => `Price: ${ctx.parsed.x.toFixed(2)}, Yield: ${ctx.parsed.y.toFixed(3)}` } } }, scales: { x: { beginAtZero: false, title: { display: true, text: 'Settlement Price' } }, y: { beginAtZero: false, title: { display: true, text: 'Yield (%)' } } } } });
+        }
+    }
+
+    /** Generates distinct HSL colors for charts. */
+    function generateDistinctColors(count) {
+         const colors = []; if (count <= 0) return colors; const hueStep = 360 / count; for (let i = 0; i < count; i++) { colors.push(`hsl(${i * hueStep}, 70%, 60%)`); } return colors;
+    }
+
+    // --- Event Listeners Setup ---
+
+    // Portfolio selection change
+    portfolioSelect.addEventListener('change', () => updatePortfolio(portfolioSelect.value));
+
+    // Add Filter button click
+    addFilterBtn.addEventListener('click', () => addFilterRow());
+
+    // Clear All Filters button click
+    clearAllFiltersBtn.addEventListener('click', clearAllActiveFilters);
+
+    // Table header clicks for sorting
+    tableHeaders.forEach(th => {
+        th.addEventListener('click', () => {
+            const key = th.dataset.key; if (!key) return;
+            if (key === currentSortKey) { currentSortDir = currentSortDir === 'asc' ? 'desc' : 'asc'; }
+            else { currentSortKey = key; currentSortDir = 'asc'; }
+            triggerFilterApplication(); // Re-sort and render table
+        });
     });
 
-    // Select first portfolio by default and trigger load
-    select.value = portfolios[0].id;
-    updatePortfolio(portfolios[0]);
-  }
-
-  async function updatePortfolio(portfolio) {
-    document.getElementById('portfolio-name').textContent = portfolio.name;
-
-    const res = await fetch(`${apiRoot}/holdings/?portfolio=${portfolio.id}`);
-    allHoldings = await res.json();
-
-    renderTable(allHoldings);
-    renderChart(allHoldings);
-  }
-
-  function renderTable(holdings) {
-    const tbody = document.querySelector('#holdings-table tbody');
-    tbody.innerHTML = '';
-    holdings.forEach(h => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${h.security_cusip}</td>
-        <td>${parseFloat(h.original_face_amount).toFixed(2)}</td>
-        <td>${h.book_price || ''}</td>
-        <td>${h.book_yield || ''}</td>
-      `;
-      tbody.appendChild(tr);
+    // --- Initial Load ---
+    // Wait for the DOM to be fully loaded before running setup
+    document.addEventListener('DOMContentLoaded', () => {
+        generateColumnOptions(); // Prepare column options HTML string
+        addFilterRow(); // Add the initial (empty) filter row to the UI
+        if (window.pluginTrendlineLinear) { // Register trendline plugin
+            Chart.register(window.pluginTrendlineLinear);
+            console.log("Trendline plugin registered.");
+        } else { console.error("Trendline plugin script not loaded!"); }
+        loadPortfolios(); // Load initial portfolio data
     });
-  }
 
-  function renderChart(holdings) {
-    const ctx = document.getElementById('faceChart').getContext('2d');
-    const labels = holdings.map(h => h.security_cusip);
-    const data = holdings.map(h => parseFloat(h.original_face_amount));
-    if (chart) chart.destroy();
-    chart = new Chart(ctx, {
-      type: 'bar',
-      data: { labels, datasets: [{ label: 'Face Amount', data }] },
-      options: { scales: { y: { beginAtZero: true } } }
-    });
-  }
-
-  // Live filter as before
-  document.getElementById('filter').addEventListener('input', e => {
-    const term = e.target.value.toUpperCase();
-    const filtered = allHoldings.filter(h => h.security_cusip.includes(term));
-    renderTable(filtered);
-    renderChart(filtered);
-  });
-
-  // When the user picks a different portfolio
-  document.getElementById('portfolio-select').addEventListener('change', e => {
-    const selected = portfolios.find(p => p.id == e.target.value);
-    if (selected) updatePortfolio(selected);
-  });
-
-  // Kick things off
-  loadPortfolios();
 </script>
-
 
 </body>
 </html>

@@ -19,10 +19,12 @@ class Customer(models.Model):
         blank=True,
         help_text="External unique customer number from Excel"
     )
+    # Users associated with this customer
     users = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
         related_name='customers',
-        help_text="Users associated with this customer"
+        blank=True,
+        help_text="Users allowed to see this customer's data"
     )
     name = models.CharField(max_length=150)
     address = models.CharField(max_length=255)
@@ -32,6 +34,7 @@ class Customer(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.customer_number})"
+
 
 class Security(models.Model):
     cusip = models.CharField(max_length=9, unique=True)
@@ -76,6 +79,7 @@ class Security(models.Model):
     def __str__(self):
         return f"{self.description} ({self.cusip})"
 
+
 class Portfolio(models.Model):
     owner = models.ForeignKey(
         Customer,
@@ -92,6 +96,7 @@ class Portfolio(models.Model):
 
     def __str__(self):
         return f"{self.name} (Owner: {self.owner.customer_number})"
+
 
 class CustomerHolding(models.Model):
     ticket_id = models.UUIDField(
