@@ -1,4 +1,4 @@
-# api/portfolio/tasks.py (Set is_default=True on customer import)
+# api/portfolio/tasks.py (Updated customer import for salesperson fields)
 
 import os
 import logging
@@ -182,6 +182,7 @@ def import_securities_from_excel(file_path):
 def import_customers_from_excel(file_path):
     """
     Imports or updates customers from an Excel file based on customer_number.
+    Optionally updates salesperson_name and salesperson_email if columns exist.
     Ensures a default "Primary Holdings" portfolio exists for each customer
     and marks it with is_default=True.
     Includes basic retry for DB locks.
@@ -205,21 +206,25 @@ def import_customers_from_excel(file_path):
         log.error(f"Error opening customer import file {file_path}: {e}", exc_info=True)
         raise
 
+    # Read headers and normalize them (lowercase, underscore spaces)
     headers = [str(cell.value).lower().strip().replace(' ', '_') if cell.value else None for cell in ws[1]]
     headers = [h for h in headers if h]
     log.info(f"Found customer headers: {headers}")
 
+    # Check for mandatory header
     if 'customer_number' not in headers:
         log.error("Mandatory header 'customer_number' not found in customer import file.")
         wb.close()
         raise ValueError("Mandatory header 'customer_number' not found in customer import file.")
 
+    # Iterate through data rows
     for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
         if len(row) < len(headers):
             log.warning(f"Customers Row {row_idx}: Skipping row due to insufficient columns (expected {len(headers)}, got {len(row)})")
             skipped_rows += 1
             continue
 
+        # Create dictionary from headers and row data
         raw_data = dict(zip(headers, row))
         customer_number = raw_data.get('customer_number')
 
@@ -227,23 +232,39 @@ def import_customers_from_excel(file_path):
             log.warning(f"Customers Row {row_idx}: Skipping row due to missing customer_number.")
             skipped_rows += 1
             continue
-        customer_number = str(customer_number).strip()
+        customer_number = str(customer_number).strip() # Clean customer number
 
-        # Prepare customer data defaults
+        # Prepare customer data defaults dictionary
         customer_defaults = {}
-        if 'name' in raw_data: customer_defaults['name'] = raw_data['name']
-        if 'address' in raw_data: customer_defaults['address'] = raw_data['address']
-        if 'city' in raw_data: customer_defaults['city'] = raw_data['city']
-        if 'state' in raw_data: customer_defaults['state'] = raw_data['state']
-        if 'zip_code' in raw_data: customer_defaults['zip_code'] = raw_data['zip_code']
-        # Only include fields that were actually present in the row
+        # Map standard fields if they exist in headers
+        if 'name' in headers: customer_defaults['name'] = raw_data.get('name')
+        if 'address' in headers: customer_defaults['address'] = raw_data.get('address')
+        if 'city' in headers: customer_defaults['city'] = raw_data.get('city')
+        if 'state' in headers: customer_defaults['state'] = raw_data.get('state')
+        if 'zip_code' in headers: customer_defaults['zip_code'] = raw_data.get('zip_code')
+
+        # --- ADDED: Map salesperson fields if they exist in headers ---
+        if 'salesperson_name' in headers:
+            customer_defaults['salesperson_name'] = raw_data.get('salesperson_name')
+        if 'salesperson_email' in headers:
+            # Basic check if email looks valid, otherwise set to None or skip
+            email = raw_data.get('salesperson_email')
+            if email and '@' in str(email): # Simple validation
+                 customer_defaults['salesperson_email'] = str(email).strip()
+            else:
+                 log.warning(f"Customers Row {row_idx}: Invalid or missing salesperson_email '{email}' for customer {customer_number}. Skipping email update.")
+                 # Optionally set to None if you want to clear existing invalid emails:
+                 # customer_defaults['salesperson_email'] = None
+        # -------------------------------------------------------------
+
+        # Only include fields that were actually present in the row and are not None
         customer_defaults = {k: v for k, v in customer_defaults.items() if v is not None}
 
         # --- Retry logic for database lock ---
         retries = 0
         success = False
         customer = None
-        customer_created = False # Renamed for clarity
+        customer_created = False
         portfolio = None
         portfolio_created = False
         portfolio_updated = False # Track if existing default portfolio was updated
@@ -255,7 +276,7 @@ def import_customers_from_excel(file_path):
                     # Update or create the customer
                     customer, customer_created = Customer.objects.update_or_create(
                         customer_number=customer_number,
-                        defaults=customer_defaults
+                        defaults=customer_defaults # Apply collected defaults
                     )
 
                     # Define the standard name for the default portfolio
@@ -290,7 +311,7 @@ def import_customers_from_excel(file_path):
                     skipped_rows += 1
                     break # Exit retry loop
             except IntegrityError as e:
-                # Could be unique constraint on portfolio (owner, is_default=True) if logic is flawed
+                # Could be unique constraint on portfolio (owner, is_default=True) or customer_number
                 log.error(f"Cust Row {row_idx}: IntegrityError importing customer {customer_number} or default portfolio: {e}", exc_info=True)
                 skipped_rows += 1
                 break # Exit retry loop
