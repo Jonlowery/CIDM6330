@@ -147,7 +147,7 @@ header.app-header h1 {
     font-size: 1.5em;
 }
 
-/* NEW: Header Link Style */
+/* Header Link Style */
 .header-link {
     color: var(--header-link-color);
     text-decoration: none;
@@ -249,7 +249,7 @@ h2#portfolio-name {
     gap: 0.8em;
 }
 
-/* Filters container */
+/* Filters container (Holdings) */
 #filters-container {
     display: flex;
     flex-direction: column;
@@ -259,6 +259,17 @@ h2#portfolio-name {
     margin-top: 1em;
 }
 
+/* NEW: Filters Sub-Container (Muni Offerings) */
+#muni-filters-container.filters-sub-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8em;
+    margin-bottom: 1em; /* Space before filter buttons */
+    padding-bottom: 1em; /* Space below filters */
+    border-bottom: 1px solid var(--table-border-color); /* Separator */
+}
+
+
 .filter-row {
     display: flex;
     flex-wrap: wrap;
@@ -266,7 +277,19 @@ h2#portfolio-name {
     gap: 0.8em;
 }
 
-label {
+/* Apply to labels in both filter sections */
+.filter-row label {
+    margin-right: 0.5em;
+    font-weight: bold;
+    white-space: nowrap;
+    color: var(--text-color);
+    flex-basis: 100px; /* Slightly wider basis for filter labels */
+    text-align: right;
+    flex-shrink: 0;
+}
+
+
+label { /* General label reset */
     margin-right: 0.5em;
     font-weight: bold;
     white-space: nowrap;
@@ -299,7 +322,7 @@ body.dark-mode input::-ms-input-placeholder { color: #bbb; }
 
 .filter-row select,
 .filter-row input { flex-basis: 150px; }
-.filter-row label:first-child { flex-basis: 60px; text-align: right; }
+.filter-row label:first-child { flex-basis: 100px; text-align: right; } /* Match wider label basis */
 
 /* General button styling */
 button.filter-action-btn,
@@ -359,6 +382,14 @@ button.remove-filter-btn {
     border-top: 1px solid var(--table-border-color);
     padding-top: 1em;
 }
+/* Adjust filter button container within muni section */
+.muni-offerings-container .filter-buttons-container {
+    border-top: none; /* Remove top border if filters are above */
+    padding-top: 0;
+    margin-top: 0;
+    margin-bottom: 1em; /* Add space before table */
+}
+
 
 /* Charts grid layout */
 .charts-grid {
@@ -434,9 +465,8 @@ td.checkbox-column input {
     vertical-align: middle;
 }
 
-
-/* Holdings Table Specifics */
-#holdings-table th .sort-arrow {
+/* Sort Arrow Styling (Shared) */
+th .sort-arrow {
     font-size: 0.8em;
     margin-left: 5px;
     display: inline-block;
@@ -444,8 +474,12 @@ td.checkbox-column input {
     min-width: 1em;
     text-align: left;
 }
-#holdings-table th.sorted .sort-arrow { opacity: 1; }
+th.sorted .sort-arrow {
+    opacity: 1;
+}
 
+
+/* Holdings Table Specifics */
 /* Holdings Table Cell Alignment */
 #holdings-table td:nth-child(2), #holdings-table td:nth-child(3) { text-align: left; } /* CUSIP, Description */
 #holdings-table td:nth-child(4), #holdings-table td:nth-child(5), #holdings-table td:nth-child(6), #holdings-table td:nth-child(7), #holdings-table td:nth-child(8) { text-align: right; } /* Numeric columns */

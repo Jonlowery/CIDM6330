@@ -24,7 +24,8 @@
 </header>
 
 <div class="container" id="main-content">
-    <div class="controls section-container"> <div class="control-row">
+    <div class="controls section-container">
+        <div class="control-row">
              <label for="customer-select">Customer:</label>
              <select id="customer-select"></select>
         </div>
@@ -37,8 +38,8 @@
         </div>
         <div id="filters-container"></div>
         <div class="filter-buttons-container">
-            <button id="add-filter-btn" class="filter-action-btn btn-primary">Add Filter</button>
-            <button id="clear-all-filters-btn" class="filter-action-btn btn-secondary">Clear All Filters</button>
+            <button id="add-filter-btn" class="filter-action-btn btn-primary">Add Holdings Filter</button>
+            <button id="clear-all-filters-btn" class="filter-action-btn btn-secondary">Clear Holdings Filters</button>
             <button id="create-portfolio-btn" class="control-action-btn btn-info">Save Filtered View as Portfolio</button>
         </div>
     </div>
@@ -52,7 +53,8 @@
         <div class="chart-container"><canvas id="priceVsYieldChart"></canvas></div>
     </div>
 
-    <div class="section-container"> <h2>Holdings</h2>
+    <div class="section-container">
+        <h2>Holdings</h2>
         <div class="table-container">
             <table id="holdings-table">
                 <thead>
@@ -89,29 +91,37 @@
     </div>
 
 
-    <div id="muni-offerings-section" class="muni-offerings-container section-container"> <h2>Municipal Offerings</h2>
+    <div id="muni-offerings-section" class="muni-offerings-container section-container">
+        <h2>Municipal Offerings</h2>
+
+        <div id="muni-filters-container" class="filters-sub-container"></div>
+        <div class="filter-buttons-container">
+            <button id="add-muni-filter-btn" class="filter-action-btn btn-primary">Add Offering Filter</button>
+            <button id="clear-all-muni-filters-btn" class="filter-action-btn btn-secondary">Clear Offering Filters</button>
+        </div>
         <div class="table-container">
             <table id="muni-offerings-table">
                 <thead>
                     <tr>
                         <th class="checkbox-column"><input type="checkbox" id="select-all-munis" title="Select/Deselect All Visible Offerings"></th>
-                        <th data-key="cusip" data-type="string">Cusip</th>
-                        <th data-key="amount" data-type="number">Amount</th>
-                        <th data-key="description" data-type="string">Description</th>
-                        <th data-key="coupon" data-type="number">Coupon</th>
-                        <th data-key="maturity_date" data-type="date">Maturity</th>
-                        <th data-key="yield_rate" data-type="number">Yield</th>
-                        <th data-key="price" data-type="number">Price</th>
-                        <th data-key="moody_rating" data-type="string">Moody</th>
-                        <th data-key="sp_rating" data-type="string">S&P</th>
-                        <th data-key="call_date" data-type="date">Call Date</th>
-                        <th data-key="call_price" data-type="number">Call Price</th>
-                        <th data-key="state" data-type="string">State</th>
-                        <th data-key="insurance" data-type="string">Insurance</th>
+                        <th data-key="cusip" data-type="string">Cusip<span class="sort-arrow"></span></th>
+                        <th data-key="amount" data-type="number">Amount<span class="sort-arrow"></span></th>
+                        <th data-key="description" data-type="string">Description<span class="sort-arrow"></span></th>
+                        <th data-key="coupon" data-type="number">Coupon<span class="sort-arrow"></span></th>
+                        <th data-key="maturity_date" data-type="date">Maturity<span class="sort-arrow"></span></th>
+                        <th data-key="yield_rate" data-type="number">Yield<span class="sort-arrow"></span></th>
+                        <th data-key="price" data-type="number">Price<span class="sort-arrow"></span></th>
+                        <th data-key="moody_rating" data-type="string">Moody<span class="sort-arrow"></span></th>
+                        <th data-key="sp_rating" data-type="string">S&P<span class="sort-arrow"></span></th>
+                        <th data-key="call_date" data-type="date">Call Date<span class="sort-arrow"></span></th>
+                        <th data-key="call_price" data-type="number">Call Price<span class="sort-arrow"></span></th>
+                        <th data-key="state" data-type="string">State<span class="sort-arrow"></span></th>
+                        <th data-key="insurance" data-type="string">Insurance<span class="sort-arrow"></span></th>
                     </tr>
                 </thead>
                 <tbody>
-                    <tr><td colspan="14">Loading offerings...</td></tr> </tbody>
+                    <tr><td colspan="14">Loading offerings...</td></tr>
+                </tbody>
             </table>
         </div>
          <div class="email-action-container">
