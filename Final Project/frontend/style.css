@@ -8,6 +8,7 @@
     --header-color: #0056b3;
     --header-bg: #e9ecef;
     --header-text-color: var(--header-color);
+    --header-link-color: var(--header-color);
     --table-border-color: #dee2e6;
     --table-header-bg: #e9ecef;
     --table-header-text: #495057;
@@ -49,6 +50,7 @@ body.dark-mode {
     --container-bg: #2c2c2c;
     --header-color: #4dabf7;
     --header-bg: #343a40;
+    --header-link-color: #7bc6ff; /* Lighter link color for dark mode */
     --table-border-color: #444;
     --table-header-bg: #3a3a3a;
     --table-header-text: #e0e0e0;
@@ -145,6 +147,24 @@ header.app-header h1 {
     font-size: 1.5em;
 }
 
+/* NEW: Header Link Style */
+.header-link {
+    color: var(--header-link-color);
+    text-decoration: none;
+    font-weight: bold;
+    font-size: 0.9em;
+    padding: 0.5em 0; /* Match button vertical padding */
+    transition: color 0.2s ease;
+}
+.header-link:hover {
+    text-decoration: underline;
+    color: color-mix(in srgb, var(--header-link-color) 80%, black);
+}
+body.dark-mode .header-link:hover {
+     color: color-mix(in srgb, var(--header-link-color) 80%, white);
+}
+
+
 /* Header button styling */
 header.app-header button {
     height: auto;
@@ -186,7 +206,7 @@ header.app-header button {
 /* Section Container Styling (General) */
 .section-container {
     background-color: var(--section-bg);
-    padding: 1em;
+    padding: 1.5em; /* Increased padding */
     border-radius: 8px;
     box-shadow: var(--section-shadow);
     margin-bottom: 1.5em; /* Space between sections */
@@ -364,10 +384,9 @@ button.remove-filter-btn {
 /* Table container styling (reusable) */
 .table-container {
     overflow-x: auto;
-    /* background-color: var(--container-bg); */ /* Removed, handled by section-container */
-    /* border-radius: 8px; */ /* Removed, handled by section-container */
-    /* box-shadow: var(--section-shadow); */ /* Removed, handled by section-container */
+    /* Background, radius, shadow handled by .section-container */
     box-sizing: border-box;
+    margin-bottom: 1em; /* Space between table and action buttons */
 }
 
 /* Table styling (applies to both holdings and muni offerings) */
@@ -399,23 +418,24 @@ th:hover {
     background-color: color-mix(in srgb, var(--table-header-bg) 85%, var(--text-color) 15%);
 }
 
-/* Holdings Table Specifics */
-#holdings-table th.checkbox-column,
-#holdings-table td.checkbox-column {
-    width: 40px; /* Fixed width for checkbox column */
+/* Checkbox column styling (shared) */
+th.checkbox-column, td.checkbox-column {
+    width: 40px;
     padding: 0.4em;
     text-align: center;
-    cursor: default; /* No sort cursor */
+    cursor: default;
 }
-#holdings-table th.checkbox-column:hover {
-    background-color: var(--table-header-bg); /* Prevent hover effect */
+th.checkbox-column:hover {
+    background-color: var(--table-header-bg);
 }
-#holdings-table th.checkbox-column input,
-#holdings-table td.checkbox-column input {
+th.checkbox-column input,
+td.checkbox-column input {
     cursor: pointer;
-    vertical-align: middle; /* Align checkbox vertically */
+    vertical-align: middle;
 }
 
+
+/* Holdings Table Specifics */
 #holdings-table th .sort-arrow {
     font-size: 0.8em;
     margin-left: 5px;
@@ -450,26 +470,21 @@ th:hover {
     text-align: left;
 }
 
-/* Email Action Container */
+/* Email Action Container (Shared Styles) */
 .email-action-container {
     display: flex;
     align-items: center;
     gap: 1em;
-    margin-top: 1em; /* Add space above */
-    margin-bottom: 1.5em; /* Consistent margin */
-    padding: 1em;
-    background-color: var(--section-bg);
-    border-radius: 8px;
-    box-shadow: var(--section-shadow);
+    /* Removed background, padding, shadow - handled by section-container */
     box-sizing: border-box;
 }
 
-#email-interest-btn {
-    /* Uses .control-action-btn and .btn-success for base styles */
-    flex-shrink: 0; /* Prevent button shrinking */
+.email-action-container button {
+    /* Uses .control-action-btn and color classes */
+    flex-shrink: 0;
 }
 
-/* Status Message Styling */
+/* Status Message Styling (Shared Styles) */
 .status-message {
     padding: 0.5em 1em;
     border-radius: 6px;
@@ -504,23 +519,23 @@ th:hover {
 }
 
 /* Example alignments (adjust based on final data/preference) */
-#muni-offerings-table td:nth-child(1), /* Cusip */
-#muni-offerings-table td:nth-child(3), /* Description */
-#muni-offerings-table td:nth-child(8), /* Moody */
-#muni-offerings-table td:nth-child(9), /* S&P */
-#muni-offerings-table td:nth-child(12), /* State */
-#muni-offerings-table td:nth-child(13) { /* Insurance */
+#muni-offerings-table td:nth-child(2), /* Cusip (after checkbox) */
+#muni-offerings-table td:nth-child(4), /* Description */
+#muni-offerings-table td:nth-child(9), /* Moody */
+#muni-offerings-table td:nth-child(10), /* S&P */
+#muni-offerings-table td:nth-child(13), /* State */
+#muni-offerings-table td:nth-child(14) { /* Insurance */
     text-align: left;
 }
-#muni-offerings-table td:nth-child(2), /* Amount */
-#muni-offerings-table td:nth-child(4), /* Coupon */
-#muni-offerings-table td:nth-child(6), /* Yield */
-#muni-offerings-table td:nth-child(7), /* Price */
-#muni-offerings-table td:nth-child(11) { /* Call Price */
+#muni-offerings-table td:nth-child(3), /* Amount */
+#muni-offerings-table td:nth-child(5), /* Coupon */
+#muni-offerings-table td:nth-child(7), /* Yield */
+#muni-offerings-table td:nth-child(8), /* Price */
+#muni-offerings-table td:nth-child(12) { /* Call Price */
     text-align: right;
 }
-#muni-offerings-table td:nth-child(5), /* Maturity */
-#muni-offerings-table td:nth-child(10) { /* Call Date */
+#muni-offerings-table td:nth-child(6), /* Maturity */
+#muni-offerings-table td:nth-child(11) { /* Call Date */
     text-align: center;
 }
 
@@ -675,7 +690,7 @@ th:hover {
     header.app-header { padding: 0 0.5em; }
     header.app-header .header-right { gap: 0.5em; }
     header.app-header h1 { font-size: 1.2em; }
-    header.app-header button { padding: 0.4em 0.6em; font-size: 0.8em; }
+    header.app-header button, .header-link { padding: 0.4em 0.6em; font-size: 0.8em; } /* Adjust link padding/size */
     .controls { gap: 1em; }
     .control-row { flex-direction: column; align-items: stretch; }
     select, input, button.filter-action-btn, button.control-action-btn { width: 100%; max-width: none; }
@@ -692,3 +707,4 @@ th:hover {
     #muni-offerings-table th,
     #muni-offerings-table td { font-size: 0.8em; padding: 0.3em 0.4em; } /* Further reduce for muni table */
 }
+

@@ -1,4 +1,4 @@
-# api/portfolio/tasks.py (Corrected S&P header map, added logging for missing headers)
+# api/portfolio/tasks.py (Corrected SyntaxError in import_muni_offerings_from_excel)
 
 import os
 import logging
@@ -43,14 +43,11 @@ def clean_decimal(value, default=None):
 def clean_date(value, default=None):
     """ Safely convert value to Date, return default if conversion fails. """
     # from datetime import datetime # Already imported at top level
-    if value is None:
-        return default
+    if value is None: return default
     # Handle cases where openpyxl might return datetime objects
-    if isinstance(value, datetime):
-        return value.date()
+    if isinstance(value, datetime): return value.date()
     # Handle cases where openpyxl might return date objects
-    if isinstance(value, date):
-        return value
+    if isinstance(value, date): return value
     # Handle integer/float timestamps if they represent Excel dates
     if isinstance(value, (int, float)):
         try:
@@ -71,10 +68,8 @@ def clean_date(value, default=None):
         if not value_str: # Skip empty strings
             return default
         for fmt in ('%Y-%m-%d', '%m/%d/%Y', '%m-%d-%Y', '%Y%m%d'):
-            try:
-                return datetime.strptime(value_str, fmt).date()
-            except (ValueError, TypeError):
-                continue # Try next format
+            try: return datetime.strptime(value_str, fmt).date()
+            except (ValueError, TypeError): continue # Try next format
         log.warning(f"Could not parse date string '{value_str}' with known formats.")
         return default
 
@@ -543,8 +538,12 @@ def import_holdings_from_excel(self, file_path):
                      processed_holding_keys_in_default_portfolio[customer.id] = set()
                 processed_holding_keys_in_default_portfolio[customer.id].add(security.id)
 
-                if created: created_count += 1; log.debug(f"Hold Row {row_idx}: Created Holding in '{default_portfolio.name}', Sec: {security.cusip}")
-                else: updated_count += 1; log.debug(f"Hold Row {row_idx}: Updated Holding in '{default_portfolio.name}', Sec: {security.cusip}")
+                if created:
+                    created_count += 1
+                    log.debug(f"Hold Row {row_idx}: Created Holding in '{default_portfolio.name}', Sec: {security.cusip}")
+                else:
+                    updated_count += 1
+                    log.debug(f"Hold Row {row_idx}: Updated Holding in '{default_portfolio.name}', Sec: {security.cusip}")
 
             except OperationalError as e:
                  # Let celery handle retry based on task decorator
@@ -689,239 +688,122 @@ def import_all_from_excel():
 # --- Email Task ---
 @shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
 def send_salesperson_interest_email(self, salesperson_email, salesperson_name, customer_name, customer_number, selected_bonds):
-    """
-    Sends an email notification to the salesperson about customer's selling interest.
-
-    Args:
-        salesperson_email (str): Recipient email address.
-        salesperson_name (str): Salesperson's name (for greeting).
-        customer_name (str): Customer's name.
-        customer_number (str): Customer's number.
-        selected_bonds (list): List of dicts [{'cusip': str, 'par': str}, ...].
-    """
+    """ Sends email notification about customer's selling interest. """
     log.info(f"Task send_salesperson_interest_email started for salesperson: {salesperson_email}, customer: {customer_number}")
-
-    # Format subject
     subject = f"Interest in Selling Bonds - Customer {customer_name} ({customer_number})"
-
-    # Format body
     greeting_name = salesperson_name if salesperson_name else "Salesperson"
     customer_display = f"{customer_name} ({customer_number})" if customer_name else f"Customer {customer_number}"
-
     bond_lines = []
     for bond in selected_bonds:
-        # Format par amount nicely if possible, otherwise use the string as is
-        try:
-            par_decimal = Decimal(bond['par'])
-            par_formatted = f"{par_decimal:,.2f}" # Add commas and 2 decimal places
-        except (InvalidOperation, TypeError, ValueError):
-            par_formatted = bond['par'] # Fallback to the original string
+        try: par_decimal = Decimal(bond['par']); par_formatted = f"{par_decimal:,.2f}"
+        except (InvalidOperation, TypeError, ValueError): par_formatted = bond['par']
         bond_lines.append(f"  - CUSIP: {bond['cusip']}, Par: {par_formatted}")
-
     bonds_list_str = "\n".join(bond_lines)
-
-    body = f"""Dear {greeting_name},
-
-Our client, {customer_display}, has indicated interest in selling the following bonds held in their portfolio:
-
-{bonds_list_str}
-
-Please follow up with them regarding this interest.
-
-Thanks,
-Portfolio Analyzer System
-"""
-
+    body = f"""Dear {greeting_name},\n\nOur client, {customer_display}, has indicated interest in selling the following bonds held in their portfolio:\n\n{bonds_list_str}\n\nPlease follow up with them regarding this interest.\n\nThanks,\nPortfolio Analyzer System\n"""
     try:
-        send_mail(
-            subject,
-            body,
-            settings.DEFAULT_FROM_EMAIL, # Sender email address (configure in settings.py)
-            [salesperson_email],         # List of recipients
-            fail_silently=False,         # Raise exceptions on failure
-        )
+        send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [salesperson_email], fail_silently=False)
         log.info(f"Successfully sent interest email to {salesperson_email} for customer {customer_number}")
         return f"Email sent successfully to {salesperson_email}"
     except Exception as e:
         log.error(f"Failed to send interest email to {salesperson_email} for customer {customer_number}. Error: {e}", exc_info=True)
-        # Celery will retry based on task decorator settings
-        # Raise the exception again to trigger retry
-        raise self.retry(exc=e, countdown=60) # Retry after 60 seconds
-
+        raise self.retry(exc=e, countdown=60)
 
 # --- Municipal Offerings Import Task ---
 @shared_task(bind=True, max_retries=1) # Don't retry data imports heavily by default
 def import_muni_offerings_from_excel(self, file_path):
-    """
-    Imports or updates municipal offerings from an Excel file based on CUSIP.
-    ASSUMPTION: This task DELETES all existing offerings before importing the new file.
-    """
+    """ Imports or updates municipal offerings from an Excel file based on CUSIP. """
     log.info(f"Starting municipal offering import/update from {file_path}")
-    created_count = 0
-    updated_count = 0
-    skipped_rows = 0
-    deleted_count = 0
-    max_retries_per_row = 2 # Lower retry for data processing rows
-    retry_delay = 0.2 # seconds
-
+    created_count = 0; updated_count = 0; skipped_rows = 0; deleted_count = 0
+    max_retries_per_row = 2; retry_delay = 0.2
     try:
-        wb = openpyxl.load_workbook(filename=file_path, data_only=True, read_only=True)
-        ws = wb.active
-    except FileNotFoundError:
-        log.error(f"Municipal offering import file not found: {file_path}")
-        raise FileNotFoundError(f"Municipal offering import file not found: {file_path}")
-    except Exception as e:
-        log.error(f"Error opening municipal offering import file {file_path}: {e}", exc_info=True)
-        raise
-
-    # --- Delete existing offerings (Assumption: Replace logic) ---
+        wb = openpyxl.load_workbook(filename=file_path, data_only=True, read_only=True); ws = wb.active
+    except FileNotFoundError: log.error(f"Municipal offering import file not found: {file_path}"); raise
+    except Exception as e: log.error(f"Error opening municipal offering import file {file_path}: {e}", exc_info=True); raise
     try:
         with transaction.atomic():
             log.warning("Deleting ALL existing MunicipalOffering records before import...")
-            deleted_count, _ = MunicipalOffering.objects.all().delete()
-            log.info(f"Deleted {deleted_count} existing MunicipalOffering records.")
-    except OperationalError as e:
-         log.error(f"Database error during pre-import deletion of MunicipalOfferings: {e}", exc_info=True)
-         wb.close()
-         raise # Stop the import if deletion fails
-    except Exception as e:
-         log.error(f"Unexpected error during pre-import deletion of MunicipalOfferings: {e}", exc_info=True)
-         wb.close()
-         raise
-
-    # Read headers and normalize them
-    headers = [str(cell.value).lower().strip().replace(' ', '_').replace('&', 'and') if cell.value else None for cell in ws[1]] # Replace & too
-    headers = [h for h in headers if h]
-    log.info(f"Found muni offering headers: {headers}")
-
-    # Map expected headers to model fields (adjust keys if Excel headers differ)
-    # Make keys lowercase and replace spaces/& for robustness
+            deleted_count, _ = MunicipalOffering.objects.all().delete(); log.info(f"Deleted {deleted_count} existing MunicipalOffering records.")
+    except Exception as e: log.error(f"Error during pre-import deletion of MunicipalOfferings: {e}", exc_info=True); wb.close(); raise
+    headers = [str(cell.value).lower().strip().replace(' ', '_').replace('&', 'and') if cell.value else None for cell in ws[1]]
+    headers = [h for h in headers if h]; log.info(f"Found muni offering headers: {headers}")
     header_map = {
-        'cusip': 'cusip',
-        'amount': 'amount',
-        'description': 'description',
-        'coupon': 'coupon',
-        'maturity': 'maturity_date', # Map 'maturity' header to 'maturity_date' field
-        'yield': 'yield_rate',      # Map 'yield' header to 'yield_rate' field
-        'price': 'price',
-        'moody': 'moody_rating',    # Map 'moody' header to 'moody_rating' field
-        's_and_p': 'sp_rating',     # CORRECTED: Map 's_and_p' (normalized from Excel) to 'sp_rating' field
-        'call_date': 'call_date',
-        'call_price': 'call_price',
-        'state': 'state',
+        'cusip': 'cusip', 'amount': 'amount', 'description': 'description', 'coupon': 'coupon',
+        'maturity': 'maturity_date', 'yield': 'yield_rate', 'price': 'price', 'moody': 'moody_rating',
+        's_and_p': 'sp_rating', 'call_date': 'call_date', 'call_price': 'call_price', 'state': 'state',
         'insurance': 'insurance',
     }
-
-    # Check for mandatory CUSIP header
-    if 'cusip' not in headers:
-        log.error("Mandatory header 'cusip' not found in municipal offering import file.")
-        wb.close()
-        raise ValueError("Mandatory header 'cusip' not found in municipal offering import file.")
-
-    # Iterate through data rows
+    if 'cusip' not in headers: log.error("Mandatory header 'cusip' not found."); wb.close(); raise ValueError("Mandatory header 'cusip' not found.")
     for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-        if len(row) < len(headers):
-            log.warning(f"Muni Offerings Row {row_idx}: Skipping row due to insufficient columns (expected {len(headers)}, got {len(row)})")
-            skipped_rows += 1
-            continue
-
-        # Create dictionary from Excel headers and row data
-        # Use the *normalized* headers found in the file as keys
-        raw_data = dict(zip(headers, row))
-        cusip = raw_data.get('cusip')
-
-        if not cusip:
-            log.warning(f"Muni Offerings Row {row_idx}: Skipping row due to missing CUSIP.")
-            skipped_rows += 1
-            continue
-        cusip = str(cusip).strip().upper() # Clean CUSIP, ensure uppercase
-
-        # Prepare data defaults dictionary using the header_map
-        offering_defaults = {}
-        missing_headers_for_row = [] # Track missing headers for this row specifically
-
+        if len(row) < len(headers): log.warning(f"Muni Row {row_idx}: Skipping insufficient columns."); skipped_rows += 1; continue
+        raw_data = dict(zip(headers, row)); cusip = raw_data.get('cusip')
+        if not cusip: log.warning(f"Muni Row {row_idx}: Skipping missing CUSIP."); skipped_rows += 1; continue
+        cusip = str(cusip).strip().upper()
+        offering_defaults = {}; missing_headers_for_row = []
         for map_key, model_field in header_map.items():
-            # Check if the normalized map_key exists in the normalized headers from the file
             if map_key in raw_data:
                 raw_value = raw_data[map_key]
-                # Clean based on expected model field type
-                if model_field == 'amount': # Special handling for amount
+                if model_field == 'amount':
                     cleaned_value = clean_decimal(raw_value)
-                    if cleaned_value is not None:
-                        offering_defaults[model_field] = cleaned_value * 1000 # Multiply amount by 1000
-                    elif raw_value is not None: # Log if cleaning failed but value existed
-                         log.warning(f"Muni Row {row_idx} CUSIP {cusip}: Failed to clean amount '{raw_value}'")
+                    if cleaned_value is not None: offering_defaults[model_field] = cleaned_value * 1000
+                    elif raw_value is not None: log.warning(f"Muni Row {row_idx} CUSIP {cusip}: Failed clean amount '{raw_value}'")
                 elif model_field in ['coupon', 'yield_rate', 'price', 'call_price']:
                     cleaned_value = clean_decimal(raw_value)
-                    if cleaned_value is not None:
-                        offering_defaults[model_field] = cleaned_value
-                    elif raw_value is not None:
-                         log.warning(f"Muni Row {row_idx} CUSIP {cusip}: Failed to clean decimal field '{model_field}' value '{raw_value}'")
+                    if cleaned_value is not None: offering_defaults[model_field] = cleaned_value
+                    elif raw_value is not None: log.warning(f"Muni Row {row_idx} CUSIP {cusip}: Failed clean decimal '{model_field}' val '{raw_value}'")
                 elif model_field in ['maturity_date', 'call_date']:
                     cleaned_value = clean_date(raw_value)
-                    if cleaned_value is not None:
-                        offering_defaults[model_field] = cleaned_value
-                    elif raw_value is not None:
-                         log.warning(f"Muni Row {row_idx} CUSIP {cusip}: Failed to clean date field '{model_field}' value '{raw_value}'")
-                elif model_field == 'cusip': # Already handled cusip above
-                    continue
-                else: # Assume string fields
-                    # Only assign if raw_value is not None, otherwise let model default handle it
-                    if raw_value is not None:
-                        offering_defaults[model_field] = str(raw_value).strip()
-            else:
-                # Log if a header defined in header_map is missing in the actual file headers for this row
-                missing_headers_for_row.append(map_key)
-                # Optional: Log only once per file instead of per row?
-                # Requires tracking headers seen across all rows.
-
-        # Log missing headers for the row if any were found
-        if missing_headers_for_row:
-            log.warning(f"Muni Row {row_idx} CUSIP {cusip}: Expected headers not found in Excel data: {', '.join(missing_headers_for_row)}")
-
-
-        # --- Retry logic for database lock ---
-        retries = 0
-        success = False
+                    if cleaned_value is not None: offering_defaults[model_field] = cleaned_value
+                    elif raw_value is not None: log.warning(f"Muni Row {row_idx} CUSIP {cusip}: Failed clean date '{model_field}' val '{raw_value}'")
+                elif model_field != 'cusip':
+                    if raw_value is not None: offering_defaults[model_field] = str(raw_value).strip()
+            else: missing_headers_for_row.append(map_key)
+        if missing_headers_for_row: log.warning(f"Muni Row {row_idx} CUSIP {cusip}: Missing headers: {', '.join(missing_headers_for_row)}")
+        retries = 0; success = False
         while retries < max_retries_per_row and not success:
             try:
                 with transaction.atomic():
-                    # Use update_or_create for idempotency
                     offering, created = MunicipalOffering.objects.update_or_create(
                         cusip=cusip,          # Match based on CUSIP
                         defaults=offering_defaults # Apply cleaned data
                     )
                 success = True
+                # --- CORRECTED SYNTAX ---
+                log.debug(f"Muni Row {row_idx}: {'Created' if created else 'Updated'} Offering: {cusip}")
                 if created:
                     created_count += 1
-                    log.debug(f"Muni Row {row_idx}: Created Offering: {cusip}")
                 else:
                     updated_count += 1
-                    log.debug(f"Muni Row {row_idx}: Updated Offering: {cusip}")
+                # --- END CORRECTION ---
             except OperationalError as e:
                 if 'database is locked' in str(e).lower() and retries < max_retries_per_row - 1:
-                    retries += 1
-                    wait_time = retry_delay * (2**retries)
-                    log.warning(f"Muni Row {row_idx}: DB locked for offering {cusip}. Retrying ({retries}/{max_retries_per_row-1}) in {wait_time:.2f}s...")
-                    time.sleep(wait_time)
-                else:
-                    log.error(f"Muni Row {row_idx}: OperationalError importing offering {cusip} after {retries} retries: {e}")
-                    skipped_rows += 1
-                    break # Exit retry loop
-            except IntegrityError as e:
-                log.error(f"Muni Row {row_idx}: IntegrityError importing offering {cusip}: {e}")
-                skipped_rows += 1
-                break # Exit retry loop
-            except Exception as e:
-                log.error(f"Muni Row {row_idx}: Unexpected error importing offering {cusip}: {e}", exc_info=True)
-                skipped_rows += 1
-                break # Exit retry loop
-
+                    retries += 1; wait_time = retry_delay * (2**retries); log.warning(f"Muni Row {row_idx}: DB locked {cusip}. Retry {retries}/{max_retries_per_row-1} in {wait_time:.2f}s"); time.sleep(wait_time)
+                else: log.error(f"Muni Row {row_idx}: OpError {cusip} retries {retries}: {e}"); skipped_rows += 1; break
+            except IntegrityError as e: log.error(f"Muni Row {row_idx}: IntegrityError {cusip}: {e}"); skipped_rows += 1; break
+            except Exception as e: log.error(f"Muni Row {row_idx}: Error {cusip}: {e}", exc_info=True); skipped_rows += 1; break
     wb.close()
-    result_message = (
-        f"Imported/Updated municipal offerings from {os.path.basename(file_path)}. "
-        f"Deleted Existing: {deleted_count}, Created: {created_count}, Updated: {updated_count}, Skipped Rows: {skipped_rows}."
-    )
+    result_message = (f"Imported/Updated municipal offerings from {os.path.basename(file_path)}. "
+                      f"Deleted: {deleted_count}, Created: {created_count}, Updated: {updated_count}, Skipped: {skipped_rows}.")
     log.info(result_message)
     return result_message
+
+
+# --- NEW TASK for Muni Buy Interest Email ---
+@shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
+def send_salesperson_muni_buy_interest_email(self, salesperson_email, salesperson_name, customer_name, customer_number, selected_offerings):
+    """ Sends email notification about customer's interest in buying municipal offerings. """
+    log.info(f"Task send_salesperson_muni_buy_interest_email started for salesperson: {salesperson_email}, customer: {customer_number}")
+    subject = f"Interest in Buying Municipal Offerings - Customer {customer_name} ({customer_number})"
+    greeting_name = salesperson_name if salesperson_name else "Salesperson"
+    customer_display = f"{customer_name} ({customer_number})" if customer_name else f"Customer {customer_number}"
+    offering_lines = []
+    for offering in selected_offerings: offering_lines.append(f"  - CUSIP: {offering['cusip']} ({offering.get('description', 'N/A')})")
+    offerings_list_str = "\n".join(offering_lines)
+    body = f"""Dear {greeting_name},\n\nOur client, {customer_display}, has indicated interest in potentially buying the following municipal bond offerings:\n\n{offerings_list_str}\n\nPlease follow up with them regarding this interest and availability.\n\nThanks,\nPortfolio Analyzer System\n"""
+    try:
+        send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [salesperson_email], fail_silently=False)
+        log.info(f"Successfully sent muni buy interest email to {salesperson_email} for customer {customer_number}")
+        return f"Email sent successfully to {salesperson_email}"
+    except Exception as e:
+        log.error(f"Failed to send muni buy interest email to {salesperson_email} for customer {customer_number}. Error: {e}", exc_info=True)
+        raise self.retry(exc=e, countdown=60)
 

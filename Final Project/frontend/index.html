@@ -16,12 +16,15 @@
 
 <header class="app-header">
     <div class="header-left"> <a href="#top"> <h1>Portfolio Analyzer</h1> </a> </div>
-    <div class="header-right"> <button id="export-pdf-btn" title="Export current view to PDF">Export PDF</button> <button id="dark-mode-toggle">Toggle Dark Mode</button> </div>
+    <div class="header-right">
+        <a href="#muni-offerings-section" class="header-link">Go to Offerings</a>
+        <button id="export-pdf-btn" title="Export current view to PDF">Export PDF</button>
+        <button id="dark-mode-toggle">Toggle Dark Mode</button>
+    </div>
 </header>
 
 <div class="container" id="main-content">
-    <div class="controls">
-        <div class="control-row">
+    <div class="controls section-container"> <div class="control-row">
              <label for="customer-select">Customer:</label>
              <select id="customer-select"></select>
         </div>
@@ -49,46 +52,49 @@
         <div class="chart-container"><canvas id="priceVsYieldChart"></canvas></div>
     </div>
 
-    <div class="table-container">
-        <table id="holdings-table">
-            <thead>
-                <tr>
-                    <th class="checkbox-column"><input type="checkbox" id="select-all-holdings" title="Select/Deselect All Visible"></th>
-                    <th data-key="security_cusip" data-type="string">CUSIP<span class="sort-arrow"></span></th>
-                    <th data-key="description" data-type="string">Description<span class="sort-arrow"></span></th>
-                    <th data-key="par" data-type="number">Par<span class="sort-arrow"></span></th>
-                    <th data-key="settlement_price" data-type="number">Price<span class="sort-arrow"></span></th>
-                    <th data-key="coupon" data-type="number">Coupon<span class="sort-arrow"></span></th>
-                    <th data-key="yield" data-type="number">Yield<span class="sort-arrow"></span></th>
-                    <th data-key="wal" data-type="number">WAL<span class="sort-arrow"></span></th>
-                    <th data-key="estimated_maturity_date" data-type="number">Est. Maturity Year<span class="sort-arrow"></span></th>
-                    <th data-key="maturity_date" data-type="date">Maturity Date<span class="sort-arrow"></span></th>
-                    <th data-key="call_date" data-type="date">Call Date<span class="sort-arrow"></span></th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-            <tfoot>
-                <tr>
-                    <td colspan="3">Totals</td>
-                    <td id="totals-par">0</td>
-                    <td></td> <td></td> <td id="totals-yield">0</td>
-                    <td id="totals-wal">0</td>
-                    <td colspan="3"></td>
-                </tr>
-            </tfoot>
-        </table>
-    </div>
-
-    <div class="email-action-container">
-        <button id="email-interest-btn" class="control-action-btn btn-success" disabled>Sell Bonds</button>
-        <div id="email-status-message" class="status-message"></div>
-    </div>
-
-    <div class="muni-offerings-container section-container">
-        <h2>Municipal Offerings</h2>
-        <div class="table-container"> <table id="muni-offerings-table">
+    <div class="section-container"> <h2>Holdings</h2>
+        <div class="table-container">
+            <table id="holdings-table">
                 <thead>
                     <tr>
+                        <th class="checkbox-column"><input type="checkbox" id="select-all-holdings" title="Select/Deselect All Visible Holdings"></th>
+                        <th data-key="security_cusip" data-type="string">CUSIP<span class="sort-arrow"></span></th>
+                        <th data-key="description" data-type="string">Description<span class="sort-arrow"></span></th>
+                        <th data-key="par" data-type="number">Par<span class="sort-arrow"></span></th>
+                        <th data-key="settlement_price" data-type="number">Price<span class="sort-arrow"></span></th>
+                        <th data-key="coupon" data-type="number">Coupon<span class="sort-arrow"></span></th>
+                        <th data-key="yield" data-type="number">Yield<span class="sort-arrow"></span></th>
+                        <th data-key="wal" data-type="number">WAL<span class="sort-arrow"></span></th>
+                        <th data-key="estimated_maturity_date" data-type="number">Est. Maturity Year<span class="sort-arrow"></span></th>
+                        <th data-key="maturity_date" data-type="date">Maturity Date<span class="sort-arrow"></span></th>
+                        <th data-key="call_date" data-type="date">Call Date<span class="sort-arrow"></span></th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="3">Totals</td>
+                        <td id="totals-par">0</td>
+                        <td></td> <td></td> <td id="totals-yield">0</td>
+                        <td id="totals-wal">0</td>
+                        <td colspan="3"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+         <div class="email-action-container">
+            <button id="email-interest-btn" class="control-action-btn btn-success" disabled>Sell Bonds</button>
+            <div id="email-status-message" class="status-message"></div>
+        </div>
+    </div>
+
+
+    <div id="muni-offerings-section" class="muni-offerings-container section-container"> <h2>Municipal Offerings</h2>
+        <div class="table-container">
+            <table id="muni-offerings-table">
+                <thead>
+                    <tr>
+                        <th class="checkbox-column"><input type="checkbox" id="select-all-munis" title="Select/Deselect All Visible Offerings"></th>
                         <th data-key="cusip" data-type="string">Cusip</th>
                         <th data-key="amount" data-type="number">Amount</th>
                         <th data-key="description" data-type="string">Description</th>
@@ -105,10 +111,12 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr><td colspan="13">Loading offerings...</td></tr>
-                </tbody>
+                    <tr><td colspan="14">Loading offerings...</td></tr> </tbody>
             </table>
         </div>
+         <div class="email-action-container">
+            <button id="email-buy-interest-btn" class="control-action-btn btn-primary" disabled>Indicate Interest in Buying</button>
+            <div id="email-buy-status-message" class="status-message"></div> </div>
     </div>
     </div> <div id="create-portfolio-modal" class="modal-overlay">
     <div class="modal-content">

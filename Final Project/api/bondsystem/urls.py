@@ -1,4 +1,4 @@
-# bondsystem/urls.py
+# bondsystem/urls.py (Corrected muni buy interest URL)
 
 from django.contrib import admin
 from django.urls import path, include
@@ -14,20 +14,20 @@ from portfolio.views import (
     SecurityViewSet,
     PortfolioViewSet,
     CustomerHoldingViewSet,
-    EmailSalespersonInterestView,
-    MunicipalOfferingViewSet, # <-- Import the new viewset
+    EmailSalespersonInterestView, # Sell interest email view
+    MunicipalOfferingViewSet,
+    EmailSalespersonMuniBuyInterestView, # Buy interest email view
 )
 from rest_framework import routers
 
 # Setup the default router
 router = routers.DefaultRouter()
 # Register ViewSets with the router
-# Ensure basenames are set for viewsets using get_queryset or custom querysets
 router.register(r'customers', CustomerViewSet, basename='customer')
 router.register(r'securities', SecurityViewSet, basename='security')
 router.register(r'portfolios', PortfolioViewSet, basename='portfolio')
 router.register(r'holdings', CustomerHoldingViewSet, basename='customerholding')
-router.register(r'muni-offerings', MunicipalOfferingViewSet, basename='munioffering') # <-- Register new viewset
+router.register(r'muni-offerings', MunicipalOfferingViewSet, basename='munioffering')
 
 # Define URL patterns
 urlpatterns = [
@@ -46,10 +46,13 @@ urlpatterns = [
     # API endpoint for Excel file imports (admin only)
     path('api/imports/upload_excel/', ImportExcelView.as_view(), name='import-excel'),
 
-    # API endpoint for emailing salesperson
+    # API endpoint for emailing salesperson about SELL interest
     path('api/email-salesperson-interest/', EmailSalespersonInterestView.as_view(), name='email-salesperson-interest'),
+
+    # --- CORRECTED URL for emailing salesperson about BUY interest ---
+    path('api/email-buy-muni-interest/', EmailSalespersonMuniBuyInterestView.as_view(), name='email-buy-muni-interest'), # Changed path
 
     # Include URLs registered with the DRF router (for ViewSets)
     # This should generally come after more specific paths like imports/email
-    path('api/', include(router.urls)), # This now includes /api/muni-offerings/
+    path('api/', include(router.urls)), # Includes /api/muni-offerings/ etc.
 ]

@@ -21,7 +21,7 @@ let customers = []; // Holds the list of customers fetched for the main dropdown
 let currentPortfolios = []; // Holds the list of portfolios fetched for the selected customer
 let allHoldings = []; // Holds all holdings for the currently selected view (customer or portfolio)
 let filteredHoldings = []; // Holdings after applying filters (THIS IS THE ARRAY USED FOR THE SNAPSHOT)
-let allMuniOfferings = []; // NEW: Holds all municipal offerings
+let allMuniOfferings = []; // Holds all municipal offerings
 let chartInstances = {}; // Stores active Chart.js instances for later destruction/update
 let columnOptionsHtml = ''; // HTML string for filter column dropdown options
 let currentSortKey = 'security_cusip'; // Default sort column key
@@ -31,6 +31,7 @@ let nextFilterId = 0; // Counter for generating unique filter IDs
 let availableCustomers = []; // Stores the full customer list fetched for the admin modal dropdown
 let selectedCustomerId = null; // Store the currently selected customer ID
 let selectedHoldingIds = new Set(); // Set to store IDs of selected holdings for email action
+let selectedMuniOfferingIds = new Set(); // Set to store IDs of selected muni offerings
 
 // --- DOM Element References ---
 // Using const for elements that are expected to always exist
@@ -58,11 +59,15 @@ const newPortfolioNameInput = document.getElementById('new-portfolio-name');
 const adminCustomerSelectGroup = document.getElementById('admin-customer-select-group');
 const adminCustomerSelect = document.getElementById('admin-customer-select');
 const modalErrorMessage = document.getElementById('modal-error-message');
-// Email Action Elements
+// Email Action Elements (Sell)
 const emailInterestBtn = document.getElementById('email-interest-btn');
 const emailStatusMessage = document.getElementById('email-status-message');
-// NEW: Muni Offerings Elements
+// Muni Offerings Elements
 const muniOfferingsTableBody = document.querySelector('#muni-offerings-table tbody');
+const selectAllMunisCheckbox = document.getElementById('select-all-munis');
+// Email Action Elements (Buy)
+const emailBuyInterestBtn = document.getElementById('email-buy-interest-btn');
+const emailBuyStatusMessage = document.getElementById('email-buy-status-message');
 
 
 // --- Utility Functions ---
@@ -138,28 +143,30 @@ function generateDistinctColors(count) {
 }
 
 /**
- * Displays a status message (success or error) in the email status area.
+ * Displays a status message (success or error) in a specified status area.
+ * @param {HTMLElement} statusElement - The DOM element to display the message in.
  * @param {string} message - The message text to display.
  * @param {boolean} isError - True if the message is an error, false for success.
  * @param {number} duration - How long to display the message in milliseconds (0 = permanent).
  */
-function showStatusMessage(message, isError = false, duration = 5000) {
-    if (!emailStatusMessage) return;
+function showStatusMessageGeneric(statusElement, message, isError = false, duration = 5000) {
+    if (!statusElement) return; // Exit if element doesn't exist
 
-    emailStatusMessage.textContent = message;
-    emailStatusMessage.className = 'status-message'; // Reset classes
+    statusElement.textContent = message;
+    statusElement.className = 'status-message'; // Reset classes
     if (isError) {
-        emailStatusMessage.classList.add('error');
+        statusElement.classList.add('error');
     } else {
-        emailStatusMessage.classList.add('success');
+        statusElement.classList.add('success');
     }
-    emailStatusMessage.style.display = 'block';
+    statusElement.style.display = 'block'; // Make it visible
 
     if (duration > 0) {
         setTimeout(() => {
-            if (emailStatusMessage.textContent === message) {
-                emailStatusMessage.textContent = '';
-                emailStatusMessage.style.display = 'none';
+            // Only clear if the message hasn't changed in the meantime
+            if (statusElement.textContent === message) {
+                statusElement.textContent = '';
+                statusElement.style.display = 'none';
             }
         }, duration);
     }
@@ -414,6 +421,7 @@ async function handleCustomerSelection() {
     selectedCustomerId = customerSelect.value;
     console.log(`Customer selected: ID ${selectedCustomerId}`);
     clearHoldingSelection();
+    clearMuniOfferingSelection(); // Clear muni selections too
 
     if (!selectedCustomerId) {
         portfolioNameEl.textContent = "Please select a customer.";
@@ -499,6 +507,7 @@ async function handlePortfolioSelection() {
     const isDefaultPortfolio = selectedOption?.dataset?.isDefault === 'true';
     console.log(`Portfolio selected: ID '${selectedPortfolioId}' (Default: ${isDefaultPortfolio}), Customer ID: ${selectedCustomerId}`);
     clearHoldingSelection();
+    // Don't clear muni selection when portfolio changes
 
     deletePortfolioBtn.disabled = (!selectedPortfolioId || isDefaultPortfolio);
 
@@ -586,7 +595,7 @@ function processAndDisplayHoldings() {
     triggerFullUpdate();
 }
 
-// --- NEW: Muni Offerings Fetching and Rendering ---
+// --- Muni Offerings Fetching and Rendering ---
 
 /**
  * Fetches municipal offerings data from the API.
@@ -598,42 +607,33 @@ async function loadMuniOfferings() {
         return;
     }
 
-    // Show loading state in table
-    muniOfferingsTableBody.innerHTML = `<tr><td colspan="13">Loading offerings...</td></tr>`;
+    muniOfferingsTableBody.innerHTML = `<tr><td colspan="14">Loading offerings...</td></tr>`; // Adjusted colspan
 
     try {
         const response = await fetch(`${apiRoot}/muni-offerings/`);
         console.log("Load muni offerings response status:", response.status);
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
         const rawOfferings = await response.json();
         console.log("Raw muni offerings loaded:", rawOfferings.length);
 
-        // Process data (parse numbers, etc.)
-        allMuniOfferings = rawOfferings.map(offering => {
-            return {
-                ...offering, // Spread original properties
-                // Parse numeric fields safely
-                amount_num: parseFloatSafe(offering.amount),
-                coupon_num: parseFloatSafe(offering.coupon),
-                yield_rate_num: parseFloatSafe(offering.yield_rate),
-                price_num: parseFloatSafe(offering.price),
-                call_price_num: parseFloatSafe(offering.call_price),
-                // Dates can remain strings for now, parse if needed later
-                maturity_date_str: offering.maturity_date,
-                call_date_str: offering.call_date,
-            };
-        });
+        allMuniOfferings = rawOfferings.map(offering => ({
+            ...offering,
+            amount_num: parseFloatSafe(offering.amount),
+            coupon_num: parseFloatSafe(offering.coupon),
+            yield_rate_num: parseFloatSafe(offering.yield_rate),
+            price_num: parseFloatSafe(offering.price),
+            call_price_num: parseFloatSafe(offering.call_price),
+            maturity_date_str: offering.maturity_date,
+            call_date_str: offering.call_date,
+        }));
 
         console.log("Processed muni offerings:", allMuniOfferings.length);
-        renderMuniOfferingsTable(allMuniOfferings); // Render the processed data
+        renderMuniOfferingsTable(allMuniOfferings);
 
     } catch (error) {
         console.error("Failed to load municipal offerings:", error);
-        muniOfferingsTableBody.innerHTML = `<tr><td colspan="13">Error loading offerings. Check console.</td></tr>`;
+        muniOfferingsTableBody.innerHTML = `<tr><td colspan="14">Error loading offerings. Check console.</td></tr>`; // Adjusted colspan
     }
 }
 
@@ -642,30 +642,42 @@ async function loadMuniOfferings() {
  * @param {object[]} offeringsData - The array of processed offering objects.
  */
 function renderMuniOfferingsTable(offeringsData) {
-    if (!muniOfferingsTableBody) return; // Exit if table body doesn't exist
-
-    // Clear existing rows or loading message
-    muniOfferingsTableBody.innerHTML = '';
+    if (!muniOfferingsTableBody) return;
+    muniOfferingsTableBody.innerHTML = ''; // Clear existing
 
     if (!offeringsData || offeringsData.length === 0) {
-        muniOfferingsTableBody.innerHTML = `<tr><td colspan="13">No municipal offerings available.</td></tr>`;
+        muniOfferingsTableBody.innerHTML = `<tr><td colspan="14">No municipal offerings available.</td></tr>`; // Adjusted colspan
+        if (selectAllMunisCheckbox) { selectAllMunisCheckbox.checked = false; selectAllMunisCheckbox.indeterminate = false; }
+        if (emailBuyInterestBtn) { emailBuyInterestBtn.disabled = true; }
         return;
     }
 
-    // Generate and append rows
     offeringsData.forEach(o => {
         const row = document.createElement('tr');
+        row.dataset.offeringId = o.id; // Add offering ID to row
+        const isChecked = selectedMuniOfferingIds.has(o.id);
 
-        // Helper to create and append a cell
+        // Checkbox cell
+        const checkboxCell = document.createElement('td');
+        checkboxCell.className = 'checkbox-column';
+        checkboxCell.innerHTML = `<input type="checkbox"
+                                         class="muni-checkbox"
+                                         data-offering-id="${o.id}"
+                                         data-cusip="${o.cusip || ''}"
+                                         data-amount="${(o.amount_num ?? 0).toFixed(2)}"
+                                         ${isChecked ? 'checked' : ''}
+                                         aria-label="Select offering ${o.cusip || 'N/A'}">`;
+        row.appendChild(checkboxCell);
+
+        // Helper to create and append a data cell
         const addCell = (content, align = 'left') => {
             const cell = document.createElement('td');
-            // Handle null/undefined gracefully
             cell.textContent = (content !== null && content !== undefined) ? content : 'N/A';
             cell.style.textAlign = align;
             row.appendChild(cell);
         };
 
-        // Populate cells in order of headers
+        // Populate data cells
         addCell(o.cusip, 'left');
         addCell(o.amount_num?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? 'N/A', 'right');
         addCell(o.description, 'left');
@@ -673,7 +685,7 @@ function renderMuniOfferingsTable(offeringsData) {
         addCell(o.maturity_date_str, 'center');
         addCell(o.yield_rate_num?.toFixed(3) ?? 'N/A', 'right');
         addCell(o.price_num?.toFixed(2) ?? 'N/A', 'right');
-        addCell(o.moody_rating || 'N/A', 'left'); // Use || for empty strings too
+        addCell(o.moody_rating || 'N/A', 'left');
         addCell(o.sp_rating || 'N/A', 'left');
         addCell(o.call_date_str, 'center');
         addCell(o.call_price_num?.toFixed(2) ?? 'N/A', 'right');
@@ -682,10 +694,13 @@ function renderMuniOfferingsTable(offeringsData) {
 
         muniOfferingsTableBody.appendChild(row);
     });
+
+    updateSelectAllMunisCheckboxState();
+    emailBuyInterestBtn.disabled = selectedMuniOfferingIds.size === 0;
 }
 
 
-// --- Filtering and Sorting Logic --- (Adapted for Holdings, needs adaptation for Munis if sorting added)
+// --- Filtering and Sorting Logic ---
 
 /**
  * Checks if a single holding matches a given filter criteria.
@@ -695,7 +710,7 @@ function renderMuniOfferingsTable(offeringsData) {
  */
 function checkFilter(holding, filter) {
     if (!filter || filter.value === null || filter.value === '') return true;
-    const holdingValue = getSortValue(holding, filter.column); // Uses holding-specific getter
+    const holdingValue = getHoldingSortValue(holding, filter.column); // Use HOLDING getter
     let filterValue = filter.value;
     if (holdingValue === null || holdingValue === undefined) return false;
 
@@ -714,7 +729,7 @@ function checkFilter(holding, filter) {
                 default: return false;
             }
         } else if (filter.type === 'number') {
-            compareHolding = parseFloatSafe(holdingValue); // Use safe parse
+            compareHolding = parseFloatSafe(holdingValue);
             compareFilter = parseFloatSafe(filterValue);
             if (compareHolding === null || compareFilter === null) return false;
             switch (filter.operator) {
@@ -749,12 +764,10 @@ function checkFilter(holding, filter) {
 
 /**
  * Sorts an array of data based on a key and direction.
- * Handles null/undefined values and different data types (number, date, string).
- * NOTE: Assumes the `getSortValueFunc` provides the correct value for comparison.
- * @param {object[]} data - The array of objects to sort (will be modified in place).
+ * @param {object[]} data - The array of objects to sort.
  * @param {string} key - The key (column) to sort by.
  * @param {string} direction - 'asc' or 'desc'.
- * @param {function} getSortValueFunc - Function to extract the sortable value (e.g., getHoldingSortValue).
+ * @param {function} getSortValueFunc - Function to extract the sortable value.
  */
 function sortDataGeneric(data, key, direction, getSortValueFunc) {
     data.sort((a, b) => {
@@ -769,9 +782,8 @@ function sortDataGeneric(data, key, direction, getSortValueFunc) {
         if (valA instanceof Date && valB instanceof Date) {
             comparison = valA.getTime() - valB.getTime();
         } else if (typeof valA === 'number' && typeof valB === 'number') {
-            comparison = valA - valB; // Direct subtraction for numbers
+            comparison = valA - valB;
         } else {
-            // Default to case-insensitive string comparison
             valA = String(valA).toUpperCase();
             valB = String(valB).toUpperCase();
             if (valA < valB) comparison = -1;
@@ -793,26 +805,23 @@ function getHoldingSortValue(holding, key) {
         case 'maturity_date': return holding.maturity_date_obj;
         case 'call_date': return holding.call_date_obj;
         case 'par': return holding.par_calculated;
-        case 'security_cusip': return holding.security_cusip; // Use the direct field from API
+        case 'security_cusip': return holding.security_cusip;
         default: return holding[key];
     }
 }
+// TODO: Add getMuniOfferingSortValue if sorting is implemented for munis
 
-// --- UI Rendering --- (Holdings Table)
+// --- UI Rendering ---
 
 /**
  * Renders the holdings data into the HTML table body.
- * Includes checkboxes for selection.
  * @param {object[]} holdings - The array of holdings to render.
  */
 function renderTable(holdings) {
     console.log("Rendering holdings table with:", holdings.length);
     const colSpan = (tableHeaders.length || 10) + 1;
 
-    if (!tableBody) {
-        console.error("Holdings table body not found!");
-        return;
-    }
+    if (!tableBody) { console.error("Holdings table body not found!"); return; }
 
     if (!holdings || holdings.length === 0) {
         const hasActiveFilters = activeFilters.some(f => f.value !== '');
@@ -857,8 +866,8 @@ function renderTable(holdings) {
         `;
     }).join('');
 
-    updateSelectAllCheckboxState();
-    emailInterestBtn.disabled = selectedHoldingIds.size === 0;
+    updateSelectAllCheckboxState(); // Update holdings select-all
+    emailInterestBtn.disabled = selectedHoldingIds.size === 0; // Update sell button
 }
 
 /**
@@ -1169,7 +1178,7 @@ async function handleDeletePortfolio() { /* ... implementation ... */
  }
 
 
-// --- Holding Selection and Email Action --- (No changes needed)
+// --- Holding Selection and Email Action ---
 
 /** Handles checkbox changes for holdings. */
 function handleCheckboxChange(event) {
@@ -1178,9 +1187,12 @@ function handleCheckboxChange(event) {
     else if (target.classList.contains('holding-checkbox')) { const holdingId = parseInt(target.dataset.holdingId, 10); if (!isNaN(holdingId)) { if (target.checked) { selectedHoldingIds.add(holdingId); } else { selectedHoldingIds.delete(holdingId); } updateSelectAllCheckboxState(); } }
     emailInterestBtn.disabled = selectedHoldingIds.size === 0; console.log("Selected Holdings:", selectedHoldingIds);
 }
-/** Updates the "Select All" checkbox state. */
+/** Updates the "Select All" checkbox state for holdings. */
 function updateSelectAllCheckboxState() {
-    if (!selectAllCheckbox) return; const visibleCheckboxes = tableBody.querySelectorAll('.holding-checkbox'); const totalVisible = visibleCheckboxes.length; const totalSelected = Array.from(visibleCheckboxes).filter(cb => cb.checked).length;
+    if (!selectAllCheckbox || !tableBody) return;
+    const visibleCheckboxes = tableBody.querySelectorAll('.holding-checkbox');
+    const totalVisible = visibleCheckboxes.length;
+    const totalSelected = Array.from(visibleCheckboxes).filter(cb => cb.checked).length;
     if (totalVisible === 0) { selectAllCheckbox.checked = false; selectAllCheckbox.indeterminate = false; }
     else if (totalSelected === totalVisible) { selectAllCheckbox.checked = true; selectAllCheckbox.indeterminate = false; }
     else if (totalSelected > 0) { selectAllCheckbox.checked = false; selectAllCheckbox.indeterminate = true; }
@@ -1188,19 +1200,172 @@ function updateSelectAllCheckboxState() {
 }
 /** Clears holding selection. */
 function clearHoldingSelection() {
-    selectedHoldingIds.clear(); tableBody.querySelectorAll('.holding-checkbox').forEach(cb => cb.checked = false);
+    selectedHoldingIds.clear();
+    if(tableBody) tableBody.querySelectorAll('.holding-checkbox').forEach(cb => cb.checked = false);
     if (selectAllCheckbox) { selectAllCheckbox.checked = false; selectAllCheckbox.indeterminate = false; }
     if (emailInterestBtn) { emailInterestBtn.disabled = true; }
     if (emailStatusMessage) { emailStatusMessage.textContent = ''; emailStatusMessage.style.display = 'none'; }
 }
 /** Handles the "Sell Bonds" button click. */
 async function handleEmailInterestClick() {
-    if (!selectedCustomerId) { showStatusMessage("Error: No customer selected.", true); return; } if (selectedHoldingIds.size === 0) { showStatusMessage("Error: No bonds selected.", true); return; }
-    emailInterestBtn.disabled = true; showStatusMessage("Sending email...", false, 0);
+    if (!selectedCustomerId) { showStatusMessageGeneric(emailStatusMessage, "Error: No customer selected.", true); return; }
+    if (selectedHoldingIds.size === 0) { showStatusMessageGeneric(emailStatusMessage, "Error: No bonds selected.", true); return; }
+    emailInterestBtn.disabled = true; showStatusMessageGeneric(emailStatusMessage, "Sending email...", false, 0);
     const selectedBondsPayload = []; filteredHoldings.forEach(holding => { if (selectedHoldingIds.has(holding.id)) { selectedBondsPayload.push({ cusip: holding.security_cusip || 'N/A', par: (holding.par_calculated ?? 0).toFixed(2) }); } });
     const payload = { customer_id: parseInt(selectedCustomerId, 10), selected_bonds: selectedBondsPayload }; console.log("Sending email interest payload:", payload);
-    try { const response = await fetch(`${apiRoot}/email-salesperson-interest/`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken, }, body: JSON.stringify(payload), }); const responseData = await response.json(); if (response.ok) { console.log("Email sent successfully:", responseData); showStatusMessage(responseData.message || "Email sent successfully!", false); clearHoldingSelection(); } else { console.error("API Error sending email:", response.status, responseData); const errorDetail = responseData.error || responseData.detail || response.statusText || 'Failed.'; showStatusMessage(`Error: ${errorDetail}`, true); emailInterestBtn.disabled = false; } }
-    catch (error) { console.error("Network/Fetch Error sending email:", error); showStatusMessage("Network error. Please try again.", true); emailInterestBtn.disabled = false; }
+    try { const response = await fetch(`${apiRoot}/email-salesperson-interest/`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken, }, body: JSON.stringify(payload), }); const responseData = await response.json(); if (response.ok) { console.log("Email sent successfully:", responseData); showStatusMessageGeneric(emailStatusMessage, responseData.message || "Email sent successfully!", false); clearHoldingSelection(); } else { console.error("API Error sending email:", response.status, responseData); const errorDetail = responseData.error || responseData.detail || response.statusText || 'Failed.'; showStatusMessageGeneric(emailStatusMessage, `Error: ${errorDetail}`, true); emailInterestBtn.disabled = false; } }
+    catch (error) { console.error("Network/Fetch Error sending email:", error); showStatusMessageGeneric(emailStatusMessage, "Network error. Please try again.", true); emailInterestBtn.disabled = false; }
+}
+
+// --- Muni Offering Selection and Email Action ---
+
+/** Handles checkbox changes for muni offerings. */
+function handleMuniCheckboxChange(event) {
+    const target = event.target;
+
+    if (target === selectAllMunisCheckbox) {
+        // Handle "Select All" muni checkbox click
+        const isChecked = target.checked;
+        const visibleCheckboxes = muniOfferingsTableBody.querySelectorAll('.muni-checkbox');
+        visibleCheckboxes.forEach(checkbox => {
+            checkbox.checked = isChecked;
+            const offeringId = parseInt(checkbox.dataset.offeringId, 10);
+            if (!isNaN(offeringId)) {
+                if (isChecked) {
+                    selectedMuniOfferingIds.add(offeringId);
+                } else {
+                    selectedMuniOfferingIds.delete(offeringId);
+                }
+            }
+        });
+    } else if (target.classList.contains('muni-checkbox')) {
+        // Handle individual muni offering checkbox click
+        const offeringId = parseInt(target.dataset.offeringId, 10);
+        if (!isNaN(offeringId)) {
+            if (target.checked) {
+                selectedMuniOfferingIds.add(offeringId);
+            } else {
+                selectedMuniOfferingIds.delete(offeringId);
+            }
+            updateSelectAllMunisCheckboxState(); // Update muni select-all state
+        }
+    }
+
+    // Enable/disable the "Buy" email button
+    emailBuyInterestBtn.disabled = selectedMuniOfferingIds.size === 0;
+    console.log("Selected Muni Offerings:", selectedMuniOfferingIds);
+}
+
+/** Updates the "Select All" checkbox state for muni offerings. */
+function updateSelectAllMunisCheckboxState() {
+    if (!selectAllMunisCheckbox || !muniOfferingsTableBody) return;
+    const visibleCheckboxes = muniOfferingsTableBody.querySelectorAll('.muni-checkbox');
+    const totalVisible = visibleCheckboxes.length;
+    const totalSelected = Array.from(visibleCheckboxes).filter(cb => cb.checked).length;
+
+    if (totalVisible === 0) {
+        selectAllMunisCheckbox.checked = false;
+        selectAllMunisCheckbox.indeterminate = false;
+    } else if (totalSelected === totalVisible) {
+        selectAllMunisCheckbox.checked = true;
+        selectAllMunisCheckbox.indeterminate = false;
+    } else if (totalSelected > 0) {
+        selectAllMunisCheckbox.checked = false;
+        selectAllMunisCheckbox.indeterminate = true;
+    } else {
+        selectAllMunisCheckbox.checked = false;
+        selectAllMunisCheckbox.indeterminate = false;
+    }
+}
+
+/** Clears muni offering selection. */
+function clearMuniOfferingSelection() {
+    selectedMuniOfferingIds.clear();
+    if(muniOfferingsTableBody) muniOfferingsTableBody.querySelectorAll('.muni-checkbox').forEach(cb => cb.checked = false);
+    if (selectAllMunisCheckbox) { selectAllMunisCheckbox.checked = false; selectAllMunisCheckbox.indeterminate = false; }
+    if (emailBuyInterestBtn) { emailBuyInterestBtn.disabled = true; }
+    if (emailBuyStatusMessage) { emailBuyStatusMessage.textContent = ''; emailBuyStatusMessage.style.display = 'none'; }
+}
+
+/** Handles the "Indicate Interest in Buying" button click. */
+async function handleEmailBuyInterestClick() {
+    if (!selectedCustomerId) {
+        showStatusMessageGeneric(emailBuyStatusMessage, "Error: No customer selected.", true);
+        return;
+    }
+    if (selectedMuniOfferingIds.size === 0) {
+        showStatusMessageGeneric(emailBuyStatusMessage, "Error: No offerings selected.", true);
+        return;
+    }
+
+    emailBuyInterestBtn.disabled = true;
+    showStatusMessageGeneric(emailBuyStatusMessage, "Sending email...", false, 0);
+
+    // Prepare the list of selected offerings for the payload
+    const selectedOfferingsPayload = [];
+    // Iterate through *all* muni offerings data to find selected ones by ID
+    allMuniOfferings.forEach(offering => {
+        if (selectedMuniOfferingIds.has(offering.id)) {
+            // *** FIX: Include description along with cusip ***
+            selectedOfferingsPayload.push({
+                cusip: offering.cusip || 'N/A',
+                description: offering.description || 'N/A' // Add description
+                // Amount is not needed according to the backend error log,
+                // but keep it in the data object if needed elsewhere
+                // amount: (offering.amount_num ?? 0).toFixed(2)
+            });
+        }
+    });
+
+    // Construct the final payload
+    const payload = {
+        customer_id: parseInt(selectedCustomerId, 10),
+        selected_offerings: selectedOfferingsPayload // Use a distinct key
+    };
+
+    console.log("Sending email buy interest payload:", payload); // Log the corrected payload
+
+    // Define the NEW API endpoint URL
+    const buyInterestApiUrl = `${apiRoot}/email-buy-muni-interest/`;
+
+    try {
+        const response = await fetch(buyInterestApiUrl, { // Use the new URL
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+            body: JSON.stringify(payload),
+        });
+
+        const responseData = await response.json();
+
+        if (response.ok) {
+            console.log("Buy interest email sent successfully:", responseData);
+            showStatusMessageGeneric(emailBuyStatusMessage, responseData.message || "Buy interest email sent successfully!", false);
+            clearMuniOfferingSelection(); // Clear selection on success
+        } else {
+            console.error("API Error sending buy interest email:", response.status, responseData);
+            const errorDetail = responseData.error || responseData.detail || response.statusText || 'Failed.';
+            // Check for specific validation error structure
+            let displayError = `Error: ${errorDetail}`;
+            if (responseData.selected_offerings && typeof responseData.selected_offerings === 'object') {
+                 // Try to extract nested validation errors if they exist
+                 const nestedErrors = Object.values(responseData.selected_offerings)
+                     .map(itemErrors => Object.values(itemErrors).flat().map(e => e.string || e).join(' '))
+                     .join('; ');
+                 if (nestedErrors) {
+                     displayError = `Error: Invalid data in selected offerings - ${nestedErrors}`;
+                 }
+            }
+            showStatusMessageGeneric(emailBuyStatusMessage, displayError, true);
+            emailBuyInterestBtn.disabled = false; // Re-enable button on failure
+        }
+    } catch (error) {
+        console.error("Network/Fetch Error sending buy interest email:", error);
+        showStatusMessageGeneric(emailBuyStatusMessage, "Network error. Please try again.", true);
+        emailBuyInterestBtn.disabled = false; // Re-enable button for retry
+    }
 }
 
 
@@ -1241,10 +1406,15 @@ function setupEventListeners() {
     createPortfolioForm.addEventListener('submit', handleCreatePortfolioSubmit);
     createPortfolioModal.addEventListener('click', (event) => { if (event.target === createPortfolioModal) hideCreatePortfolioModal(); });
 
-    // Holdings Table Checkboxes & Email Button
+    // Holdings Table Checkboxes & Email Button (Sell)
     if (tableBody) tableBody.addEventListener('change', handleCheckboxChange); // Use delegation
     if (selectAllCheckbox) selectAllCheckbox.addEventListener('change', handleCheckboxChange);
     if (emailInterestBtn) emailInterestBtn.addEventListener('click', handleEmailInterestClick);
+
+    // Muni Offerings Table Checkboxes & Email Button (Buy)
+    if (muniOfferingsTableBody) muniOfferingsTableBody.addEventListener('change', handleMuniCheckboxChange); // Use delegation
+    if (selectAllMunisCheckbox) selectAllMunisCheckbox.addEventListener('change', handleMuniCheckboxChange);
+    if (emailBuyInterestBtn) emailBuyInterestBtn.addEventListener('click', handleEmailBuyInterestClick);
 }
 
 /**
@@ -1283,5 +1453,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Start loading initial data
     loadCustomers(); // This triggers portfolio/holdings load
-    loadMuniOfferings(); // NEW: Load municipal offerings data
+    loadMuniOfferings(); // Load municipal offerings data
 });
