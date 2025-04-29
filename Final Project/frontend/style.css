@@ -204,14 +204,10 @@ header.app-header button {
     background-color: color-mix(in srgb, var(--button-secondary-bg) 80%, black);
 }
 
-#export-pdf-btn {
-    background-color: var(--button-info-bg);
-    color: var(--button-info-text);
-}
+/* Export buttons are no longer in header */
+/* #export-pdf-btn { ... } */
+/* #export-excel-btn { ... } */
 
-#export-pdf-btn:hover {
-    background-color: color-mix(in srgb, var(--button-info-bg) 80%, black);
-}
 
 /* Main container styling */
 .container {
@@ -252,13 +248,14 @@ h2#portfolio-name {
     font-size: 1.5em; /* Make it slightly larger */
 }
 
-/* Controls section styling (using section-container) */
+/* Controls section styling */
 .controls {
     display: flex;
-    flex-direction: column;
-    gap: 1em;
+    flex-direction: column; /* Stack control groups vertically */
+    gap: 1em; /* Gap between control groups */
     /* Inherits background, padding, shadow from .section-container */
 }
+
 
 .control-row {
     display: flex;
@@ -381,9 +378,10 @@ button:disabled {
 .btn-success:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-success-bg) 80%, black); }
 
 
-#add-filter-btn { align-self: flex-start; margin-top: 0.5em; }
-#clear-all-filters-btn { align-self: flex-start; margin-top: 0.5em; }
-#create-portfolio-btn { align-self: flex-start; margin-top: 0.5em; }
+/* Removed align-self and margin-top from individual buttons */
+/* #add-filter-btn { ... } */
+/* #clear-all-filters-btn { ... } */
+/* #create-portfolio-btn { ... } */
 #delete-portfolio-btn { margin-left: 0.5em; flex-grow: 0; }
 
 /* Apply consistent small styling to BOTH remove filter buttons */
@@ -397,20 +395,42 @@ button.remove-muni-filter-btn {
     /* Inherits btn-danger background/color */
 }
 
+/* Container for filter/action buttons - MODIFIED */
 .filter-buttons-container {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.8em;
+    flex-wrap: wrap; /* Allow wrapping */
+    justify-content: space-between; /* Push left and right groups apart */
+    gap: 1em; /* Add gap between left and right groups when wrapped */
     margin-top: 1em;
     border-top: 1px solid var(--table-border-color);
     padding-top: 1em;
+    align-items: center; /* Align items vertically */
 }
+
+/* NEW: Group for left-aligned buttons */
+.filter-buttons-left {
+    display: flex;
+    flex-wrap: wrap; /* Allow buttons within this group to wrap */
+    gap: 0.8em; /* Space between buttons in this group */
+    align-items: center;
+}
+
+/* NEW: Group for right-aligned buttons */
+.filter-buttons-right {
+    display: flex;
+    flex-wrap: wrap; /* Allow buttons within this group to wrap */
+    gap: 0.8em; /* Space between buttons in this group */
+    align-items: center;
+}
+
 /* Adjust filter button container within muni section */
 .muni-offerings-container .filter-buttons-container {
     border-top: none; /* Remove top border if filters are above */
     padding-top: 0;
     margin-top: 0;
     margin-bottom: 1em; /* Add space before table */
+     /* Ensure muni buttons stay left-aligned if only left group exists */
+    justify-content: flex-start;
 }
 
 
@@ -752,7 +772,26 @@ th.sorted .sort-arrow {
     header.app-header button, .header-link { padding: 0.4em 0.6em; font-size: 0.8em; }
     /* Adjust nav link size */
     .header-left .header-nav-link { font-size: 0.9em; }
-    .controls { gap: 1em; }
+    /* Controls section still stacks vertically */
+    .controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    /* Ensure buttons in filter container take full width when stacked */
+    /* Make both left and right button groups take full width when stacked */
+    .filter-buttons-container {
+        flex-direction: column; /* Stack left and right groups */
+        align-items: stretch; /* Make groups take full width */
+    }
+     .filter-buttons-left, .filter-buttons-right {
+        width: 100%;
+        justify-content: center; /* Center buttons within their group */
+    }
+     .filter-buttons-left button, .filter-buttons-right button {
+        flex-grow: 1; /* Allow buttons to grow */
+        /* width: 100%; */ /* Optional: force full width per button */
+    }
+
     .control-row { flex-direction: column; align-items: stretch; }
     select, input, button.filter-action-btn, button.control-action-btn { width: 100%; max-width: none; }
     th, td { font-size: 0.9em; padding: 0.5em 0.6em; }
@@ -769,3 +808,4 @@ th.sorted .sort-arrow {
     #muni-offerings-table th,
     #muni-offerings-table td { font-size: 0.8em; padding: 0.3em 0.4em; } /* Further reduce for muni table */
 }
+

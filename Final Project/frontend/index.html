@@ -21,7 +21,6 @@
         <a href="#muni-offerings-section" class="header-link header-nav-link">Go to Offerings</a>
     </div>
     <div class="header-right">
-        <button id="export-excel-btn" class="control-action-btn btn-success" title="Export current holdings view to Excel (XLSX)">Export Excel</button> <button id="export-pdf-btn" class="control-action-btn btn-info" title="Export current view to PDF">Export PDF</button>
         <button id="dark-mode-toggle">Toggle Dark Mode</button>
     </div>
 </header>
@@ -41,9 +40,15 @@
         </div>
         <div id="filters-container"></div>
         <div class="filter-buttons-container">
-            <button id="add-filter-btn" class="filter-action-btn btn-primary">Add Holdings Filter</button>
-            <button id="clear-all-filters-btn" class="filter-action-btn btn-secondary">Clear Holdings Filters</button>
-            <button id="create-portfolio-btn" class="control-action-btn btn-info">Save Filtered View as Portfolio</button>
+            <div class="filter-buttons-left">
+                <button id="add-filter-btn" class="filter-action-btn btn-primary">Add Holdings Filter</button>
+                <button id="clear-all-filters-btn" class="filter-action-btn btn-secondary">Clear Holdings Filters</button>
+                <button id="create-portfolio-btn" class="control-action-btn btn-info">Save Filtered View as Portfolio</button>
+            </div>
+            <div class="filter-buttons-right">
+                <button id="export-excel-btn" class="control-action-btn btn-success" title="Export current holdings view to Excel (XLSX)">Export Excel</button>
+                <button id="export-pdf-btn" class="control-action-btn btn-info" title="Export current view to PDF">Export PDF</button>
+            </div>
         </div>
     </div>
 
@@ -98,9 +103,11 @@
 
         <div id="muni-filters-container" class="filters-sub-container"></div>
         <div class="filter-buttons-container">
-            <button id="add-muni-filter-btn" class="filter-action-btn btn-primary">Add Offering Filter</button>
-            <button id="clear-all-muni-filters-btn" class="filter-action-btn btn-secondary">Clear Offering Filters</button>
-        </div>
+             <div class="filter-buttons-left">
+                <button id="add-muni-filter-btn" class="filter-action-btn btn-primary">Add Offering Filter</button>
+                <button id="clear-all-muni-filters-btn" class="filter-action-btn btn-secondary">Clear Offering Filters</button>
+            </div>
+             </div>
         <div class="table-container">
             <table id="muni-offerings-table">
                 <thead>
