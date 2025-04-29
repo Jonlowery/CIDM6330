@@ -1,4 +1,4 @@
-# api/portfolio/serializers.py (Added MuniBuyInterestSerializer)
+# api/portfolio/serializers.py (Define create method to clean validated_data)
 
 from rest_framework import serializers
 # Import models using relative path within the app
@@ -103,17 +103,20 @@ class CustomerHoldingSerializer(serializers.ModelSerializer):
         return None
 
 class PortfolioSerializer(serializers.ModelSerializer):
-    owner = CustomerSerializer(read_only=True)
-    holdings = CustomerHoldingSerializer(many=True, read_only=True)
+    # Read-only fields for displaying related data
+    owner = CustomerSerializer(read_only=True) # Represents the owner in output
+    holdings = CustomerHoldingSerializer(many=True, read_only=True) # Represents holdings in output
+
+    # Write-only fields for input during creation
     customer_number_input = serializers.CharField(
         write_only=True, required=False, allow_null=True, allow_blank=True,
         help_text="Admin Only: Specify the customer_number for the new portfolio's owner."
     )
+    # --- Field is decoupled from source='owner' ---
     owner_customer_id = serializers.PrimaryKeyRelatedField(
         queryset=Customer.objects.all(),
-        source='owner',
         write_only=True,
-        required=False,
+        required=False, # Still explicitly False
         allow_null=True,
         help_text="Non-Admin (Multi-Customer) Only: Specify the ID of the customer to own this portfolio."
     )
@@ -126,78 +129,165 @@ class PortfolioSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Portfolio
+        # 'owner' field here refers to the read-only nested representation for output
         fields = [
             'id', 'owner', 'name', 'created_at', 'holdings', 'is_default',
+            # Input fields (write-only)
             'customer_number_input', 'owner_customer_id',
             'initial_holding_ids',
         ]
+        # 'owner' in read_only_fields refers to preventing direct write to the nested 'owner' representation
         read_only_fields = ['id', 'created_at', 'holdings', 'owner', 'is_default']
 
     def validate(self, data):
-        """ Custom validation for portfolio CREATION and UPDATE. """
+        """
+        Custom validation for portfolio CREATION and UPDATE.
+        Determines the intended owner based on user type and input fields,
+        adds the 'owner' instance to the data dictionary.
+        """
         request = self.context.get('request')
         if not request or not hasattr(request, 'user'):
+             log.error("PortfolioSerializer validate: Request context missing user.")
              raise serializers.ValidationError("Validation Error: Request context is missing user information.")
+
         user = request.user
-        # UPDATE Validation
-        if self.instance is not None:
+        log.debug(f"PortfolioSerializer validate: User={user.username}, IsAdmin={user.is_staff or user.is_superuser}, Instance exists={self.instance is not None}")
+        log.debug(f"PortfolioSerializer validate: Incoming data={data}")
+
+        # --- UPDATE Validation ---
+        if self.instance is not None: # Check if this is an update operation
+             log.debug("PortfolioSerializer validate: Running UPDATE validation.")
              if 'name' in data and not data.get('name'):
                  raise serializers.ValidationError({'name': 'Portfolio name cannot be empty.'})
-             if any(k in data for k in ['owner', 'owner_customer_id', 'customer_number_input', 'is_default', 'initial_holding_ids']):
+             forbidden_update_keys = ['owner', 'owner_customer_id', 'customer_number_input', 'is_default', 'initial_holding_ids']
+             if any(k in data for k in forbidden_update_keys):
+                 log.warning(f"PortfolioSerializer validate (Update): Attempt to modify forbidden fields by User={user.username}. Data: {data}")
                  raise serializers.ValidationError("Cannot change owner, default status, or initial holdings during portfolio update.")
              return data
-        # CREATE Validation
+
+        # --- CREATE Validation ---
+        log.debug("PortfolioSerializer validate: Running CREATE validation.")
         intended_owner = None
         is_admin = user.is_staff or user.is_superuser
         customer_number = data.get('customer_number_input')
-        owner_instance_from_input = data.get('owner')
-        log.debug(f"PortfolioSerializer validate (Create): User={user.username}, Admin={is_admin}, customer_number_input={customer_number}, owner_instance_from_input={owner_instance_from_input}")
+        owner_id_instance = data.get('owner_customer_id') # Get the Customer instance if provided (PrimaryKeyRelatedField gives instance)
+
+        log.debug(f"PortfolioSerializer validate (Create): is_admin={is_admin}, customer_number_input='{customer_number}', owner_customer_id_instance='{owner_id_instance}'")
+
+        # Case 1: Admin User
         if is_admin:
-            if owner_instance_from_input is not None: raise serializers.ValidationError({'owner_customer_id': "Admin must use 'customer_number_input'."})
-            if not customer_number: raise serializers.ValidationError({'customer_number_input': "Admin must provide a customer number."})
+            if owner_id_instance is not None:
+                raise serializers.ValidationError({'owner_customer_id': "Admin must use 'customer_number_input', not 'owner_customer_id'."})
+            if not customer_number:
+                raise serializers.ValidationError({'customer_number_input': "Admin must provide a customer number via 'customer_number_input'."})
             try:
                 intended_owner = Customer.objects.get(customer_number=customer_number)
-                self.context['_intended_owner'] = intended_owner
-            except Customer.DoesNotExist: raise serializers.ValidationError({'customer_number_input': f"Customer with number '{customer_number}' not found."})
+                log.debug(f"PortfolioSerializer validate (Create/Admin): Found owner by number '{customer_number}': ID {intended_owner.id}")
+            except Customer.DoesNotExist:
+                raise serializers.ValidationError({'customer_number_input': f"Customer with number '{customer_number}' not found."})
+
+        # Case 2: Non-Admin User
         else:
-            if customer_number is not None: raise serializers.ValidationError({'customer_number_input': "Non-admin users cannot specify 'customer_number_input'."})
+            if customer_number is not None:
+                raise serializers.ValidationError({'customer_number_input': "Non-admin users cannot specify 'customer_number_input'."})
+
             user_customers = user.customers.all()
             customer_count = user_customers.count()
-            if customer_count == 0: raise serializers.ValidationError("User is not associated with any customers.")
+            log.debug(f"PortfolioSerializer validate (Create/Non-Admin): User associated with {customer_count} customers.")
+
+            if customer_count == 0:
+                log.error(f"PortfolioSerializer validate (Create/Non-Admin): User {user.username} is not associated with any customers.")
+                raise serializers.ValidationError("User is not associated with any customers.")
+
             elif customer_count == 1:
-                 if owner_instance_from_input is not None: raise serializers.ValidationError({'owner_customer_id': "Cannot specify owner ID when associated with only one customer."})
+                 if owner_id_instance is not None:
+                     raise serializers.ValidationError({'owner_customer_id': "Cannot specify owner ID ('owner_customer_id') when associated with only one customer."})
                  intended_owner = user_customers.first()
-                 self.context['_intended_owner'] = intended_owner
-            else:
-                 if owner_instance_from_input is None: raise serializers.ValidationError({'owner_customer_id': "Must specify a valid owner customer ID."})
-                 if not user_customers.filter(id=owner_instance_from_input.id).exists(): raise serializers.ValidationError({'owner_customer_id': f"Invalid or inaccessible customer ID ({owner_instance_from_input.id})."})
-                 intended_owner = owner_instance_from_input
+                 log.debug(f"PortfolioSerializer validate (Create/Non-Admin/Single): Auto-selected owner: ID {intended_owner.id}")
+
+            else: # Multiple associated customers
+                 if owner_id_instance is None:
+                     raise serializers.ValidationError({'owner_customer_id': "Must specify a valid owner customer ID via 'owner_customer_id'."})
+                 # Check if the provided Customer instance is actually associated with the user
+                 if not user_customers.filter(id=owner_id_instance.id).exists():
+                     raise serializers.ValidationError({'owner_customer_id': f"Invalid or inaccessible customer ID ({owner_id_instance.id})."})
+                 # If valid, use the instance provided by PrimaryKeyRelatedField
+                 intended_owner = owner_id_instance
+                 log.debug(f"PortfolioSerializer validate (Create/Non-Admin/Multi): Validated owner from input ID: {intended_owner.id}")
+
+
+        # Add owner to data dict for use in create/perform_create
+        if intended_owner:
+            data['owner'] = intended_owner # Add the actual owner instance to the data
+            log.debug(f"PortfolioSerializer validate (Create): Added intended_owner (ID: {intended_owner.id}) to data dict.")
+        else:
+            # This should not be reachable if logic above is correct
+            log.error("PortfolioSerializer validate (Create): Failed to determine intended_owner.")
+            raise serializers.ValidationError("Internal error: Could not determine portfolio owner.")
+
+        # Validate initial_holding_ids (if provided)
+        # Note: initial_holding_ids is NOT a model field, it's handled in perform_create
         initial_ids = data.get('initial_holding_ids')
         if initial_ids:
-            if not intended_owner: raise serializers.ValidationError("Internal error: Could not determine portfolio owner for holding validation.")
-            valid_holdings = CustomerHolding.objects.filter(id__in=initial_ids, portfolio__owner=intended_owner)
+            if not intended_owner: # Should be set if we reached here
+                 log.error("PortfolioSerializer validate (Create): Cannot validate initial_holding_ids without intended_owner.")
+                 raise serializers.ValidationError("Internal error: Could not determine portfolio owner for holding validation.")
+            try:
+                initial_ids_int = [int(id_val) for id_val in initial_ids]
+            except (ValueError, TypeError):
+                 raise serializers.ValidationError({'initial_holding_ids': "All holding IDs must be integers."})
+            valid_holdings = CustomerHolding.objects.filter(id__in=initial_ids_int, portfolio__owner=intended_owner)
             valid_ids_set = set(valid_holdings.values_list('id', flat=True))
-            provided_ids_set = set(initial_ids)
+            provided_ids_set = set(initial_ids_int)
             invalid_ids = provided_ids_set - valid_ids_set
-            if invalid_ids: raise serializers.ValidationError({'initial_holding_ids': f"Invalid or inaccessible holding IDs: {list(invalid_ids)}."})
-            log.debug(f"Validated initial_holding_ids: {initial_ids} for owner {intended_owner.id}")
-        if not data.get('name'): raise serializers.ValidationError({'name': 'Portfolio name is required.'})
+            if invalid_ids:
+                raise serializers.ValidationError({'initial_holding_ids': f"Invalid or inaccessible holding IDs for owner {intended_owner.id}: {list(invalid_ids)}."})
+            log.debug(f"PortfolioSerializer validate (Create): Validated initial_holding_ids: {initial_ids_int} for owner {intended_owner.id}")
+
+        # Validate portfolio name
+        if not data.get('name'):
+            raise serializers.ValidationError({'name': 'Portfolio name is required.'})
+
+        log.debug(f"PortfolioSerializer validate (Create): Validation successful for user {user.username}.")
+
+        # Return the modified data dictionary which now includes the 'owner' instance
+        # It still includes the write_only fields at this point.
         return data
 
+    # --- ADDED create method ---
     def create(self, validated_data):
-        """ Override create to explicitly handle owner assignment. """
+        """
+        Handles the creation of a Portfolio instance.
+        Removes non-model fields before calling Portfolio.objects.create.
+        """
+        log.debug(f"PortfolioSerializer create: Received validated_data: {validated_data}")
+
+        # Remove fields that are not part of the Portfolio model before creating
         validated_data.pop('customer_number_input', None)
-        validated_data.pop('initial_holding_ids', None)
-        owner = validated_data.pop('owner', None) or self.context.pop('_intended_owner', None)
-        if not owner: raise serializers.ValidationError("Internal error: Failed to determine portfolio owner.")
-        validated_data['owner'] = owner
+        validated_data.pop('owner_customer_id', None)
+        validated_data.pop('initial_holding_ids', None) # This is handled in perform_create
+
+        # Ensure 'owner' is present (should have been added in validate)
+        if 'owner' not in validated_data:
+             log.error("PortfolioSerializer create: 'owner' missing in validated_data.")
+             raise serializers.ValidationError("Internal error: Owner information missing during create.")
+
+        # Set is_default explicitly
         validated_data['is_default'] = False
-        log.debug(f"PortfolioSerializer create - final validated_data before Model.create: {validated_data}")
+
+        log.debug(f"PortfolioSerializer create: Calling Portfolio.objects.create with cleaned data: {validated_data}")
         try:
+            # Create the portfolio instance using the cleaned data
             instance = Portfolio.objects.create(**validated_data)
+            log.info(f"PortfolioSerializer create: Successfully created Portfolio ID {instance.id}")
             return instance
+        except TypeError as e:
+            # Catch potential TypeErrors from unexpected kwargs again, just in case
+            log.error(f"PortfolioSerializer create: TypeError during Portfolio.objects.create: {e}. Data: {validated_data}", exc_info=True)
+            raise serializers.ValidationError(f"An unexpected error occurred during portfolio creation: {e}") from e
         except Exception as e:
-            log.error(f"Error during Portfolio.objects.create: {e}. Data: {validated_data}", exc_info=True)
+            # Catch other potential errors during creation
+            log.error(f"PortfolioSerializer create: Error during Portfolio.objects.create: {e}. Data: {validated_data}", exc_info=True)
             raise serializers.ValidationError(f"An unexpected error occurred: {e}") from e
 
 
@@ -271,4 +361,3 @@ class MuniBuyInterestSerializer(serializers.Serializer):
         except Customer.DoesNotExist:
             raise serializers.ValidationError(f"Customer with ID {value} not found.")
         return value
-

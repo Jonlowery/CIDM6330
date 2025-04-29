@@ -1,7 +1,7 @@
-# api/portfolio/views.py (Corrected SyntaxError in ImportExcelView)
+# api/portfolio/views.py (Added more logging to PortfolioViewSet.create)
 
 import os
-import logging
+import logging # For logging
 import uuid # For unique filenames in import view
 from django.conf import settings
 from django.shortcuts import render, get_object_or_404
@@ -17,7 +17,7 @@ from rest_framework.decorators import action
 from rest_framework.generics import GenericAPIView
 from rest_framework.views import APIView # Import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
-from rest_framework.response import Response
+from rest_framework.response import Response # For API responses
 from rest_framework import serializers # For raising validation errors
 
 # Import Celery tasks
@@ -75,47 +75,159 @@ class PortfolioViewSet(viewsets.ModelViewSet):
     """ API endpoint for viewing and editing Portfolio instances. """
     serializer_class = PortfolioSerializer
     permission_classes = [permissions.IsAuthenticated]
+
     def get_queryset(self):
         user = self.request.user
         base_queryset = Portfolio.objects.select_related('owner').prefetch_related('holdings__security')
         if user.is_staff or user.is_superuser: return base_queryset.all()
         return base_queryset.filter(owner__users=user).distinct()
+
     def get_serializer_context(self):
         context = super().get_serializer_context()
         context['request'] = self.request
         return context
+
+    # --- UPDATED create method with more logging ---
+    def create(self, request, *args, **kwargs):
+        """ Handles POST requests to create a new Portfolio. Includes more logging. """
+        # --- START DEBUG LOGGING ---
+        # Log raw data FIRST
+        log.info(f"PortfolioViewSet CREATE - Step 1: Raw request.data: {request.data}")
+        log.info(f"PortfolioViewSet CREATE - Step 2: User: {request.user}, IsAdmin: {request.user.is_staff or request.user.is_superuser}")
+        # --- END DEBUG LOGGING ---
+
+        serializer = None # Initialize serializer to None
+        try:
+            # --- START DEBUG LOGGING ---
+            log.info("PortfolioViewSet CREATE - Step 3: Calling get_serializer...")
+            # Standard DRF logic: Get the serializer instance
+            serializer = self.get_serializer(data=request.data)
+            log.info(f"PortfolioViewSet CREATE - Step 4: Serializer instance created: {type(serializer)}")
+            # --- END DEBUG LOGGING ---
+
+            # --- START DEBUG LOGGING ---
+            log.info("PortfolioViewSet CREATE - Step 5: Calling serializer.is_valid()...")
+            # Validate the data using the serializer (this calls PortfolioSerializer.validate)
+            serializer.is_valid(raise_exception=True)
+            log.info("PortfolioViewSet CREATE - Step 6: serializer.is_valid() PASSED.")
+            # --- END DEBUG LOGGING ---
+
+            # Log validated data *after* validation succeeds (optional, but can be useful)
+            # log.info(f"Serializer validated_data after is_valid: {serializer.validated_data}")
+
+            # Call perform_create if validation passes
+            self.perform_create(serializer)
+
+            # Prepare and return the success response
+            headers = self.get_success_headers(serializer.data)
+            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+        except serializers.ValidationError as ve:
+             # Log validation errors specifically
+             log.warning(f"PortfolioViewSet CREATE - VALIDATION FAILED. Errors: {ve.detail}")
+             # Re-raise the validation error to let DRF handle the 400 response
+             raise ve
+        except Exception as e:
+            # Log any other unexpected errors during creation
+            # Check if serializer was even instantiated before logging its type
+            serializer_type_info = f"Serializer type: {type(serializer)}" if serializer else "Serializer not instantiated."
+            log.error(f"PortfolioViewSet CREATE - UNEXPECTED ERROR: {e}. {serializer_type_info}", exc_info=True)
+            # Re-raise the exception; DRF's exception handler might return a 500 error
+            raise
+    # --- END of updated create method ---
+
     def perform_create(self, serializer):
-        # ... (implementation as before) ...
+        """ Creates the Portfolio instance and handles initial holding copy. """
+        # This method is called by `create` AFTER serializer.is_valid() passes.
+        log.info("PortfolioViewSet perform_create - Step 7: Starting portfolio creation...") # Added log
         user = self.request.user
-        owner = serializer.validated_data.get('owner')
+        owner = serializer.validated_data.get('owner') # Owner determined during validation
+
+        # Fallback to get owner from context if not directly in validated_data
+        # (This handles admin and single-customer non-admin cases where owner isn't directly mapped)
         if not owner:
              owner_from_context = self.get_serializer_context().get('_intended_owner')
-             if owner_from_context: owner = owner_from_context
-             else: raise serializers.ValidationError("Failed to determine the portfolio owner during creation.")
-        initial_holding_ids = self.get_serializer_context().get('request').data.get('initial_holding_ids', [])
-        if initial_holding_ids:
-            try: initial_holding_ids = [int(id_val) for id_val in initial_holding_ids]
-            except (ValueError, TypeError): initial_holding_ids = []
-        new_portfolio = None; copied_holdings_count = 0
+             if owner_from_context:
+                 log.info("PortfolioViewSet perform_create - Owner determined from context.") # Added log
+                 owner = owner_from_context
+             else:
+                 # This should ideally not happen if validation passed, but log defensively
+                 log.error(f"PortfolioViewSet perform_create: Failed to determine portfolio owner for user {user.username} after validation.")
+                 raise serializers.ValidationError("Internal error: Failed to determine the portfolio owner during creation.")
+        else:
+            log.info("PortfolioViewSet perform_create - Owner determined from serializer validated_data.") # Added log
+
+
+        # Get initial holding IDs directly from request data (as done previously)
+        # Note: This happens *after* validation, so it assumes the IDs were valid if provided
+        initial_holding_ids_raw = self.get_serializer_context().get('request').data.get('initial_holding_ids', [])
+        initial_holding_ids = []
+        if initial_holding_ids_raw:
+            try:
+                # Ensure IDs are integers
+                initial_holding_ids = [int(id_val) for id_val in initial_holding_ids_raw]
+                log.info(f"PortfolioViewSet perform_create - Parsed initial_holding_ids: {initial_holding_ids}") # Added log
+            except (ValueError, TypeError):
+                log.warning(f"PortfolioViewSet perform_create: Invalid format for initial_holding_ids: {initial_holding_ids_raw}. Ignoring.")
+                initial_holding_ids = []
+        else:
+            log.info("PortfolioViewSet perform_create - No initial_holding_ids provided.") # Added log
+
+
+        new_portfolio = None
+        copied_holdings_count = 0
         try:
+            # Use a transaction to ensure portfolio creation and holding copy are atomic
             with transaction.atomic():
-                new_portfolio = serializer.save()
-                log.info(f"Portfolio '{new_portfolio.name}' (ID: {new_portfolio.id}) created for owner {new_portfolio.owner.customer_number}.")
+                log.info("PortfolioViewSet perform_create - Step 8: Calling serializer.save()...") # Added log
+                # Save the portfolio instance using the validated data (owner is now set)
+                # The serializer's create method is NOT called here because we override perform_create
+                # We need to pass the owner explicitly if it came from context
+                new_portfolio = serializer.save(owner=owner, is_default=False) # Pass owner explicitly
+
+                log.info(f"PortfolioViewSet perform_create - Step 9: Portfolio '{new_portfolio.name}' (ID: {new_portfolio.id}) created for owner {new_portfolio.owner.customer_number}.")
+
+                # Copy initial holdings if requested and valid IDs were provided
                 if initial_holding_ids:
-                    log.info(f"Copying {len(initial_holding_ids)} initial holdings into new portfolio {new_portfolio.id}...")
-                    holdings_to_copy = CustomerHolding.objects.filter(id__in=initial_holding_ids, portfolio__owner=owner).select_related('security')
+                    log.info(f"PortfolioViewSet perform_create - Step 10: Attempting to copy {len(initial_holding_ids)} initial holdings into new portfolio {new_portfolio.id}...")
+                    # Fetch holdings belonging to the correct owner
+                    holdings_to_copy = CustomerHolding.objects.filter(
+                        id__in=initial_holding_ids,
+                        portfolio__owner=owner # Ensure we only copy holdings the owner actually owns
+                    ).select_related('security')
+
                     new_holdings_to_create = []
                     for original_holding in holdings_to_copy:
-                        new_holding = CustomerHolding(portfolio=new_portfolio, security=original_holding.security, original_face_amount=original_holding.original_face_amount, settlement_date=original_holding.settlement_date, settlement_price=original_holding.settlement_price, book_price=original_holding.book_price, book_yield=original_holding.book_yield)
+                        # Create a new holding instance linked to the new portfolio
+                        new_holding = CustomerHolding(
+                            portfolio=new_portfolio,
+                            security=original_holding.security,
+                            original_face_amount=original_holding.original_face_amount,
+                            settlement_date=original_holding.settlement_date,
+                            settlement_price=original_holding.settlement_price,
+                            book_price=original_holding.book_price,
+                            book_yield=original_holding.book_yield
+                            # ticket_id will be auto-generated
+                        )
                         new_holdings_to_create.append(new_holding)
+
                     if new_holdings_to_create:
+                        # Bulk create the new holdings for efficiency
+                        log.info(f"PortfolioViewSet perform_create - Step 11: Bulk creating {len(new_holdings_to_create)} new holdings...") # Added log
                         created_list = CustomerHolding.objects.bulk_create(new_holdings_to_create)
                         copied_holdings_count = len(created_list)
-                        log.info(f"Successfully copied {copied_holdings_count} holdings into portfolio {new_portfolio.id}.")
-                    else: log.info(f"No valid holdings found to copy for portfolio {new_portfolio.id} based on provided IDs: {initial_holding_ids}.")
+                        log.info(f"PortfolioViewSet perform_create - Step 12: Successfully copied {copied_holdings_count} holdings into portfolio {new_portfolio.id}.")
+                    else:
+                        log.info(f"PortfolioViewSet perform_create - Step 11/12: No valid holdings found to copy for portfolio {new_portfolio.id} based on provided IDs: {initial_holding_ids} and owner {owner.id}.")
+
         except Exception as e:
-            log.error(f"Error during portfolio creation or holding copy for user {user.username}: {e}", exc_info=True)
+            # Catch any errors during the transaction
+            log.error(f"PortfolioViewSet perform_create - TRANSACTION ERROR: Error during portfolio creation or holding copy transaction for user {user.username}: {e}", exc_info=True)
+            # Raise a validation error to signal failure to the client
             raise serializers.ValidationError("An error occurred while creating the portfolio or copying holdings.") from e
+        log.info("PortfolioViewSet perform_create - Step 13: Finished.") # Added log
+
+
     def perform_destroy(self, instance):
         # ... (implementation as before) ...
         user = self.request.user
@@ -125,6 +237,7 @@ class PortfolioViewSet(viewsets.ModelViewSet):
         if instance.is_default: raise serializers.ValidationError({"detail": "Cannot delete the default 'Primary Holdings' portfolio."})
         log.info(f"Proceeding with deletion of portfolio '{instance.name}' (ID: {instance.id}) by user {user.username}.")
         instance.delete()
+
     @action(detail=True, methods=['post'], url_path='simulate_swap', url_name='simulate-swap', permission_classes=[permissions.IsAuthenticated])
     def simulate_swap(self, request, pk=None):
         # ... (implementation as before) ...
@@ -320,3 +433,4 @@ class EmailSalespersonMuniBuyInterestView(APIView):
             # Handle errors during task queuing (e.g., Celery broker down)
             log.error(f"Error triggering Celery task 'send_salesperson_muni_buy_interest_email' for customer {customer.customer_number}: {e}", exc_info=True)
             return Response({"error": "Failed to queue email task. Please try again later."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
