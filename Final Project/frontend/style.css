@@ -8,7 +8,8 @@
     --header-color: #0056b3;
     --header-bg: #e9ecef;
     --header-text-color: var(--header-color);
-    --header-link-color: var(--header-color);
+    --header-link-color: var(--header-color); /* Base link color */
+    --header-nav-link-color: #495057; /* Slightly muted color for nav link */
     --table-border-color: #dee2e6;
     --table-header-bg: #e9ecef;
     --table-header-text: #495057;
@@ -51,6 +52,7 @@ body.dark-mode {
     --header-color: #4dabf7;
     --header-bg: #343a40;
     --header-link-color: #7bc6ff; /* Lighter link color for dark mode */
+    --header-nav-link-color: #adb5bd; /* Muted nav link color for dark mode */
     --table-border-color: #444;
     --table-header-bg: #3a3a3a;
     --table-header-text: #e0e0e0;
@@ -106,7 +108,7 @@ header.app-header {
     background-color: var(--header-bg);
     color: var(--header-text-color);
     display: flex;
-    align-items: center;
+    align-items: center; /* Vertically center items */
     justify-content: space-between;
     padding: 0 1.5em;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -120,7 +122,8 @@ body.dark-mode header.app-header {
 
 header.app-header .header-left {
     display: flex;
-    align-items: center;
+    align-items: baseline; /* Align text baselines */
+    gap: 1.5em; /* Add space between title and nav link */
 }
 
 header.app-header .header-right {
@@ -130,7 +133,7 @@ header.app-header .header-right {
 }
 
 header.app-header a {
-    color: inherit;
+    color: inherit; /* Inherit color from parent by default */
     text-decoration: none;
     display: flex;
     align-items: center;
@@ -145,15 +148,16 @@ header.app-header a:focus {
 header.app-header h1 {
     margin: 0;
     font-size: 1.5em;
+    color: var(--header-text-color); /* Ensure H1 uses the main header text color */
 }
 
-/* Header Link Style */
+/* Original Header Link Style (kept for potential future use, but overridden by header-nav-link) */
 .header-link {
     color: var(--header-link-color);
     text-decoration: none;
     font-weight: bold;
     font-size: 0.9em;
-    padding: 0.5em 0; /* Match button vertical padding */
+    padding: 0.5em 0;
     transition: color 0.2s ease;
 }
 .header-link:hover {
@@ -162,6 +166,20 @@ header.app-header h1 {
 }
 body.dark-mode .header-link:hover {
      color: color-mix(in srgb, var(--header-link-color) 80%, white);
+}
+
+/* NEW: Style for the navigation link placed next to the title */
+.header-left .header-nav-link {
+    font-size: 1em; /* Slightly smaller than h1 */
+    font-weight: normal; /* Not bold */
+    color: var(--header-nav-link-color); /* Use the muted color */
+    padding: 0; /* Remove padding */
+    margin: 0;
+    /* transition: color 0.2s ease; */ /* Optional: keep transition */
+}
+.header-left .header-nav-link:hover {
+    color: var(--header-text-color); /* Use main header text color on hover */
+    text-decoration: underline;
 }
 
 
@@ -326,7 +344,8 @@ body.dark-mode input::-ms-input-placeholder { color: #bbb; }
 
 /* General button styling */
 button.filter-action-btn,
-button.remove-filter-btn,
+button.remove-filter-btn, /* Include remove-filter-btn here */
+button.remove-muni-filter-btn, /* Include remove-muni-filter-btn here */
 button.control-action-btn {
     padding: 0.6em 1em;
     border-radius: 6px;
@@ -366,12 +385,16 @@ button:disabled {
 #clear-all-filters-btn { align-self: flex-start; margin-top: 0.5em; }
 #create-portfolio-btn { align-self: flex-start; margin-top: 0.5em; }
 #delete-portfolio-btn { margin-left: 0.5em; flex-grow: 0; }
-button.remove-filter-btn {
+
+/* Apply consistent small styling to BOTH remove filter buttons */
+button.remove-filter-btn,
+button.remove-muni-filter-btn {
     padding: 0.4em 0.8em;
     font-size: 0.9em;
-    height: auto;
+    height: auto; /* Override general button height */
     flex-grow: 0;
     flex-basis: auto;
+    /* Inherits btn-danger background/color */
 }
 
 .filter-buttons-container {
@@ -702,7 +725,8 @@ th.sorted .sort-arrow {
     .filter-row input,
     .control-row select,
     .control-row button,
-    button.remove-filter-btn {
+    button.remove-filter-btn, /* Ensure these stack correctly */
+    button.remove-muni-filter-btn {
         width: 100%;
         flex-basis: auto;
         margin-left: 0;
@@ -722,9 +746,12 @@ th.sorted .sort-arrow {
 @media (max-width: 768px) {
     body { padding-top: calc(var(--header-height) + 0.5em); }
     header.app-header { padding: 0 0.5em; }
+    header.app-header .header-left { gap: 1em; } /* Adjust gap for smaller screens */
     header.app-header .header-right { gap: 0.5em; }
     header.app-header h1 { font-size: 1.2em; }
-    header.app-header button, .header-link { padding: 0.4em 0.6em; font-size: 0.8em; } /* Adjust link padding/size */
+    header.app-header button, .header-link { padding: 0.4em 0.6em; font-size: 0.8em; }
+    /* Adjust nav link size */
+    .header-left .header-nav-link { font-size: 0.9em; }
     .controls { gap: 1em; }
     .control-row { flex-direction: column; align-items: stretch; }
     select, input, button.filter-action-btn, button.control-action-btn { width: 100%; max-width: none; }
@@ -737,8 +764,8 @@ th.sorted .sort-arrow {
 
 @media (max-width: 480px) {
     header.app-header h1 { font-size: 1.0em; }
+    .header-left .header-nav-link { font-size: 0.8em; } /* Further adjust nav link */
     th, td { font-size: 0.85em; padding: 0.4em 0.5em; }
     #muni-offerings-table th,
     #muni-offerings-table td { font-size: 0.8em; padding: 0.3em 0.4em; } /* Further reduce for muni table */
 }
-

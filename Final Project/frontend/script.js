@@ -1,6 +1,6 @@
 // --- JAVASCRIPT for Portfolio Analyzer ---
 
-// Ensure external libraries (jsPDF, Chart.js, etc.) are loaded before this script runs.
+// Ensure external libraries (jsPDF, Chart.js, SheetJS etc.) are loaded before this script runs.
 
 // Use strict mode for better error handling and preventing common mistakes
 "use strict";
@@ -16,12 +16,13 @@ if (typeof IS_ADMIN_USER === 'undefined') {
 
 // --- Constants & Global Variables ---
 const { jsPDF } = window.jspdf; // Destructure jsPDF from the global window object
+// Note: SheetJS (XLSX) is typically accessed via the global 'XLSX' object after its script is loaded.
 const apiRoot = '/api'; // Base URL for API calls
 let customers = []; // Holds the list of customers fetched for the main dropdown (populated by loadCustomers)
 let currentPortfolios = []; // Holds the list of portfolios fetched for the selected customer
 // Holdings Data & State
 let allHoldings = []; // Holds all holdings for the currently selected view (customer or portfolio)
-let filteredHoldings = []; // Holdings after applying filters (THIS IS THE ARRAY USED FOR THE SNAPSHOT)
+let filteredHoldings = []; // Holdings after applying filters (THIS IS THE ARRAY USED FOR EXPORTS)
 let activeFilters = []; // Array to store active filter objects for HOLDINGS
 let nextFilterId = 0; // Counter for generating unique filter IDs for HOLDINGS
 let columnOptionsHtml = ''; // HTML string for filter column dropdown options for HOLDINGS
@@ -61,6 +62,7 @@ const clearAllFiltersBtn = document.getElementById('clear-all-filters-btn');
 // General Controls
 const darkModeToggle = document.getElementById('dark-mode-toggle');
 const exportPdfBtn = document.getElementById('export-pdf-btn');
+const exportExcelBtn = document.getElementById('export-excel-btn'); // Excel export button reference
 // Modal Elements
 const createPortfolioBtn = document.getElementById('create-portfolio-btn');
 const createPortfolioModal = document.getElementById('create-portfolio-modal');
@@ -718,20 +720,23 @@ async function handlePortfolioSelection() {
     const fetchUrl = `${apiRoot}/holdings/?portfolio=${selectedPortfolioId}`;
     const selectedPortfolio = currentPortfolios.find(p => p.id == selectedPortfolioId);
     const portfolioDisplayName = selectedPortfolio?.name || `Portfolio ${selectedPortfolioId}`;
-    const viewName = `${selectedCustomer.name || `Customer ${selectedCustomer.customer_number}`} - ${portfolioDisplayName}`;
+    // const viewName = `${selectedCustomer.name || `Customer ${selectedCustomer.customer_number}`} - ${portfolioDisplayName}`; // OLD: Combined name
+    const viewName = portfolioDisplayName; // NEW: Only portfolio name
 
     console.log("Fetching holdings for specific portfolio:", fetchUrl);
-    portfolioNameEl.textContent = `Loading ${viewName}...`; // Update title
+    // portfolioNameEl.textContent = `Loading ${viewName}...`; // OLD: Combined loading message
+    portfolioNameEl.textContent = `Loading ${portfolioDisplayName}...`; // NEW: Portfolio name only loading message
     clearTableAndCharts(); // Clear previous data
 
     try {
         const res = await fetch(fetchUrl);
-        console.log(`Load holdings response status for view '${viewName}':`, res.status);
+        console.log(`Load holdings response status for view '${portfolioDisplayName}':`, res.status);
 
         if (!res.ok) {
             if (res.status === 404) { // Handle case where portfolio exists but has no holdings
                 allHoldings = []; // Reset holdings data
-                portfolioNameEl.textContent = `${viewName} (No Holdings)`;
+                // portfolioNameEl.textContent = `${viewName} (No Holdings)`; // OLD: Combined name
+                portfolioNameEl.textContent = `${portfolioDisplayName} (No Holdings)`; // NEW: Portfolio name only
                 const colSpan = (tableHeaders.length || 10) + 1;
                 tableBody.innerHTML = `<tr><td colspan="${colSpan}">No holdings found for this portfolio.</td></tr>`;
             } else {
@@ -743,20 +748,23 @@ async function handlePortfolioSelection() {
         } else {
             // Successfully fetched holdings
             allHoldings = await res.json(); // Store raw holdings data
-            console.log(`Holdings loaded for view '${viewName}':`, allHoldings.length);
-            portfolioNameEl.textContent = viewName; // Set final title
+            console.log(`Holdings loaded for view '${portfolioDisplayName}':`, allHoldings.length);
+            // portfolioNameEl.textContent = viewName; // OLD: Set final title with combined name
+            portfolioNameEl.textContent = portfolioDisplayName; // NEW: Set final title with portfolio name only
         }
         // Process and display the fetched holdings (or empty state)
         processAndDisplayHoldings();
     } catch (error) {
         console.error("Failed to update holdings view:", error);
-        portfolioNameEl.textContent = `Error loading holdings for ${viewName}`;
+        // portfolioNameEl.textContent = `Error loading holdings for ${viewName}`; // OLD: Combined name
+        portfolioNameEl.textContent = `Error loading holdings for ${portfolioDisplayName}`; // NEW: Portfolio name only
         allHoldings = []; // Reset holdings data on error
         clearTableAndCharts();
         const colSpan = (tableHeaders.length || 10) + 1;
         tableBody.innerHTML = `<tr><td colspan="${colSpan}">Error loading holdings. Check console.</td></tr>`;
     }
 }
+
 
 /** Processes the raw holding data fetched from the API, adding calculated/parsed fields. */
 function processAndDisplayHoldings() {
@@ -786,6 +794,10 @@ function processAndDisplayHoldings() {
         // Parse date strings into Date objects for easier handling/charting
         h.maturity_date_obj = parseDate(h.maturity_date);
         h.call_date_obj = parseDate(h.call_date);
+
+        // Add a simple YYYY-MM-DD formatted date string for easier export
+        h.maturity_date_str_iso = h.maturity_date_obj ? h.maturity_date_obj.toISOString().split('T')[0] : (h.maturity_date || '');
+        h.call_date_str_iso = h.call_date_obj ? h.call_date_obj.toISOString().split('T')[0] : (h.call_date || '');
     });
 
     // Trigger filter, sort, and rendering of table, totals, and charts
@@ -1630,7 +1642,7 @@ async function exportToPdf() {
     // Add title for charts page
     doc.setFontSize(18);
     doc.setTextColor(isDark ? 241 : 51); // Use theme-aware text color
-    const viewTitle = portfolioNameEl.textContent || 'Portfolio Analysis';
+    const viewTitle = portfolioNameEl.textContent || 'Portfolio Analysis'; // Use the current portfolio name
     doc.text(viewTitle + " - Charts", margin, margin + 5);
 
     // Get chart images as Base64 PNGs
@@ -1738,15 +1750,105 @@ async function exportToPdf() {
     const selectedCustomerOption = customerSelect.options[customerSelect.selectedIndex];
     const selectedPortfolioOption = portfolioFilterSelect.options[portfolioFilterSelect.selectedIndex];
     let baseFilename = 'export';
-    if (selectedCustomerOption) {
-        baseFilename = selectedCustomerOption.text.split('(')[0].trim(); // Use customer name
-        if (selectedPortfolioOption && selectedPortfolioOption.value !== "") {
-            baseFilename += '_' + selectedPortfolioOption.text.split('(')[0].trim(); // Add portfolio name
-        }
+    if (selectedPortfolioOption && selectedPortfolioOption.value !== "") {
+        baseFilename = selectedPortfolioOption.text.split('(')[0].trim(); // Use portfolio name
+    } else if (selectedCustomerOption) {
+         baseFilename = selectedCustomerOption.text.split('(')[0].trim(); // Fallback to customer name
     }
     // Sanitize filename (replace non-alphanumeric with underscore)
     const safeFilename = baseFilename.replace(/[^a-z0-9]/gi, '_').toLowerCase();
     doc.save(`portfolio_${safeFilename}.pdf`); // Save the generated PDF
+}
+
+// --- NEW: Excel (XLSX) Export using SheetJS ---
+
+/**
+ * Exports the currently filtered holdings data to an XLSX file.
+ */
+function exportToXlsx() {
+    console.log("Exporting filtered holdings to XLSX...");
+
+    // Check if SheetJS library is loaded
+    if (typeof XLSX === 'undefined') {
+        console.error("SheetJS library (XLSX) not loaded.");
+        alert("Error: Excel export library not loaded. Please check the console.");
+        return;
+    }
+
+    if (!filteredHoldings || filteredHoldings.length === 0) {
+        alert("No holdings data to export.");
+        return;
+    }
+
+    // Define Headers
+    const headers = [
+        "CUSIP", "Description", "Par", "Price", "Coupon", "Yield", "WAL",
+        "Est. Maturity Year", "Maturity Date", "Call Date"
+    ];
+
+    // Prepare data rows for SheetJS (Array of Arrays - AoA)
+    // SheetJS handles data types better, so we can pass numbers directly
+    const data = filteredHoldings.map(h => [
+        h.security_cusip || '', // String
+        h.description || '',   // String
+        h.par_calculated ?? null, // Number or null
+        h.settlement_price ?? null, // Number or null
+        h.coupon ?? null, // Number or null
+        h.yield_val ?? null, // Number or null (processed yield)
+        h.wal ?? null, // Number or null
+        h.estimated_maturity_date ?? null, // Number or null
+        h.maturity_date_str_iso || '', // String (YYYY-MM-DD)
+        h.call_date_str_iso || ''      // String (YYYY-MM-DD)
+    ]);
+
+    // Combine headers and data
+    const sheetData = [headers, ...data];
+
+    // Create a worksheet from the array of arrays
+    const ws = XLSX.utils.aoa_to_sheet(sheetData);
+
+    // Optional: Set column widths (example - adjust as needed)
+    // widths are in approximate character units
+    ws['!cols'] = [
+        { wch: 12 }, // CUSIP
+        { wch: 40 }, // Description
+        { wch: 15 }, // Par
+        { wch: 10 }, // Price
+        { wch: 10 }, // Coupon
+        { wch: 10 }, // Yield
+        { wch: 10 }, // WAL
+        { wch: 18 }, // Est. Maturity Year
+        { wch: 12 }, // Maturity Date
+        { wch: 12 }  // Call Date
+    ];
+
+    // Optional: Apply number formats (example)
+    // Requires iterating through cells, more complex. Skipping for simplicity for now.
+    // Example: ws['C2'].z = '#,##0.00'; // Format Par cell C2
+
+    // Create a new workbook
+    const wb = XLSX.utils.book_new();
+
+    // Append the worksheet to the workbook
+    XLSX.utils.book_append_sheet(wb, ws, "Holdings"); // Name the sheet "Holdings"
+
+    // Generate filename based on portfolio name
+    const selectedPortfolioOption = portfolioFilterSelect.options[portfolioFilterSelect.selectedIndex];
+    let baseFilename = 'holdings_export';
+    if (selectedPortfolioOption && selectedPortfolioOption.value !== "") {
+        baseFilename = selectedPortfolioOption.text.split('(')[0].trim(); // Use portfolio name
+    }
+    const safeFilename = baseFilename.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    const filename = `portfolio_${safeFilename}.xlsx`; // Use .xlsx extension
+
+    // Trigger the download
+    try {
+        XLSX.writeFile(wb, filename);
+        console.log(`XLSX export triggered: ${filename}`);
+    } catch (error) {
+        console.error("Error exporting to XLSX:", error);
+        alert("An error occurred while exporting to Excel. Please check the console.");
+    }
 }
 
 
@@ -2406,9 +2508,10 @@ function setupEventListeners() {
     }
 
 
-    // Theme Toggle & PDF Export Buttons
+    // Theme Toggle & Export Buttons
     darkModeToggle.addEventListener('click', toggleTheme);
     exportPdfBtn.addEventListener('click', exportToPdf);
+    exportExcelBtn.addEventListener('click', exportToXlsx); // Updated listener to call exportToXlsx
 
     // Create Portfolio Modal Interactions
     createPortfolioBtn.addEventListener('click', showCreatePortfolioModal);

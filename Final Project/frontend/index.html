@@ -11,14 +11,17 @@
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 </head>
 <body id="top">
 
 <header class="app-header">
-    <div class="header-left"> <a href="#top"> <h1>Portfolio Analyzer</h1> </a> </div>
+    <div class="header-left">
+        <a href="#top"> <h1>Portfolio Analyzer</h1> </a>
+        <a href="#muni-offerings-section" class="header-link header-nav-link">Go to Offerings</a>
+    </div>
     <div class="header-right">
-        <a href="#muni-offerings-section" class="header-link">Go to Offerings</a>
-        <button id="export-pdf-btn" title="Export current view to PDF">Export PDF</button>
+        <button id="export-excel-btn" class="control-action-btn btn-success" title="Export current holdings view to Excel (XLSX)">Export Excel</button> <button id="export-pdf-btn" class="control-action-btn btn-info" title="Export current view to PDF">Export PDF</button>
         <button id="dark-mode-toggle">Toggle Dark Mode</button>
     </div>
 </header>
@@ -79,8 +82,7 @@
                         <td id="totals-par">0</td>
                         <td></td> <td></td> <td id="totals-yield">0</td>
                         <td id="totals-wal">0</td>
-                        <td colspan="3"></td>
-                    </tr>
+                        <td colspan="3"></td> </tr>
                 </tfoot>
             </table>
         </div>
@@ -120,15 +122,14 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr><td colspan="14">Loading offerings...</td></tr>
-                </tbody>
+                    <tr><td colspan="14">Loading offerings...</td></tr> </tbody>
             </table>
         </div>
          <div class="email-action-container">
             <button id="email-buy-interest-btn" class="control-action-btn btn-primary" disabled>Indicate Interest in Buying</button>
-            <div id="email-buy-status-message" class="status-message"></div> </div>
-    </div>
-    </div> <div id="create-portfolio-modal" class="modal-overlay">
+            <div id="email-buy-status-message" class="status-message"></div>
+        </div>
+    </div> </div> <div id="create-portfolio-modal" class="modal-overlay">
     <div class="modal-content">
         <div class="modal-header">
             <h3>Save View as New Portfolio</h3>
