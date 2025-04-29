@@ -377,9 +377,14 @@ function handleRemoveFilter(event) {
     // Ensure the event originated from a holdings filter row
     if (!filterRow || !filtersContainer.contains(filterRow)) return;
 
-    // Prevent removing the last filter row (optional, ensures one is always visible)
+    // --- MODIFICATION START: Prevent removing the last filter ---
     const currentFilterRows = filtersContainer.querySelectorAll('.filter-row');
-    // if (currentFilterRows.length <= 1) return; // Uncomment to prevent removing the last row
+    if (currentFilterRows.length <= 1) {
+        console.log("Cannot remove the last holdings filter.");
+        // Optionally, provide user feedback (e.g., flash the button)
+        return; // Stop the function here
+    }
+    // --- MODIFICATION END ---
 
     // Remove the filter from the state array
     const filterIdToRemove = parseInt(filterRow.dataset.filterId, 10);
@@ -530,9 +535,14 @@ function handleRemoveMuniFilter(event) {
     // Ensure the event originated from a muni filter row
     if (!filterRow || !muniFiltersContainer.contains(filterRow)) return;
 
-    // Prevent removing the last filter row (optional)
+    // --- MODIFICATION START: Prevent removing the last filter ---
     const currentFilterRows = muniFiltersContainer.querySelectorAll('.filter-row');
-    // if (currentFilterRows.length <= 1) return;
+    if (currentFilterRows.length <= 1) {
+         console.log("Cannot remove the last muni filter.");
+        // Optionally, provide user feedback
+        return; // Stop the function here
+    }
+    // --- MODIFICATION END ---
 
     // Remove the filter from the state array
     const filterIdToRemove = parseInt(filterRow.dataset.muniFilterId, 10);
