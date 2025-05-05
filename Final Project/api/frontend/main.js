@@ -298,14 +298,21 @@ function setupEventListeners() {
         th.addEventListener('click', () => {
             const key = th.dataset.key;
             if (!key) return; // Ignore non-sortable headers
-            // No need to map here, state uses frontend key, api.js maps it
+
+            // *** START SORT LOGGING ***
+            console.log(`Holdings Sort Clicked: Header Key='${key}'`);
             // Determine new sort direction
-            const newDir = (key === state.currentSortKey && state.currentSortDir === 'asc') ? 'desc' : 'asc';
-            console.log(`Holdings sort clicked: Key=${key}, Direction=${newDir}`); // Log sort action
+            const currentKey = state.currentSortKey;
+            const currentDir = state.currentSortDir;
+            const newDir = (key === currentKey && currentDir === 'asc') ? 'desc' : 'asc';
+            console.log(`Holdings Sort Details: Key=${key}, New Direction=${newDir} (Previous: Key=${currentKey}, Dir=${currentDir})`);
+            // *** END SORT LOGGING ***
+
             state.setHoldingsSort(key, newDir); // Update state with FRONTEND key
 
-            // *** FIX: Use the correct function name from filters.js ***
-            filters.applyHoldingsFiltersAndFetchPageOnly(1); // Refetch page 1 with new sort, NO chart refresh
+            // Fetch page 1 with new sort, NO chart refresh
+            console.log("Holdings Sort: Triggering fetch for page 1...");
+            filters.applyHoldingsFiltersAndFetchPageOnly(1);
         });
     });
 
@@ -315,11 +322,20 @@ function setupEventListeners() {
             const key = th.dataset.key;
             if (!key) return; // Ignore non-sortable headers
 
+            // *** START SORT LOGGING ***
+            console.log(`Muni Sort Clicked: Header Key='${key}'`);
             // Determine new sort direction
-            const newDir = (key === state.currentMuniSortKey && state.currentMuniSortDir === 'asc') ? 'desc' : 'asc';
-            console.log(`Muni sort clicked: Key=${key}, Direction=${newDir}`); // Log sort action
+            const currentMuniKey = state.currentMuniSortKey;
+            const currentMuniDir = state.currentMuniSortDir;
+            const newDir = (key === currentMuniKey && currentMuniDir === 'asc') ? 'desc' : 'asc';
+            console.log(`Muni Sort Details: Key=${key}, New Direction=${newDir} (Previous: Key=${currentMuniKey}, Dir=${currentMuniDir})`);
+            // *** END SORT LOGGING ***
+
             state.setMuniSort(key, newDir); // Update state
-            filters.applyMuniFiltersAndFetchPage(1); // Refetch page 1 with new sort
+
+            // Refetch page 1 with new sort
+            console.log("Muni Sort: Triggering fetch for page 1...");
+            filters.applyMuniFiltersAndFetchPage(1);
         });
     });
 
@@ -334,13 +350,21 @@ function setupEventListeners() {
 
     // Theme Toggle & Export Buttons
     if(darkModeToggle) darkModeToggle.addEventListener('click', toggleTheme); // Theme toggle now refreshes charts
+
+    // *** MODIFIED: Pass event to export functions ***
     if(exportPdfBtn) {
-        exportPdfBtn.addEventListener('click', () => {
+        exportPdfBtn.addEventListener('click', (event) => { // Get event object
             console.log("Export PDF button clicked, calling export function...");
-            exports.exportToPdf(); // Call directly
+            exports.exportToPdf(event); // Pass event
         });
     }
-    if(exportExcelBtn) exportExcelBtn.addEventListener('click', exports.exportToXlsx);
+    if(exportExcelBtn) {
+        exportExcelBtn.addEventListener('click', (event) => { // Get event object
+             console.log("Export Excel button clicked, calling export function...");
+            exports.exportToXlsx(event); // Pass event
+        });
+    }
+    // *** END MODIFICATION ***
 
     // Create Portfolio Modal
     if(createPortfolioBtn) createPortfolioBtn.addEventListener('click', ui.showCreatePortfolioModal);
@@ -427,4 +451,3 @@ document.addEventListener('DOMContentLoaded', () => {
 
     console.log("Portfolio Analyzer Initialized.");
 });
-

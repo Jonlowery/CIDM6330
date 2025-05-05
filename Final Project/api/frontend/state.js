@@ -37,6 +37,9 @@ export let currentMuniSortDir = 'asc'; // Default sort direction for munis
 
 // General State
 export let chartInstances = {}; // Stores active Chart.js instances for later destruction/update
+// *** ADDED: State for storing pre-generated chart images ***
+export let chartImageDataUrls = {}; // Stores base64 image data URLs for charts { chartId: dataUrl }
+// *** END ADDED ***
 export let availableCustomers = []; // Stores the full customer list fetched for the admin modal dropdown
 export let selectedCustomerId = null; // Store the currently selected customer ID from the MAIN dropdown
 export let selectedHoldingIds = new Set(); // Set to store IDs (ticket_id UUID strings) of selected holdings
@@ -139,11 +142,30 @@ export function getChartInstance(id) {
 
 export function deleteChartInstance(id) {
     delete chartInstances[id];
+    // Also remove the stored image data if the instance is deleted
+    delete chartImageDataUrls[id];
 }
 
 export function resetChartInstances() {
     chartInstances = {};
+    // Reset image data when instances are reset
+    resetChartImageDataUrls();
 }
+
+// *** ADDED: Functions for chart image data ***
+export function setChartImageDataUrl(chartId, dataUrl) {
+    chartImageDataUrls[chartId] = dataUrl;
+}
+
+export function getChartImageDataUrl(chartId) {
+    return chartImageDataUrls[chartId];
+}
+
+export function resetChartImageDataUrls() {
+    chartImageDataUrls = {};
+}
+// *** END ADDED ***
+
 
 export function setAvailableCustomers(customers) {
     availableCustomers = customers;
