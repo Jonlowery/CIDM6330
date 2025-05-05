@@ -26,6 +26,7 @@
 </header>
 
 <div class="container" id="main-content">
+
     <div class="controls section-container">
         <div class="control-row">
              <label for="customer-select">Customer:</label>
@@ -69,13 +70,14 @@
                     <tr>
                         <th class="checkbox-column"><input type="checkbox" id="select-all-holdings" title="Select/Deselect All Visible Holdings"></th>
                         <th data-key="security_cusip" data-type="string">CUSIP<span class="sort-arrow"></span></th>
-                        <th data-key="description" data-type="string">Description<span class="sort-arrow"></span></th>
-                        <th data-key="par" data-type="number">Par<span class="sort-arrow"></span></th>
+                        <th data-key="security_description" data-type="string">Description<span class="sort-arrow"></span></th>
+                        <th data-key="par_value" data-type="number">Par<span class="sort-arrow"></span></th>
                         <th data-key="settlement_price" data-type="number">Price<span class="sort-arrow"></span></th>
                         <th data-key="coupon" data-type="number">Coupon<span class="sort-arrow"></span></th>
-                        <th data-key="yield" data-type="number">Yield<span class="sort-arrow"></span></th>
+                        <th data-key="book_yield" data-type="number">Book Yield<span class="sort-arrow"></span></th>
                         <th data-key="wal" data-type="number">WAL<span class="sort-arrow"></span></th>
-                        <th data-key="estimated_maturity_date" data-type="number">Est. Maturity Year<span class="sort-arrow"></span></th>
+                        <th data-key="holding_duration" data-type="number">Duration<span class="sort-arrow"></span></th>
+                        <th data-key="holding_average_life" data-type="number">Avg Life<span class="sort-arrow"></span></th>
                         <th data-key="maturity_date" data-type="date">Maturity Date<span class="sort-arrow"></span></th>
                         <th data-key="call_date" data-type="date">Call Date<span class="sort-arrow"></span></th>
                     </tr>
@@ -83,20 +85,18 @@
                 <tbody></tbody>
                 <tfoot>
                     <tr>
-                        <td colspan="3">Totals</td>
-                        <td id="totals-par">0</td>
-                        <td></td> <td></td> <td id="totals-yield">0</td>
-                        <td id="totals-wal">0</td>
-                        <td colspan="3"></td> </tr>
+                        <td colspan="3">Totals</td> <td id="totals-par">0</td>
+                        <td></td> <td></td> <td id="totals-yield">0</td> <td id="totals-wal">0</td> <td id="totals-duration">0</td> <td id="totals-avg-life">0</td> <td colspan="2"></td> </tr>
                 </tfoot>
             </table>
         </div>
-         <div class="email-action-container">
+        <div id="holdings-pagination-controls" class="pagination-controls">
+            </div>
+        <div class="email-action-container">
             <button id="email-interest-btn" class="control-action-btn btn-success" disabled>Sell Bonds</button>
             <div id="email-status-message" class="status-message"></div>
         </div>
     </div>
-
 
     <div id="muni-offerings-section" class="muni-offerings-container section-container">
         <h2>Municipal Offerings</h2>
@@ -130,13 +130,16 @@
                 </thead>
                 <tbody>
                     <tr><td colspan="14">Loading offerings...</td></tr> </tbody>
-            </table>
+                </table>
         </div>
+        <div id="muni-pagination-controls" class="pagination-controls">
+            </div>
          <div class="email-action-container">
             <button id="email-buy-interest-btn" class="control-action-btn btn-primary" disabled>Buy Bonds</button>
             <div id="email-buy-status-message" class="status-message"></div>
         </div>
-    </div> </div> <div id="create-portfolio-modal" class="modal-overlay">
+    </div>
+</div> <div id="create-portfolio-modal" class="modal-overlay">
     <div class="modal-content">
         <div class="modal-header">
             <h3>Save View as New Portfolio</h3>

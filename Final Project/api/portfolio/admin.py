@@ -1,64 +1,150 @@
-# portfolio/admin.py (Added MunicipalOfferingAdmin)
+# portfolio/admin.py (Revamp Step 1)
 
 from django.contrib import admin
-# Import models from the current app
-from .models import Customer, Security, Portfolio, CustomerHolding, MunicipalOffering # Import new model
+# Import models from the current app, including the new ones
+from .models import (
+    Customer,
+    Security,
+    Portfolio,
+    CustomerHolding,
+    MunicipalOffering,
+    Salesperson,         # New
+    SecurityType,        # New
+    InterestSchedule     # New
+)
+
+# --- Register NEW Models ---
+
+@admin.register(Salesperson)
+class SalespersonAdmin(admin.ModelAdmin):
+    """ Admin configuration for the Salesperson model. """
+    list_display = ('salesperson_id', 'name', 'email', 'is_active', 'last_modified_at')
+    search_fields = ('salesperson_id', 'name', 'email')
+    list_filter = ('is_active',)
+    readonly_fields = ('created_at', 'last_modified_at')
+
+@admin.register(SecurityType)
+class SecurityTypeAdmin(admin.ModelAdmin):
+    """ Admin configuration for the SecurityType model. """
+    list_display = ('type_id', 'name', 'last_modified_at')
+    search_fields = ('type_id', 'name')
+    readonly_fields = ('created_at', 'last_modified_at')
+
+@admin.register(InterestSchedule)
+class InterestScheduleAdmin(admin.ModelAdmin):
+    """ Admin configuration for the InterestSchedule model. """
+    list_display = ('schedule_code', 'name', 'payments_per_year_default', 'last_modified_at')
+    search_fields = ('schedule_code', 'name')
+    readonly_fields = ('created_at', 'last_modified_at')
+
+
+# --- Update Existing Model Admins ---
 
 @admin.register(Customer)
 class CustomerAdmin(admin.ModelAdmin):
     """ Admin configuration for the Customer model. """
-    # Fields to display in the list view
     list_display = (
         'name',
         'customer_number',
-        'salesperson_name', # Added salesperson name
-        'salesperson_email', # Added salesperson email
-        'unique_id'
+        'portfolio_accounting_code', # New field
+        'salesperson',               # Changed from name/email to FK relationship
+        'state',
+        'last_modified_at',
     )
-    # Fields to allow searching on
     search_fields = (
         'name',
         'customer_number',
-        'salesperson_name', # Added salesperson name to search
-        'salesperson_email', # Added salesperson email to search
+        'salesperson__salesperson_id', # Search related salesperson ID
+        'salesperson__name',           # Search related salesperson name
+        'portfolio_accounting_code',
     )
     # Use filter_horizontal for a better ManyToMany widget for users
-    # This makes selecting multiple users easier than the default select box
     filter_horizontal = ('users',)
-    # Fields to allow filtering by in the sidebar
-    list_filter = ('state', 'salesperson_name') # Added salesperson name to filter
-    # Define the layout of the add/change form
+    list_filter = (
+        'state',
+        'salesperson', # Filter by related salesperson object
+    )
+    # Use raw_id_fields for salesperson FK if there are many salespeople
+    raw_id_fields = ('salesperson',)
     fieldsets = (
-        (None, { # Main section (no header)
+        (None, {
             'fields': ('customer_number', 'name', 'users')
         }),
-        ('Contact Information', { # Section for contact details
+        ('Contact Information', {
             'fields': ('address', 'city', 'state', 'zip_code')
         }),
-        ('Salesperson Assignment', { # Section for salesperson details
-            'fields': ('salesperson_name', 'salesperson_email'),
-            # 'classes': ('collapse',) # Optional: Make section collapsible
+        ('Salesperson & Accounting', { # Modified Section
+            'fields': ('salesperson', 'portfolio_accounting_code'),
         }),
-        ('Internal ID', { # Section for internal ID, maybe collapsed by default
-            'fields': ('unique_id',),
+        ('Financial Profile', { # New Section for optional rates
+             'fields': ('cost_of_funds_rate', 'federal_tax_bracket_rate'),
+             'classes': ('collapse',) # Optional: Make section collapsible
+        }),
+        ('Internal ID & Timestamps', {
+            'fields': ('unique_id', 'created_at', 'last_modified_at'),
             'classes': ('collapse',)
         }),
     )
-    # Make unique_id read-only in the admin form as it's auto-generated
-    readonly_fields = ('unique_id',)
+    # unique_id is editable=False in model, created/modified are auto
+    readonly_fields = ('unique_id', 'created_at', 'last_modified_at')
 
 @admin.register(Security)
 class SecurityAdmin(admin.ModelAdmin):
     """ Admin configuration for the Security model. """
     list_display = (
-        'cusip', 'description', 'issue_date', 'maturity_date',
-        'coupon', 'wal', 'payment_frequency', 'day_count', 'factor' # Added more fields
+        'cusip', 'description',
+        'security_type',      # New FK relationship
+        'issuer_name',
+        'maturity_date',
+        'coupon',             # Updated field
+        'tax_code',           # New field
+        'allows_paydown',     # New field
+        'factor'
     )
-    search_fields = ('cusip', 'description')
-    list_filter = ('day_count', 'payment_frequency')
-    # Define fields for the add/change form if needed, otherwise defaults are used
-    # fields = ('cusip', 'description', ...)
-    readonly_fields = ('id',) # Make internal ID read-only
+    search_fields = (
+        'cusip',
+        'description',
+        'issuer_name',
+        'sector',
+        'security_type__name' # Search related type name
+    )
+    list_filter = (
+        'tax_code',           # New field
+        'interest_calc_code', # New field
+        'allows_paydown',     # New field
+        'callable_flag',
+        'security_type',      # Filter by related type object
+        'state_of_issuer',
+        'sector',
+    )
+    # Use raw_id_fields for FKs if related tables become large
+    raw_id_fields = ('security_type', 'interest_schedule')
+    fieldsets = (
+         (None, {
+            'fields': ('cusip', 'description', 'security_type', 'issuer_name', 'sector', 'state_of_issuer')
+         }),
+         ('Financial Terms', {
+             'fields': (
+                 'coupon', 'secondary_rate', 'rate_effective_date', # Added new rate fields
+                 'currency', 'issue_date', 'maturity_date', 'tax_code', # Added tax_code
+                 'payments_per_year', 'interest_day', 'interest_schedule', # Added schedule/day/ppy
+                 'interest_calc_code', 'payment_delay_days', # Added calc_code/delay
+                 'factor', 'allows_paydown', 'wal' # Added allows_paydown
+                )
+         }),
+         ('Callability', {
+            'fields': ('callable_flag', 'call_date')
+         }),
+         ('Ratings', {
+            'fields': ('moody_rating', 'sp_rating', 'fitch_rating')
+         }),
+         ('Timestamps', {
+            'fields': ('created_at', 'last_modified_at'),
+            'classes': ('collapse',)
+         }),
+    )
+    # cusip is primary_key=True in model, created/modified are auto
+    readonly_fields = ('created_at', 'last_modified_at')
 
 @admin.register(Portfolio)
 class PortfolioAdmin(admin.ModelAdmin):
@@ -66,46 +152,44 @@ class PortfolioAdmin(admin.ModelAdmin):
     list_display = (
         'name',
         'owner_customer_number', # Custom method display
-        'is_default', # Display the default flag
+        'is_default',
         'created_at'
     )
     search_fields = ('name', 'owner__name', 'owner__customer_number')
-    list_filter = ('owner__name', 'is_default') # Allow filtering by owner and default status
-    # Use raw_id_fields for ForeignKey owner for performance if there are many customers
+    list_filter = ('owner__name', 'is_default')
     raw_id_fields = ('owner',)
-    # Make is_default editable, but consider implications (should only be set by import?)
-    readonly_fields = ('id', 'created_at',) # created_at is usually read-only
+    # created_at is editable=False in model
+    readonly_fields = ('created_at',)
 
     # Method to display owner's customer number in list_display
     @admin.display(description='Owner Customer No.', ordering='owner__customer_number')
     def owner_customer_number(self, obj):
-        # Safely access owner and customer_number
         return obj.owner.customer_number if obj.owner else None
 
 @admin.register(CustomerHolding)
 class CustomerHoldingAdmin(admin.ModelAdmin):
     """ Admin configuration for the CustomerHolding model. """
     list_display = (
-        'ticket_id',
-        'portfolio_name', # Custom display field
-        'security_cusip', # Custom display field
+        'external_ticket', # Changed from ticket_id
+        'portfolio_name',
+        'security_cusip',
         'original_face_amount',
-        'owner_customer_number' # Display actual owner number
+        'settlement_date',
+        'intention_code', # New field
+        'owner_customer_number'
     )
     search_fields = (
-        'ticket_id',
+        'external_ticket', # Changed from ticket_id
         'portfolio__name',
         'security__cusip',
         'security__description',
-        # 'customer__customer_number', # Removed redundant field search
-        'portfolio__owner__name', # Search on actual owner name
-        'portfolio__owner__customer_number' # Search on actual owner number
+        'portfolio__owner__name',
+        'portfolio__owner__customer_number'
     )
-    list_filter = ('portfolio__owner__name', 'portfolio__name') # Filter by customer (via portfolio) or portfolio name
-    # Use raw_id_fields for performance with large numbers of related objects
-    raw_id_fields = ('portfolio', 'security') # Removed 'customer'
-    # Make certain fields read-only if they shouldn't be edited directly here
-    readonly_fields = ('id', 'ticket_id') # Removed customer fields
+    list_filter = ('portfolio__owner__name', 'portfolio__name', 'intention_code') # Added intention_code
+    raw_id_fields = ('portfolio', 'security')
+    # ticket_id is primary_key=True and editable=False, created/modified are auto
+    readonly_fields = ('ticket_id', 'created_at', 'last_modified_at')
 
     # Method to display portfolio name
     @admin.display(description='Portfolio', ordering='portfolio__name')
@@ -120,40 +204,21 @@ class CustomerHoldingAdmin(admin.ModelAdmin):
     # Method to display customer number (from portfolio owner)
     @admin.display(description='Owner No.', ordering='portfolio__owner__customer_number')
     def owner_customer_number(self, obj):
+        # Safely access related objects
         return obj.portfolio.owner.customer_number if obj.portfolio and obj.portfolio.owner else None
 
 
-# --- NEW Admin for Municipal Offerings ---
 @admin.register(MunicipalOffering)
 class MunicipalOfferingAdmin(admin.ModelAdmin):
-    """ Admin configuration for the MunicipalOffering model. """
+    """ Admin configuration for the MunicipalOffering model. (No changes needed yet) """
     list_display = (
-        'cusip',
-        'description',
-        'amount',
-        'coupon',
-        'maturity_date',
-        'yield_rate',
-        'price',
-        'state',
-        'moody_rating',
-        'sp_rating',
-        'last_updated',
+        'cusip', 'description', 'amount', 'coupon', 'maturity_date',
+        'yield_rate', 'price', 'state', 'moody_rating', 'sp_rating', 'last_updated',
     )
-    search_fields = (
-        'cusip',
-        'description',
-        'state',
-        'insurance',
-    )
-    list_filter = (
-        'state',
-        'insurance',
-        'moody_rating',
-        'sp_rating',
-    )
-    readonly_fields = ('id', 'last_updated',) # Make auto fields read-only
-    # Define field layout for add/change form if desired
+    search_fields = ('cusip', 'description', 'state', 'insurance',)
+    list_filter = ('state', 'insurance', 'moody_rating', 'sp_rating',)
+    # cusip is PK, last_updated is auto
+    readonly_fields = ('last_updated',)
     fieldsets = (
         (None, {
             'fields': ('cusip', 'description', 'amount', 'state', 'insurance')
@@ -163,7 +228,7 @@ class MunicipalOfferingAdmin(admin.ModelAdmin):
         }),
         ('Call Information', {
             'fields': ('call_date', 'call_price'),
-            'classes': ('collapse',) # Optional: collapse this section
+            'classes': ('collapse',)
         }),
         ('Ratings', {
             'fields': ('moody_rating', 'sp_rating'),
@@ -173,4 +238,3 @@ class MunicipalOfferingAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
-

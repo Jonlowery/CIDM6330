@@ -1,3 +1,5 @@
+# settings.py (Add 'django_filters' to INSTALLED_APPS and Pagination)
+
 """
 Django settings for bondsystem project.
 
@@ -38,9 +40,10 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework.authtoken',
     'corsheaders',
-    'portfolio.apps.PortfolioConfig',
-    'django_celery_beat', # Added for Celery Beat scheduling
-    'django_celery_results', # Added for storing Celery results in DB (optional but useful)
+    'django_filters',                   # *** ADDED django-filter app ***
+    'portfolio.apps.PortfolioConfig',   # Your app
+    'django_celery_beat',               # Added for Celery Beat scheduling
+    'django_celery_results',            # Added for storing Celery results in DB (optional but useful)
 ]
 
 MIDDLEWARE = [
@@ -64,6 +67,7 @@ TEMPLATES = [
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
+                'django.template.context_processors.debug', # Added for template debugging if needed
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
@@ -139,7 +143,25 @@ REST_FRAMEWORK = {
   'DEFAULT_PERMISSION_CLASSES': [
     'rest_framework.permissions.IsAuthenticated', # Ensures only logged-in users can access API views by default
   ],
-   'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend'], # Enable filters globally if desired
+   'DEFAULT_FILTER_BACKENDS': [
+       'django_filters.rest_framework.DjangoFilterBackend' # Ensure this backend is enabled
+    ],
+   # --- ADDED Pagination Settings ---
+   # Sets the default pagination style for list views
+   'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+   # Sets the default number of items returned per page (e.g., 25)
+   'PAGE_SIZE': 25
+   # Optional: Allow frontend to specify page size via query parameter (e.g., ?page_size=50)
+   # 'PAGE_SIZE_QUERY_PARAM': 'page_size',
+   # Optional: Set a maximum page size the frontend can request
+   # 'MAX_PAGE_SIZE': 100
+   # --- END Pagination Settings ---
+
+   # Optional: Add default renderer classes if needed, including BrowsableAPIRenderer
+   # 'DEFAULT_RENDERER_CLASSES': [
+   #      'rest_framework.renderers.JSONRenderer',
+   #      'rest_framework.renderers.BrowsableAPIRenderer', # Needed for the web view
+   #  ]
 }
 
 
