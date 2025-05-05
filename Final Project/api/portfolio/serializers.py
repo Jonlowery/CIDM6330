@@ -1,4 +1,4 @@
-# portfolio/serializers.py (Add Nested Security to Holding Serializer)
+# portfolio/serializers.py (Add CPR field to SecuritySerializer)
 
 from rest_framework import serializers
 # Import models using relative path within the app
@@ -147,6 +147,11 @@ class SecuritySerializer(serializers.ModelSerializer):
     secondary_rate = serializers.DecimalField(max_digits=12, decimal_places=8, coerce_to_string=True, allow_null=True)
     factor = serializers.DecimalField(max_digits=18, decimal_places=10, coerce_to_string=True, allow_null=True) # Factor might be null if not applicable
     wal = serializers.DecimalField(max_digits=8, decimal_places=3, coerce_to_string=True, allow_null=True)
+    # *** ADD CPR FIELD to serializer ***
+    cpr = serializers.DecimalField(
+        max_digits=8, decimal_places=5, coerce_to_string=True, allow_null=True, required=False
+    )
+    # ---------------------------------
 
 
     class Meta:
@@ -176,6 +181,9 @@ class SecuritySerializer(serializers.ModelSerializer):
             'payment_delay_days', # Required (>=0)
             'factor', # Current factor (now coerced to string)
             'wal', # Weighted Average Life (optional, now coerced to string)
+            # *** ADD CPR FIELD to list ***
+            'cpr',
+            # ---------------------------
             # Issuer & Other Details
             'issuer_name',
             'currency',
@@ -204,6 +212,8 @@ class SecuritySerializer(serializers.ModelSerializer):
             # Make write-only fields optional on update, required on create is handled elsewhere
             'security_type_id_input': {'required': False},
             'interest_schedule_code_input': {'required': False},
+            # *** Add CPR extra_kwargs ***
+            'cpr': {'required': False}, # Explicitly mark as not required by the serializer
         }
 
     def validate_security_type_id_input(self, value):

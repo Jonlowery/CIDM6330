@@ -1,4 +1,4 @@
-# portfolio/tasks.py (Add Email to Salesperson Import)
+# portfolio/tasks.py (Add CPR handling to Security import)
 
 import os
 import logging
@@ -507,6 +507,10 @@ def import_securities_from_excel(file_path):
         'rate_dt': 'rate_effective_date', # Optional date for secrate_rate
         'secrate_rate': 'secondary_rate', # Optional override rate
         'factor': 'factor_from_excel', # Temporary name for Excel 'factor'
+        # *** ADD CPR MAPPING ***
+        # Assuming the Excel column header is 'cpr' (case-insensitive)
+        'cpr': 'cpr',
+        # ----------------------
         # Add mappings for other potential columns if they exist in the Excel file
         # and map to existing/new Security fields (issuer_name, ratings, sector etc.)
         # Assuming they might exist with similar names for now:
@@ -557,6 +561,7 @@ def import_securities_from_excel(file_path):
         # 'interest_schedule_code', # FK lookup, not strictly mandatory header if FK can be null
         'interest_day', 'interest_calc_code',
         'payments_per_year', 'prin_paydown_flag', 'payment_delay_days'
+        # CPR is optional, so not added here
     ]
     missing_mandatory = [name for name in mandatory_internal_names if name not in col_idx_map]
     if missing_mandatory:
@@ -699,6 +704,13 @@ def import_securities_from_excel(file_path):
         state_of_issuer = str(raw_data.get('state_of_issuer', '')).strip().upper() or None
         wal = clean_decimal(raw_data.get('wal'), decimal_places=3, non_negative=True) # Optional WAL
 
+        # *** CLEAN CPR FIELD ***
+        # Use decimal_places=5 as defined in the model
+        cpr = clean_decimal(raw_data.get('cpr'), decimal_places=5)
+        # Add validation if needed (e.g., non-negative)
+        # cpr = clean_decimal(raw_data.get('cpr'), decimal_places=5, non_negative=True)
+        # -----------------------
+
         # Prepare defaults dictionary for update_or_create
         data_defaults = {
             'description': description,
@@ -719,6 +731,9 @@ def import_securities_from_excel(file_path):
             # Optional fields
             'call_date': call_date,
             'wal': wal,
+            # *** ADD CPR to defaults ***
+            'cpr': cpr,
+            # -------------------------
             'issuer_name': issuer_name,
             'currency': currency,
             'callable_flag': callable_flag,

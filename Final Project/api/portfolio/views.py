@@ -1,4 +1,4 @@
-# portfolio/views.py (Add WAL and Duration to sortable fields for Holdings)
+# portfolio/views.py (Add detailed logging around holding bulk_create)
 
 import os
 import logging
@@ -378,18 +378,35 @@ class PortfolioViewSet(viewsets.ModelViewSet):
                         next_ticket += 1 # Increment for the next holding
 
                     if new_holdings_to_create:
-                        log.info(f"PortfolioViewSet perform_create - Bulk creating {len(new_holdings_to_create)} new holdings...")
+                        # *** ADDED DEBUG LOGGING ***
+                        log.info(f"PortfolioViewSet perform_create - Prepared {len(new_holdings_to_create)} holdings for bulk create.")
+                        # Log details of the first holding to check data
+                        if new_holdings_to_create:
+                            first_holding_data = {f.name: getattr(new_holdings_to_create[0], f.name) for f in CustomerHolding._meta.fields}
+                            log.debug(f"Data for first holding to be created: {first_holding_data}")
+                        # *** END DEBUG LOGGING ***
+
+                        log.info(f"PortfolioViewSet perform_create - Attempting bulk create...")
                         # This bulk_create should now succeed as external_ticket is provided
                         try:
                             created_list = CustomerHolding.objects.bulk_create(new_holdings_to_create)
                             copied_holdings_count = len(created_list)
-                            log.info(f"PortfolioViewSet perform_create - Successfully copied {copied_holdings_count} holdings into portfolio {new_portfolio.id}.")
+                            # *** ADDED DEBUG LOGGING ***
+                            log.info(f"PortfolioViewSet perform_create - SUCCESSFULLY bulk created {copied_holdings_count} holdings into portfolio {new_portfolio.id}.")
+                            # *** END DEBUG LOGGING ***
                         except IntegrityError as copy_ie:
                             # This could still happen if somehow the generated ticket conflicts (e.g., race condition if not properly locked)
                             # Or if another unique constraint is violated (e.g., portfolio+security if that was re-added)
+                            # *** ADDED DEBUG LOGGING ***
                             log.error(f"PortfolioViewSet perform_create - IntegrityError during bulk copy of holdings into portfolio {new_portfolio.id}: {copy_ie}. Holdings were NOT copied.", exc_info=True)
+                            # *** END DEBUG LOGGING ***
                             # Raise a more specific error for the frontend
                             raise serializers.ValidationError({"initial_holding_ids": f"Could not copy holdings due to a data conflict: {copy_ie}"})
+                        # *** ADDED CATCH FOR OTHER EXCEPTIONS DURING BULK CREATE ***
+                        except Exception as bulk_ex:
+                            log.error(f"PortfolioViewSet perform_create - UNEXPECTED error during bulk copy of holdings into portfolio {new_portfolio.id}: {bulk_ex}. Holdings were NOT copied.", exc_info=True)
+                            raise serializers.ValidationError({"initial_holding_ids": f"An unexpected error occurred during holding copy: {bulk_ex}"})
+                        # *** END CATCH ***
                     else:
                         log.info(f"PortfolioViewSet perform_create - No valid holdings found to copy for portfolio {new_portfolio.id}.")
 

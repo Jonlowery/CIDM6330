@@ -1,4 +1,4 @@
-# portfolio/admin.py (Revamp Step 1)
+# portfolio/admin.py (Updated to display CPR)
 
 from django.contrib import admin
 # Import models from the current app, including the new ones
@@ -91,6 +91,7 @@ class CustomerAdmin(admin.ModelAdmin):
 @admin.register(Security)
 class SecurityAdmin(admin.ModelAdmin):
     """ Admin configuration for the Security model. """
+    # Added 'cpr' to list_display
     list_display = (
         'cusip', 'description',
         'security_type',      # New FK relationship
@@ -99,7 +100,8 @@ class SecurityAdmin(admin.ModelAdmin):
         'coupon',             # Updated field
         'tax_code',           # New field
         'allows_paydown',     # New field
-        'factor'
+        'factor',
+        'cpr'                 # Added CPR
     )
     search_fields = (
         'cusip',
@@ -119,6 +121,7 @@ class SecurityAdmin(admin.ModelAdmin):
     )
     # Use raw_id_fields for FKs if related tables become large
     raw_id_fields = ('security_type', 'interest_schedule')
+    # Added 'cpr' to the 'Financial Terms' fieldset
     fieldsets = (
          (None, {
             'fields': ('cusip', 'description', 'security_type', 'issuer_name', 'sector', 'state_of_issuer')
@@ -129,7 +132,7 @@ class SecurityAdmin(admin.ModelAdmin):
                  'currency', 'issue_date', 'maturity_date', 'tax_code', # Added tax_code
                  'payments_per_year', 'interest_day', 'interest_schedule', # Added schedule/day/ppy
                  'interest_calc_code', 'payment_delay_days', # Added calc_code/delay
-                 'factor', 'allows_paydown', 'wal' # Added allows_paydown
+                 'factor', 'allows_paydown', 'wal', 'cpr' # Added CPR
                 )
          }),
          ('Callability', {

@@ -1,4 +1,4 @@
-# portfolio/models.py (Remove Email Uniqueness from Salesperson)
+# portfolio/models.py (Add CPR field to Security)
 
 import uuid
 from django.conf import settings
@@ -350,6 +350,17 @@ class Security(models.Model):
     # --- Existing Fields (Review/Confirm Usage) ---
     call_date = models.DateField(blank=True, null=True, help_text="Optional first call date.")
     wal = models.DecimalField(max_digits=8, decimal_places=3, null=True, blank=True, help_text="Weighted Average Life (consider recalculating).")
+
+    # *** NEW CPR FIELD ***
+    cpr = models.DecimalField(
+        max_digits=8,  # Allows for XXX.YYYYY% (e.g., 100.12345)
+        decimal_places=5, # 5 decimal places for percentage precision
+        null=True,
+        blank=True,
+        help_text="Conditional Prepayment Rate (CPR) as a percentage (e.g., 6.5 for 6.5%). Optional."
+    )
+    # ----------------------
+
     # Removed old payment_frequency, day_count
 
     # --- Fields Moved/Added from MunicipalOffering/Other ---

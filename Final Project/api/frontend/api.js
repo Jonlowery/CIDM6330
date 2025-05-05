@@ -30,6 +30,9 @@ const emailInterestBtn = document.getElementById('email-interest-btn');
 const emailStatusMessage = document.getElementById('email-status-message');
 const emailBuyInterestBtn = document.getElementById('email-buy-interest-btn');
 const emailBuyStatusMessage = document.getElementById('email-buy-status-message');
+// *** ADDED: Button reference for disabling during fetch ***
+const createPortfolioSubmitButton = document.querySelector('#create-portfolio-form button[type="submit"]');
+
 
 // --- Helper Function for Backend Field Mapping ---
 /**
@@ -42,9 +45,7 @@ function mapFrontendKeyToBackend(frontendKey) {
     switch (frontendKey) {
         case 'security_cusip': return 'security__cusip';
         case 'security_description': return 'security__description';
-        // *** MODIFIED: Map frontend 'par_value' to backend 'calculated_par_value' ***
-        case 'par_value': return 'calculated_par_value';
-        // *** END MODIFICATION ***
+        case 'par_value': return 'calculated_par_value'; // Ensure this matches backend if par is filterable
         case 'book_price': return 'book_price';
         case 'market_price': return 'market_price';
         case 'coupon': return 'security__coupon'; // Nested field
@@ -54,10 +55,13 @@ function mapFrontendKeyToBackend(frontendKey) {
         case 'maturity_date': return 'security__maturity_date'; // Nested field
         case 'call_date': return 'security__call_date'; // Nested field
         case 'intention_code': return 'intention_code';
-        // Add other mappings if needed based on backend model structure
+        // Add other mappings if necessary based on backend model structure
         default:
-            console.warn(`Unhandled frontend key mapping: ${frontendKey}. Using directly.`);
-            return frontendKey; // Default to using the key directly if no specific mapping
+            // Only log warning if it's not already a backend-like key (contains '__')
+            if (!frontendKey.includes('__')) {
+                console.warn(`Unhandled frontend key mapping: ${frontendKey}. Using directly.`);
+            }
+            return frontendKey; // Default to using the key directly
     }
 }
 
@@ -241,7 +245,7 @@ export async function fetchHoldingsPage(portfolioId, page = 1) {
 
     // --- Construct URL with Filters and Sorting (using current state) ---
     const backendSortKey = mapFrontendKeyToBackend(state.currentSortKey); // Map sort key
-    console.log(`Mapped frontend sort key '${state.currentSortKey}' to backend key '${backendSortKey}'`); // Log the mapping result
+    // console.log(`Mapped frontend sort key '${state.currentSortKey}' to backend key '${backendSortKey}'`); // Log the mapping result
     const sortParam = `ordering=${state.currentSortDir === 'desc' ? '-' : ''}${backendSortKey}`;
 
     // *** FILTER FIX: Use mapFrontendKeyToBackend and correct lookup construction ***
@@ -311,14 +315,18 @@ export async function fetchHoldingsPage(portfolioId, page = 1) {
 
 /**
  * Fetches ALL pages of holdings for the current portfolio and filters.
- * Used specifically for exports and chart rendering that need the full dataset.
+ * Used specifically for exports, chart rendering, and **saving filtered portfolios**.
  * WARNING: Can be slow and memory-intensive for large datasets.
+ * @param {string} [sourcePortfolioId=null] - Optional. If provided, fetches for this ID instead of the currently selected one in the UI.
+ * @returns {Promise<Array>} A promise that resolves with the array of all filtered holding objects.
  */
-export async function fetchAllFilteredHoldings() {
-    const portfolioId = portfolioFilterSelect?.value;
+export async function fetchAllFilteredHoldings(sourcePortfolioId = null) {
+    // Use the provided sourcePortfolioId or fallback to the UI selection
+    const portfolioId = sourcePortfolioId || portfolioFilterSelect?.value;
+
     if (!portfolioId) {
-        console.warn("fetchAllFilteredHoldings: No portfolio selected.");
-        return []; // Return empty array if no portfolio is selected
+        console.warn("fetchAllFilteredHoldings: No portfolio ID provided or selected.");
+        return []; // Return empty array if no portfolio is selected/specified
     }
 
     console.log(`Fetching ALL holdings for portfolio ID: ${portfolioId} with current filters/sort.`);
@@ -522,9 +530,12 @@ export async function handleCreatePortfolioSubmit(event) {
     event.preventDefault();
     console.log("Handling create portfolio submit...");
 
+    // Disable submit button during processing
+    if (createPortfolioSubmitButton) createPortfolioSubmitButton.disabled = true;
     if(modalErrorMessage) {
-        modalErrorMessage.textContent = '';
-        modalErrorMessage.style.display = 'none';
+        modalErrorMessage.textContent = 'Processing...'; // Indicate activity
+        modalErrorMessage.style.display = 'block';
+        modalErrorMessage.classList.remove('error'); // Ensure error class is removed initially
     }
 
     const newPortfolioNameInput = document.getElementById('new-portfolio-name');
@@ -532,22 +543,26 @@ export async function handleCreatePortfolioSubmit(event) {
     if (!portfolioName) {
         if(modalErrorMessage) {
             modalErrorMessage.textContent = 'Portfolio name is required.';
-            modalErrorMessage.style.display = 'block';
+            modalErrorMessage.classList.add('error'); // Add error class
         }
+        if (createPortfolioSubmitButton) createPortfolioSubmitButton.disabled = false; // Re-enable button
         return;
     }
 
+    // Base payload
     const payload = { name: portfolioName };
     let ownerIdForPayload = null;
     const isCustomerSelectionVisible = adminCustomerSelectGroup && !adminCustomerSelectGroup.classList.contains('hidden');
 
+    // Determine owner ID
     if (isCustomerSelectionVisible) {
         ownerIdForPayload = adminCustomerSelect ? adminCustomerSelect.value : null;
         if (!ownerIdForPayload) {
             if(modalErrorMessage) {
                 modalErrorMessage.textContent = 'Please select a customer.';
-                modalErrorMessage.style.display = 'block';
+                modalErrorMessage.classList.add('error');
             }
+            if (createPortfolioSubmitButton) createPortfolioSubmitButton.disabled = false;
             return;
         }
         payload.owner_id_input = parseInt(ownerIdForPayload, 10);
@@ -555,8 +570,9 @@ export async function handleCreatePortfolioSubmit(event) {
         if (isNaN(payload.owner_id_input)) {
              if(modalErrorMessage) {
                  modalErrorMessage.textContent = 'Invalid customer ID selected.';
-                 modalErrorMessage.style.display = 'block';
+                 modalErrorMessage.classList.add('error');
              }
+             if (createPortfolioSubmitButton) createPortfolioSubmitButton.disabled = false;
              return;
         }
     } else {
@@ -565,6 +581,56 @@ export async function handleCreatePortfolioSubmit(event) {
         ownerIdForPayload = state.selectedCustomerId;
     }
 
+
+    // --- Fetch Filtered Holdings and Add IDs to Payload ---
+    try {
+        // Get the ID of the portfolio being viewed (the source for the filtered holdings)
+        const sourcePortfolioId = portfolioFilterSelect?.value;
+        if (!sourcePortfolioId) {
+            // If no specific portfolio is selected, maybe we should copy from the default?
+            // Or prevent saving a filtered view if no source portfolio is selected?
+            // For now, let's prevent it if no source is explicitly selected.
+             throw new Error("Please select the source portfolio you want to filter and save from.");
+        }
+
+        if(modalErrorMessage) modalErrorMessage.textContent = 'Fetching filtered holdings...';
+        console.log(`Fetching filtered holdings from source portfolio ID: ${sourcePortfolioId} to copy...`);
+
+        // Fetch ALL holdings matching the current filters for the SOURCE portfolio
+        const filteredHoldings = await fetchAllFilteredHoldings(sourcePortfolioId);
+
+        if (filteredHoldings && filteredHoldings.length > 0) {
+            // *** FIX: Map to 'external_ticket' and ensure it's a number ***
+            payload.initial_holding_ids = filteredHoldings
+                .map(h => h.external_ticket) // Get the external_ticket value
+                .filter(id => typeof id === 'number' && Number.isInteger(id)); // Ensure it's an integer
+
+            if (payload.initial_holding_ids.length !== filteredHoldings.length) {
+                console.warn("Some filtered holdings were missing a valid integer 'external_ticket'.");
+                // Log the holdings that failed the check
+                const missingIds = filteredHoldings.filter(h => !(typeof h.external_ticket === 'number' && Number.isInteger(h.external_ticket)));
+                console.warn("Holdings with missing/invalid external_ticket:", missingIds);
+            }
+            console.log(`Adding ${payload.initial_holding_ids.length} external_ticket IDs to the payload.`);
+        } else {
+            console.log("No holdings matched the current filters. Creating an empty portfolio.");
+            payload.initial_holding_ids = []; // Send empty array if no holdings match
+        }
+
+    } catch (error) {
+        console.error('Failed to fetch or process filtered holdings:', error);
+        if(modalErrorMessage) {
+            modalErrorMessage.textContent = `Error preparing holdings: ${error.message}`;
+            modalErrorMessage.classList.add('error');
+        }
+        if (createPortfolioSubmitButton) createPortfolioSubmitButton.disabled = false; // Re-enable button
+        return; // Stop submission
+    }
+    // --- End Fetching Filtered Holdings ---
+
+
+    // --- Send Create Request ---
+    if(modalErrorMessage) modalErrorMessage.textContent = 'Sending request...';
     console.log("Final create portfolio payload:", JSON.stringify(payload));
 
     try {
@@ -581,12 +647,27 @@ export async function handleCreatePortfolioSubmit(event) {
         const responseData = await response.json().catch(() => ({ detail: response.statusText }));
 
         if (!response.ok) {
-            console.error("API Error Data:", responseData);
+            // *** Log the raw error response from the backend ***
+            console.error("Raw API Error Response Data:", responseData);
+            // *** End log ***
+
             let errorMsg = `Error ${response.status}: ${responseData.detail || JSON.stringify(responseData)}`;
-            if (typeof responseData === 'object' && responseData !== null) {
-                errorMsg = Object.entries(responseData)
-                                 .map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors.join(', ') : errors}`)
-                                 .join('; ');
+            // Attempt to parse DRF error format more robustly
+            if (typeof responseData === 'object' && responseData !== null && !responseData.detail) {
+                 errorMsg = Object.entries(responseData)
+                     .map(([field, errors]) => {
+                         let errorString;
+                         if (Array.isArray(errors)) {
+                             errorString = errors.join(', ');
+                         } else if (typeof errors === 'object' && errors !== null) {
+                             // Try to extract nested errors if it's an object
+                             errorString = JSON.stringify(errors); // Simple stringify for now
+                         } else {
+                             errorString = String(errors);
+                         }
+                         return `${field}: ${errorString}`;
+                     })
+                     .join('; ');
             }
             throw new Error(errorMsg);
         }
@@ -639,8 +720,11 @@ export async function handleCreatePortfolioSubmit(event) {
         console.error('Failed to create portfolio:', error);
         if(modalErrorMessage) {
             modalErrorMessage.textContent = `Creation failed: ${error.message}`;
-            modalErrorMessage.style.display = 'block';
+            modalErrorMessage.classList.add('error');
         }
+    } finally {
+         // Re-enable submit button regardless of success or failure
+        if (createPortfolioSubmitButton) createPortfolioSubmitButton.disabled = false;
     }
  }
 
@@ -716,6 +800,7 @@ export async function handleEmailInterestClick() {
     // For now, assume current page data is sufficient for CUSIP/Par
     const selectedBondsPayload = [];
     state.currentHoldingsData.results.forEach(holding => {
+        // Use ticket_id for selection tracking in the UI
         if (state.selectedHoldingIds.has(holding.ticket_id)) {
             selectedBondsPayload.push({
                 cusip: holding.security_cusip || 'N/A',
@@ -769,6 +854,9 @@ export async function handleEmailInterestClick() {
         console.error("Network/Fetch Error sending email:", error);
         ui.showStatusMessageGeneric(emailStatusMessage, "Network error. Please try again.", true);
         if(emailInterestBtn) emailInterestBtn.disabled = state.selectedHoldingIds.size === 0; // Re-enable based on selection state
+    } finally {
+        // Re-enable button if needed (e.g., if selection still exists after error)
+        if(emailInterestBtn) emailInterestBtn.disabled = state.selectedHoldingIds.size === 0;
     }
 }
 
@@ -789,6 +877,7 @@ export async function handleEmailBuyInterestClick() {
     // Fetch details for selected offerings from the current page data
     const selectedOfferingsPayload = [];
     state.currentMuniOfferingsData.results.forEach(offering => {
+        // Use the offering's primary key 'id' for selection tracking
         if (state.selectedMuniOfferingIds.has(offering.id)) {
             selectedOfferingsPayload.push({
                 cusip: offering.cusip || 'N/A',
@@ -843,5 +932,8 @@ export async function handleEmailBuyInterestClick() {
         console.error("Network/Fetch Error sending buy interest email:", error);
         ui.showStatusMessageGeneric(emailBuyStatusMessage, "Network error. Please try again.", true);
         if(emailBuyInterestBtn) emailBuyInterestBtn.disabled = state.selectedMuniOfferingIds.size === 0; // Re-enable
+    } finally {
+         // Re-enable button if needed
+         if(emailBuyInterestBtn) emailBuyInterestBtn.disabled = state.selectedMuniOfferingIds.size === 0;
     }
 }
