@@ -1,22 +1,23 @@
 // export.js
 // Handles exporting data to PDF and Excel (XLSX).
+// VERSION: Corrected import path for showStatusMessageGeneric and added parseFloatSafe import.
 
 "use strict";
 
 import { XLSX } from './config.js';
 import * as state from './state.js';
-import { fetchAllFilteredHoldings } from './api.js'; // Still needed for Excel export
-import { processHoldings, showStatusMessageGeneric } from './ui.js'; // Import processing and status functions
+import { fetchAllFilteredHoldings } from './api.js';
+import { processHoldings } from './ui.js';
+// *** FIX: Import showStatusMessageGeneric and parseFloatSafe from utils.js ***
+import { showStatusMessageGeneric, parseFloatSafe } from './utils.js'; // Corrected import path & added parseFloatSafe
 
 // --- DOM Element References ---
 const portfolioNameEl = document.getElementById('portfolio-name');
-const customerSelect = document.getElementById('customer-select'); // For filename
-const portfolioFilterSelect = document.getElementById('portfolio-filter-select'); // For filename
+const customerSelect = document.getElementById('customer-select');
+const portfolioFilterSelect = document.getElementById('portfolio-filter-select');
 const exportPdfBtn = document.getElementById('export-pdf-btn');
 const exportExcelBtn = document.getElementById('export-excel-btn');
-// *** REMOVED: statusArea = document.body ***
-// We will use a more targeted approach or rely on console/button state.
-// If a dedicated status element exists (e.g., <div id="export-status"></div>), use it:
+// Optional: Add a dedicated status element reference if needed
 // const exportStatusElement = document.getElementById('export-status');
 
 // Helper function for a small delay
@@ -32,52 +33,33 @@ function delay(ms) {
  * @param {boolean} disableButtons - Whether to disable export buttons.
  */
 function updateExportStatus(message, isError, disableButtons) {
-    // Log status to console
     console.log(`Export Status: ${message} (Error: ${isError})`);
 
-    // Update button state
     if (exportPdfBtn) exportPdfBtn.disabled = disableButtons;
     if (exportExcelBtn) exportExcelBtn.disabled = disableButtons;
 
     // --- Optional: Update a dedicated status element ---
-    // Uncomment and adapt if you have an element like <div id="export-status"></div> in index.html
-    /*
-    const exportStatusElement = document.getElementById('export-status');
-    if (exportStatusElement) {
-        exportStatusElement.textContent = message;
-        exportStatusElement.className = 'export-status-message'; // Base class
-        if (message) {
-            exportStatusElement.classList.add(isError ? 'error' : 'success');
-            exportStatusElement.style.display = 'block';
-        } else {
-            exportStatusElement.style.display = 'none'; // Hide if message is empty
-        }
-    }
-    */
-   // --- End Optional ---
-
-   // If showing a final success/error message briefly, use alert or a temporary overlay
-   // For now, we rely on console logs and button state changes primarily.
-   // A final alert can be added for completion if desired.
-
+    // const exportStatusElement = document.getElementById('export-status');
+    // if (exportStatusElement) {
+    //     showStatusMessageGeneric(exportStatusElement, message, isError, 0); // Use generic message display (0 duration)
+    //     if (!message) { // Hide if message is empty
+    //          exportStatusElement.style.display = 'none';
+    //     }
+    // }
+    // --- End Optional ---
 }
 
 /** Exports the current view (charts and ALL filtered holdings table) to a PDF document. */
 export async function exportToPdf(event) {
     if (event) event.preventDefault();
     console.log("Initiating exportToPdf function...");
-
-    // Disable buttons immediately and show initial status
     updateExportStatus("Preparing PDF generation...", false, true);
-
-    // Minimal delay to allow UI update (button disabling)
     await delay(50);
 
     let pdfGeneratedSuccessfully = false;
     let chartErrorOccurred = false;
 
     try {
-        // --- Library Checks ---
         updateExportStatus("Checking PDF libraries...", false, true);
         if (typeof window.jspdf === 'undefined' || typeof window.jspdf.jsPDF === 'undefined') {
             throw new Error("PDF library (jsPDF) not loaded.");
@@ -88,12 +70,10 @@ export async function exportToPdf(event) {
             throw new Error("PDF AutoTable plugin not loaded correctly.");
         }
         console.log("jsPDF and autoTable libraries loaded.");
-        // --- End Library Checks ---
 
         updateExportStatus("Initializing PDF document...", false, true);
         const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
 
-        // PDF styles
         const pdfHeaderBg = '#e9ecef'; const pdfHeaderText = '#495057';
         const pdfTextColor = '#333333'; const pdfBorderColor = '#dee2e6';
         const pdfRowBg = '#ffffff'; const pdfAlternateRowBg = '#f8f9fa';
@@ -104,14 +84,12 @@ export async function exportToPdf(event) {
         const usableWidth = pageWidth - (2 * margin);
         let currentY = margin;
 
-        // --- Title ---
         console.log("Adding PDF Title...");
         doc.setFontSize(18); doc.setTextColor(51);
         const viewTitle = portfolioNameEl?.textContent || 'Portfolio Analysis';
         doc.text(`${viewTitle} - Analysis`, margin, currentY);
         currentY += 30;
 
-        // --- Charts ---
         updateExportStatus("Adding charts to PDF...", false, true);
         console.log("Attempting to add Charts from stored state...");
         doc.setFontSize(14); doc.setTextColor(70);
@@ -125,7 +103,12 @@ export async function exportToPdf(event) {
         const chartStartX2 = margin + chartWidth + chartGap;
         const chartStartY1 = currentY;
         const chartStartY2 = chartStartY1 + chartHeight + chartGap;
-        const chartIds = ['yieldVsMaturityChart', 'parByMaturityYearChart', 'couponPieChart', 'priceVsYieldChart'];
+        const chartIds = [
+            'yieldVsMaturityChart',
+            'parByMaturityYearChart',
+            'couponPieChart',
+            'portfolioCashFlowChart'
+        ];
         let chartBottomY = chartStartY1;
 
         console.log("Adding stored chart images to PDF...");
@@ -146,26 +129,25 @@ export async function exportToPdf(event) {
                 } catch (addImageError) {
                     console.error(`Error adding image for chart ${chartId}:`, addImageError);
                     chartErrorOccurred = true;
+                    doc.setDrawColor(200); doc.setLineWidth(0.5); doc.rect(x, y, chartWidth, chartHeight);
+                    doc.setFontSize(9); doc.setTextColor(150); doc.text(`Error adding chart`, x + chartWidth / 2, y + chartHeight / 2, { align: 'center', baseline: 'middle' });
+                    chartBottomY = Math.max(chartBottomY, y + chartHeight);
                 }
             } else {
                 console.warn(`Skipping chart ${chartId} (no valid image data found).`);
                 chartErrorOccurred = true;
-                doc.setDrawColor(200); doc.setLineWidth(0.5);
-                doc.rect(x, y, chartWidth, chartHeight);
-                doc.setFontSize(9); doc.setTextColor(150);
-                doc.text(`Chart data unavailable`, x + chartWidth / 2, y + chartHeight / 2, { align: 'center', baseline: 'middle' });
+                doc.setDrawColor(200); doc.setLineWidth(0.5); doc.rect(x, y, chartWidth, chartHeight);
+                doc.setFontSize(9); doc.setTextColor(150); doc.text(`Chart data unavailable`, x + chartWidth / 2, y + chartHeight / 2, { align: 'center', baseline: 'middle' });
                 chartBottomY = Math.max(chartBottomY, y + chartHeight);
             }
         }
         console.log("Finished adding available chart images to PDF.");
         currentY = chartBottomY + 30;
 
-        // --- Add Page Break for table ---
         console.log("Adding page break before table.");
         doc.addPage();
         currentY = margin;
 
-        // --- Fetch All Holdings Data for Table ---
         updateExportStatus("Fetching all holdings data...", false, true);
         let allHoldingsProcessed = [];
         let allHoldingsRaw = [];
@@ -184,7 +166,6 @@ export async function exportToPdf(event) {
             console.log(`Processing complete for ${allHoldingsProcessed.length} holdings.`);
         }
 
-        // --- Holdings Table ---
         updateExportStatus("Generating table...", false, true);
         console.log("Adding Holdings Table to PDF...");
         doc.setFontSize(14); doc.setTextColor(70);
@@ -195,16 +176,20 @@ export async function exportToPdf(event) {
             "CUSIP", "Description", "Par", "Book Price", "Market Price", "Coupon",
             "Book Yield", "WAL", "Duration", "Maturity Date", "Call Date", "Intention"
         ]];
-        const body = allHoldingsProcessed.map(h => [
-            h.security_cusip ?? 'N/A', h.security_description ?? '',
-            (h.par_value_num ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-            (h.book_price_num ?? 0).toFixed(6), (h.market_price_num ?? 0).toFixed(6),
-            (h.coupon_num ?? 0).toFixed(3), (h.book_yield_num ?? 0).toFixed(3),
-            (h.holding_average_life_num ?? 0).toFixed(2), (h.holding_duration_num ?? 0).toFixed(2),
-            h.maturity_date_obj ? h.maturity_date_obj.toLocaleDateString() : 'N/A',
-            h.call_date_obj ? h.call_date_obj.toLocaleDateString() : 'N/A',
-            h.intention_code ?? 'N/A'
-        ]);
+        const body = allHoldingsProcessed.map(h => {
+            // Ensure parseFloatSafe is used for par_value which might be a string from serializer
+            const parValue = h.par_value ? parseFloatSafe(h.par_value) : (h.par_value_num ?? 0);
+            return [
+                h.security_cusip ?? 'N/A', h.security_description ?? '',
+                parValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                (h.book_price_num ?? 0).toFixed(6), (h.market_price_num ?? 0).toFixed(6),
+                (h.coupon_num ?? 0).toFixed(3), (h.book_yield_num ?? 0).toFixed(3),
+                (h.holding_average_life_num ?? 0).toFixed(2), (h.holding_duration_num ?? 0).toFixed(2),
+                h.maturity_date_obj ? h.maturity_date_obj.toLocaleDateString() : 'N/A',
+                h.call_date_obj ? h.call_date_obj.toLocaleDateString() : 'N/A',
+                h.intention_code ?? 'N/A'
+            ];
+        });
 
         if (body.length === 0) {
             console.warn("No data rows to add to the PDF table.");
@@ -237,27 +222,25 @@ export async function exportToPdf(event) {
         }
         pdfGeneratedSuccessfully = true;
 
-        // --- Save the PDF ---
         if (pdfGeneratedSuccessfully) {
-            updateExportStatus("Saving PDF...", false, true); // Keep buttons disabled until after save
+            updateExportStatus("Saving PDF...", false, true);
             await delay(50);
             const selectedCustomerOption = customerSelect?.options[customerSelect.selectedIndex];
             const selectedPortfolioOption = portfolioFilterSelect?.options[portfolioFilterSelect.selectedIndex];
-            let baseFilename = 'export';
+            let baseFilename = 'portfolio_analysis';
             if (selectedPortfolioOption?.value) {
                 baseFilename = selectedPortfolioOption.text.split('(')[0].trim();
             } else if (selectedCustomerOption?.value) {
                 baseFilename = selectedCustomerOption.text.split('(')[0].trim();
             }
             const safeFilename = baseFilename.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-            doc.save(`portfolio_${safeFilename}_analysis.pdf`);
+            doc.save(`${safeFilename}.pdf`);
             console.log("PDF export process finished successfully.");
 
-            // Use alert for final confirmation, as status messages might be cleared too quickly or missed
-             const finalMessage = chartErrorOccurred
-                ? "PDF Export Complete (Warning: Some charts missing)."
-                : "PDF Export Complete!";
-             alert(finalMessage); // Use alert for clear user feedback
+            const finalMessage = chartErrorOccurred
+               ? "PDF Export Complete (Warning: Some charts missing)."
+               : "PDF Export Complete!";
+            console.log(finalMessage);
 
         } else {
             throw new Error("PDF generation failed before saving.");
@@ -265,15 +248,13 @@ export async function exportToPdf(event) {
 
     } catch (error) {
         console.error("Error during PDF export process:", error);
-        const errorMessage = error.message || "An unknown error occurred during PDF export.";
-        alert(`PDF Export Failed: ${errorMessage}`); // Use alert for errors too
-        // Log status to console as well
-        updateExportStatus(`PDF Export Failed: ${errorMessage}`, true, false); // Keep buttons enabled after error alert
+        const errorMessage = `PDF Export Failed: ${error.message || "An unknown error occurred."}`;
+        console.error(errorMessage);
+        alert(errorMessage);
 
     } finally {
-        // Ensure buttons are re-enabled in all cases (success or caught error)
         console.log("Re-enabling export buttons.");
-        updateExportStatus("", false, false); // Clear status message (if using dedicated element) and enable buttons
+        updateExportStatus("", false, false);
     }
 }
 
@@ -282,7 +263,6 @@ export async function exportToPdf(event) {
 export async function exportToXlsx(event) {
     if (event) event.preventDefault();
     console.log("Initiating exportToXlsx function...");
-
     updateExportStatus("Preparing Excel export...", false, true);
     await delay(50);
 
@@ -305,8 +285,8 @@ export async function exportToXlsx(event) {
 
         if (!holdingsToExport || holdingsToExport.length === 0) {
             console.warn("No holdings data found to export.");
-            alert("No holdings data found matching the current filters to export."); // Alert user
-            updateExportStatus("No holdings data found for export.", true, false); // Log and enable buttons
+            alert("No holdings data found matching the current filters to export.");
+            updateExportStatus("No holdings data found for export.", true, false);
             return;
         }
 
@@ -319,15 +299,19 @@ export async function exportToXlsx(event) {
             "CUSIP", "Description", "Par", "Book Price", "Market Price", "Coupon",
             "Book Yield", "WAL", "Duration", "Maturity Date", "Call Date", "Intention"
         ];
-        const data = processedHoldings.map(h => [
-            h.security_cusip || '', h.security_description || '',
-            h.par_value_num ?? null, h.book_price_num ?? null, h.market_price_num ?? null,
-            h.coupon_num ?? null, h.book_yield_num ?? null, h.holding_average_life_num ?? null,
-            h.holding_duration_num ?? null,
-            h.maturity_date_str_iso || (h.maturity_date_obj ? h.maturity_date_obj.toLocaleDateString() : ''),
-            h.call_date_str_iso || (h.call_date_obj ? h.call_date_obj.toLocaleDateString() : ''),
-            h.intention_code || ''
-        ]);
+        const data = processedHoldings.map(h => {
+            const parValue = h.par_value ? parseFloatSafe(h.par_value) : (h.par_value_num ?? null);
+            return [
+                h.security_cusip || '', h.security_description || '',
+                parValue,
+                h.book_price_num ?? null, h.market_price_num ?? null,
+                h.coupon_num ?? null, h.book_yield_num ?? null,
+                h.holding_average_life_num ?? null, h.holding_duration_num ?? null,
+                h.maturity_date_obj || (h.security?.maturity_date || ''),
+                h.call_date_obj || (h.security?.call_date || ''),
+                h.intention_code || ''
+            ];
+        });
 
         const sheetData = [headers, ...data];
         const ws = XLSX.utils.aoa_to_sheet(sheetData);
@@ -338,28 +322,37 @@ export async function exportToXlsx(event) {
         ];
 
         const numberCols = [2, 3, 4, 5, 6, 7, 8];
-        const precision6Cols = [3, 4]; const precision3Cols = [5, 6]; const precision2Cols = [2, 7, 8];
+        const precision6Cols = [3, 4];
+        const precision3Cols = [5, 6];
+        const precision2Cols = [2, 7, 8];
         const dateCols = [9, 10];
 
         for (let R = 1; R < sheetData.length; ++R) {
             numberCols.forEach(C => {
-                const cell_address = { c: C, r: R }; const cell_ref = XLSX.utils.encode_cell(cell_address);
+                const cell_address = { c: C, r: R };
+                const cell_ref = XLSX.utils.encode_cell(cell_address);
                 if (ws[cell_ref] && typeof ws[cell_ref].v === 'number') {
                     ws[cell_ref].t = 'n';
                     if (precision6Cols.includes(C)) ws[cell_ref].z = '#,##0.000000';
                     else if (precision3Cols.includes(C)) ws[cell_ref].z = '#,##0.000';
                     else if (precision2Cols.includes(C)) ws[cell_ref].z = '#,##0.00';
                     else ws[cell_ref].z = '#,##0.######';
+                } else if (ws[cell_ref] && ws[cell_ref].v === null) {
+                    ws[cell_ref].v = undefined;
+                    ws[cell_ref].t = 'z';
                 }
             });
             dateCols.forEach(C => {
-                const cell_address = { c: C, r: R }; const cell_ref = XLSX.utils.encode_cell(cell_address);
+                const cell_address = { c: C, r: R };
+                const cell_ref = XLSX.utils.encode_cell(cell_address);
                 if (ws[cell_ref]?.v) {
-                    let dateVal = ws[cell_ref].v; let dateObj = null;
-                    if (dateVal instanceof Date && !isNaN(dateVal)) { dateObj = dateVal; }
-                    else if (typeof dateVal === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateVal)) { dateObj = new Date(dateVal + 'T00:00:00Z'); }
-                    if (dateObj && !isNaN(dateObj.getTime())) { ws[cell_ref].v = dateObj; ws[cell_ref].t = 'd'; ws[cell_ref].z = 'yyyy-mm-dd'; }
-                    else { ws[cell_ref].t = 's'; delete ws[cell_ref].z; }
+                    if (ws[cell_ref].v instanceof Date && !isNaN(ws[cell_ref].v)) {
+                         ws[cell_ref].t = 'd';
+                         ws[cell_ref].z = 'yyyy-mm-dd';
+                    } else {
+                        ws[cell_ref].t = 's';
+                        delete ws[cell_ref].z;
+                    }
                 }
             });
         }
@@ -373,24 +366,24 @@ export async function exportToXlsx(event) {
         if (selectedPortfolioOption?.value) { baseFilename = selectedPortfolioOption.text.split('(')[0].trim(); }
         else if (selectedCustomerOption?.value) { baseFilename = selectedCustomerOption.text.split('(')[0].trim(); }
         const safeFilename = baseFilename.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-        const filename = `portfolio_${safeFilename}_all_filtered.xlsx`;
+        const filename = `${safeFilename}_filtered.xlsx`;
 
-        updateExportStatus("Generating Excel file...", false, true); // Keep buttons disabled
+        updateExportStatus("Generating Excel file...", false, true);
         await delay(50);
 
         XLSX.writeFile(wb, filename);
         console.log(`XLSX export triggered: ${filename}`);
-        alert("Excel Export Complete!"); // Use alert for confirmation
+        console.log("Excel Export Complete!");
+        alert("Excel Export Complete!");
 
     } catch (error) {
         console.error("Error exporting to XLSX:", error);
-        const errorMessage = error.message || "An unknown error occurred during Excel export.";
-        alert(`Excel Export Failed: ${errorMessage}`); // Use alert for errors
-        updateExportStatus(`Excel Export Failed: ${errorMessage}`, true, false); // Log and enable buttons
+        const errorMessage = `Excel Export Failed: ${error.message || "An unknown error occurred."}`;
+        console.error(errorMessage);
+        alert(errorMessage);
 
     } finally {
-        // Ensure buttons are re-enabled
         console.log("Re-enabling export buttons.");
-        updateExportStatus("", false, false); // Clear status (if using element) and enable buttons
+        updateExportStatus("", false, false);
     }
 }

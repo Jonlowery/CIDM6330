@@ -49,6 +49,9 @@
     --pagination-button-hover-bg: color-mix(in srgb, var(--button-secondary-bg) 80%, black);
     --pagination-button-disabled-bg: color-mix(in srgb, var(--button-secondary-bg) 50%, transparent);
     --pagination-text-color: var(--text-color);
+    /* Chart specific */
+    --chart-container-bg: var(--container-bg); /* Use container bg for charts */
+    --chart-container-shadow: var(--section-shadow);
 }
 
 body.dark-mode {
@@ -92,6 +95,9 @@ body.dark-mode {
     --pagination-button-hover-bg: color-mix(in srgb, var(--button-secondary-bg) 80%, white);
     --pagination-button-disabled-bg: color-mix(in srgb, var(--button-secondary-bg) 30%, transparent);
     --pagination-text-color: var(--text-color);
+    /* Chart specific */
+    --chart-container-bg: #2d3748; /* Darker background for charts in dark mode */
+    --chart-container-shadow: 0 2px 4px rgba(0,0,0,0.4); /* Darker shadow */
 }
 
 /* Basic HTML and Body styling */
@@ -215,11 +221,6 @@ header.app-header button {
 #dark-mode-toggle:hover {
     background-color: color-mix(in srgb, var(--button-secondary-bg) 80%, black);
 }
-
-/* Export buttons are no longer in header */
-/* #export-pdf-btn { ... } */
-/* #export-excel-btn { ... } */
-
 
 /* Main container styling */
 .container {
@@ -391,9 +392,6 @@ button:disabled {
 
 
 /* Removed align-self and margin-top from individual buttons */
-/* #add-filter-btn { ... } */
-/* #clear-all-filters-btn { ... } */
-/* #create-portfolio-btn { ... } */
 #delete-portfolio-btn { margin-left: 0.5em; flex-grow: 0; }
 
 /* Apply consistent small styling to BOTH remove filter buttons */
@@ -446,25 +444,29 @@ button.remove-muni-filter-btn {
 }
 
 
-/* Charts grid layout */
-.charts-grid {
+/* --- Charts Grid Layout --- */
+.charts-grid-container {
     display: grid;
+    /* Always create 2 equal columns */
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 1.5em;
-    align-items: start;
+    gap: 1.5em; /* Space between chart containers */
+    align-items: start; /* Align items at the start of the grid area */
     margin-bottom: 1.5em; /* Consistent margin */
     padding: 0;
     box-sizing: border-box;
 }
 
 .chart-container {
-    width: 100%;
-    height: 350px;
-    background-color: var(--container-bg);
-    padding: 1em;
-    border-radius: 8px;
-    box-shadow: var(--section-shadow);
-    box-sizing: border-box;
+    width: 100%; /* Make container fill grid cell */
+    height: 350px; /* Define a fixed height */
+    /* Use CSS variables for background and shadow */
+    background-color: var(--chart-container-bg);
+    box-shadow: var(--chart-container-shadow);
+    padding: 1em; /* Inner padding */
+    border-radius: 8px; /* Rounded corners */
+    box-sizing: border-box; /* Include padding in width/height */
+    position: relative; /* Needed for Chart.js responsiveness */
+    transition: background-color 0.3s; /* Smooth theme transition */
 }
 
 /* Table container styling (reusable) */
@@ -537,17 +539,20 @@ th.sorted .sort-arrow {
 /* Holdings Table Specifics */
 /* Holdings Table Cell Alignment */
 #holdings-table td:nth-child(2), /* CUSIP */
-#holdings-table td:nth-child(4) { text-align: left; } /* Description */
+#holdings-table td:nth-child(3) { text-align: left; } /* Description */
 
-#holdings-table td:nth-child(3), /* Ext Ticket */
-#holdings-table td:nth-child(5), /* Par */
-#holdings-table td:nth-child(6), /* Price */
+#holdings-table td:nth-child(4), /* Par */
+#holdings-table td:nth-child(5), /* Book Price */
+#holdings-table td:nth-child(6), /* Market Price */
 #holdings-table td:nth-child(7), /* Coupon */
 #holdings-table td:nth-child(8), /* Book Yield */
-#holdings-table td:nth-child(9) { text-align: right; } /* Avg Life */
+#holdings-table td:nth-child(9), /* WAL */
+#holdings-table td:nth-child(10) { text-align: right; } /* Duration */
 
-#holdings-table td:nth-child(10), /* Maturity */
-#holdings-table td:nth-child(11) { text-align: center; } /* Call Date */
+#holdings-table td:nth-child(11), /* Maturity */
+#holdings-table td:nth-child(12), /* Call Date */
+#holdings-table td:nth-child(13) { text-align: center; } /* Intention */
+
 
 #holdings-table tbody tr:nth-child(odd) {
     background-color: var(--table-odd-row-bg);
@@ -801,7 +806,10 @@ th.sorted .sort-arrow {
     .container { max-width: 95%; }
 }
 
-@media (max-width: 992px) {
+/* --- REMOVED: Media query that changed chart grid to 1 column --- */
+/* @media (max-width: 992px) { ... } */
+
+@media (max-width: 992px) { /* Keep other 992px rules */
     .filter-row, .control-row {
         flex-direction: column;
         align-items: stretch;
@@ -824,7 +832,8 @@ th.sorted .sort-arrow {
     #delete-portfolio-btn { margin-top: 0.5em; }
     header.app-header { padding: 0 1em; }
     .container { padding: 1.5em 1em; max-width: 100%; }
-    .charts-grid { grid-template-columns: 1fr; }
+    /* Stack charts vertically on medium screens - REMOVED */
+    /* .charts-grid-container { grid-template-columns: 1fr; } */
     .email-action-container { flex-direction: column; align-items: stretch; } /* Stack email button/message */
     /* Stack pagination controls on smaller screens */
     .pagination-controls {
@@ -870,6 +879,9 @@ th.sorted .sort-arrow {
     #muni-offerings-table td { font-size: 0.85em; padding: 0.4em 0.5em; } /* Further reduce for muni table */
     .chart-container { height: 300px; }
     .modal-content { width: 95%; padding: 1.5em; }
+    /* Ensure 2x2 grid still applies, even if overridden by 992px rule initially */
+    /* If you want stacking below 768px, add it here: */
+    .charts-grid-container { grid-template-columns: 1fr; } /* Stack below 768px */
 }
 
 @media (max-width: 480px) {
@@ -881,4 +893,3 @@ th.sorted .sort-arrow {
     .pagination-controls .page-info { font-size: 0.8em; } /* Smaller page info text */
     .pagination-controls button { font-size: 0.8em; padding: 0.4em 0.8em; } /* Smaller pagination buttons */
 }
-

@@ -1,12 +1,14 @@
 // ui.js
 // Handles DOM manipulation and rendering UI components (tables, totals, pagination, modals, etc.),
 // EXCLUDING filter UI and charts which are in their own modules.
+// VERSION: Added Portfolio Swap Simulation UI logic. Consolidated status message logic (uses utils.js).
 
 "use strict";
 
-import { parseDate, parseFloatSafe } from './utils.js';
+// Import utility functions (including the consolidated showStatusMessageGeneric)
+import { parseDate, parseFloatSafe, showStatusMessageGeneric } from './utils.js';
 import * as state from './state.js';
-import * as api from './api.js'; // Needed for selection handlers that might trigger API calls indirectly
+import * as api from './api.js'; // Needed for selection handlers and simulation triggers
 import * as charts from './charts.js'; // Needed for theme changes, clearing, and rendering
 import { PAGE_SIZE, IS_ADMIN } from './config.js'; // Needed for pagination info and admin checks
 
@@ -23,25 +25,46 @@ const muniOfferingsTableBody = document.querySelector('#muni-offerings-table tbo
 const muniTableHeaders = document.querySelectorAll('#muni-offerings-table th[data-key]');
 const selectAllMunisCheckbox = document.getElementById('select-all-munis');
 const muniPaginationControls = document.getElementById('muni-pagination-controls');
-const createPortfolioModal = document.getElementById('create-portfolio-modal');
-const createPortfolioForm = document.getElementById('create-portfolio-form');
-const newPortfolioNameInput = document.getElementById('new-portfolio-name');
-const adminCustomerSelectGroup = document.getElementById('admin-customer-select-group');
-const adminCustomerSelect = document.getElementById('admin-customer-select');
-const modalErrorMessage = document.getElementById('modal-error-message');
-const emailInterestBtn = document.getElementById('email-interest-btn');
-const emailStatusMessage = document.getElementById('email-status-message');
-const emailBuyInterestBtn = document.getElementById('email-buy-interest-btn');
-const emailBuyStatusMessage = document.getElementById('email-buy-status-message');
-const darkModeToggle = document.getElementById('dark-mode-toggle'); // Needed for applyTheme
-const portfolioFilterContainer = document.getElementById('portfolio-filter-container'); // Added reference
+const darkModeToggle = document.getElementById('dark-mode-toggle');
+const portfolioFilterContainer = document.getElementById('portfolio-filter-container');
 // References for Totals Row
 const totalsParEl = document.getElementById('totals-par');
 const totalsYieldEl = document.getElementById('totals-yield');
 const totalsWalEl = document.getElementById('totals-wal');
 const totalsDurationEl = document.getElementById('totals-duration');
-// References for Chart Containers (for loading state)
+// References for Chart Containers
 const chartContainers = document.querySelectorAll('.chart-container');
+// Email Status Messages
+const emailInterestBtn = document.getElementById('email-interest-btn');
+const emailStatusMessage = document.getElementById('email-status-message');
+const emailBuyInterestBtn = document.getElementById('email-buy-interest-btn');
+const emailBuyStatusMessage = document.getElementById('email-buy-status-message');
+
+// Create Portfolio Modal Elements
+const createPortfolioModal = document.getElementById('create-portfolio-modal');
+const createPortfolioForm = document.getElementById('create-portfolio-form');
+const newPortfolioNameInput = document.getElementById('new-portfolio-name');
+const adminCustomerSelectGroup = document.getElementById('admin-customer-select-group');
+const adminCustomerSelect = document.getElementById('admin-customer-select');
+const modalErrorMessageCreatePortfolio = document.getElementById('modal-error-message-create-portfolio');
+// Create Portfolio Modal Buttons (using specific IDs from updated HTML)
+const modalCloseCreatePortfolioBtn = document.getElementById('modal-close-create-portfolio-btn');
+const modalCancelCreatePortfolioBtn = document.getElementById('modal-cancel-create-portfolio-btn');
+
+// --- NEW: Portfolio Swap Simulation Elements ---
+const portfolioSwapModal = document.getElementById('portfolio-swap-modal');
+const swapSellListContainer = document.getElementById('swap-sell-list');
+const swapBuyListContainer = document.getElementById('swap-buy-list');
+const modalErrorMessageSwap = document.getElementById('modal-error-message-swap');
+const runSimulationBtn = document.getElementById('run-simulation-btn');
+// Swap Modal Buttons (using specific IDs from updated HTML)
+const modalCloseSwapBtn = document.getElementById('modal-close-swap-btn');
+const modalCancelSwapBtn = document.getElementById('modal-cancel-swap-btn');
+// Simulation Results Area
+const simulationResultsSection = document.getElementById('simulation-results-section');
+const simulationResultsContent = document.getElementById('simulation-results-content');
+const closeSimulationResultsBtn = document.getElementById('close-simulation-results-btn');
+
 
 // --- Data Processing ---
 
@@ -52,7 +75,7 @@ export function processHoldings(holdingsPage) {
         // console.log(`Processing holding ${index}:`, h); // Log each raw holding
 
         // Basic fields
-        h.par_value_num = parseFloatSafe(h.par_value);
+        h.par_value_num = parseFloatSafe(h.par_value); // Use par_value from serializer if available, else calculate
         h.settlement_price_num = parseFloatSafe(h.settlement_price);
         h.book_price_num = parseFloatSafe(h.book_price);
         h.book_yield_num = parseFloatSafe(h.book_yield);
@@ -71,13 +94,15 @@ export function processHoldings(holdingsPage) {
 
         // Other date fields
         h.settlement_date_obj = parseDate(h.settlement_date);
-        // NOTE: holding_average_life_date is often null/not useful, using holding_average_life_num (WAL) instead
         h.market_date_obj = parseDate(h.market_date);
 
         // ISO date strings (for export)
         h.maturity_date_str_iso = h.maturity_date_obj ? h.maturity_date_obj.toISOString().split('T')[0] : (h.security?.maturity_date || '');
         h.call_date_str_iso = h.call_date_obj ? h.call_date_obj.toISOString().split('T')[0] : (h.security?.call_date || '');
         h.settlement_date_str_iso = h.settlement_date_obj ? h.settlement_date_obj.toISOString().split('T')[0] : (h.settlement_date || '');
+
+        // Ensure external_ticket is present (important for simulation)
+        h.external_ticket = h.external_ticket ?? null; // Use null if missing
 
     });
     return holdingsPage; // Return processed data
@@ -87,10 +112,10 @@ export function processHoldings(holdingsPage) {
 export function processMuniOfferings(offeringsPage) {
     // console.log("Processing muni offerings data:", offeringsPage); // Log raw data
     offeringsPage.forEach(offering => {
-        // *** FIX: Multiply amount by 1000 ***
-        const parsedAmount = parseFloatSafe(offering.amount);
-        offering.amount_num = parsedAmount !== null ? parsedAmount * 1000 : null; // Multiply by 1000
-        // *** End Fix ***
+        // Amount is already a number from serializer, but ensure it's not null
+        const rawAmount = parseFloatSafe(offering.amount);
+        // Multiply by 1000 as per requirement
+        offering.amount_num = rawAmount !== null ? rawAmount * 1000 : null;
 
         offering.coupon_num = parseFloatSafe(offering.coupon);
         offering.yield_rate_num = parseFloatSafe(offering.yield_rate);
@@ -111,6 +136,9 @@ export function processMuniOfferings(offeringsPage) {
         offering.sp_rating = offering.sp_rating || 'N/A';
         offering.state = offering.state || 'N/A';
         offering.insurance = offering.insurance || 'N/A';
+
+        // Ensure ID is present (important for simulation)
+        offering.id = offering.id ?? null;
 
         // console.log("Processed muni offering (amount * 1000):", offering); // Debug log
     });
@@ -138,44 +166,41 @@ export function renderTable(holdingsPage) {
         return;
     }
 
-    // Map intention codes to display values
-    const intentionMap = {
-        'A': 'AFS', // Available for Sale
-        'M': 'HTM', // Held to Maturity
-        // Add other mappings if necessary
-    };
+    const intentionMap = { 'A': 'AFS', 'M': 'HTM', 'T': 'HFT' }; // Added HFT
 
-    // Generate HTML for each holding row using the processed data
-    holdingsPage.forEach((h, index) => {
+    holdingsPage.forEach((h) => {
         const row = document.createElement('tr');
-        row.dataset.holdingId = h.ticket_id; // Use ticket_id (UUID)
+        // Store both ticket_id (UUID for selection STATE) and external_ticket (int for API calls/simulation)
+        row.dataset.holdingTicketId = h.ticket_id;
+        row.dataset.holdingExternalTicket = h.external_ticket; // Make sure external_ticket is available
 
-        // Use processed properties directly - ensure they exist after processing
-        const cusipDisplay = h.security_cusip ?? 'N/A'; // Use nullish coalescing for safety
+        const cusipDisplay = h.security_cusip ?? 'N/A';
         const descriptionDisplay = h.security_description ?? '';
         const couponDisplay = (h.coupon_num ?? 0).toFixed(3);
         const maturityDisplay = h.maturity_date_obj ? h.maturity_date_obj.toLocaleDateString() : 'N/A';
         const callDisplay = h.call_date_obj ? h.call_date_obj.toLocaleDateString() : 'N/A';
-
-        // Other fields (using processed numbers)
-        const parDisplay = (h.par_value_num ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        // Use the calculated par_value from the serializer if available, otherwise calculate
+        const parValue = h.par_value ? parseFloatSafe(h.par_value) : (h.par_value_num ?? 0);
+        const parDisplay = parValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const bookPriceDisplay = (h.book_price_num ?? 0).toFixed(6);
         const marketPriceDisplay = (h.market_price_num ?? 0).toFixed(6);
         const bookYieldDisplay = (h.book_yield_num ?? 0).toFixed(3);
         const walDisplay = (h.holding_average_life_num ?? 0).toFixed(2); // WAL
         const durationDisplay = (h.holding_duration_num ?? 0).toFixed(2);
+        const intentionCodeRaw = h.intention_code?.toUpperCase() ?? 'N/A';
+        const intentionDisplay = intentionMap[intentionCodeRaw] || intentionCodeRaw;
+        const isChecked = state.selectedHoldingIds.has(h.ticket_id); // Selection uses UUID
 
-        // *** FIX: Map intention code ***
-        const intentionCodeRaw = h.intention_code?.toUpperCase() ?? 'N/A'; // Get raw code, ensure uppercase
-        const intentionDisplay = intentionMap[intentionCodeRaw] || intentionCodeRaw; // Map or use raw if no match
-        // *** End Fix ***
-
-        const isChecked = state.selectedHoldingIds.has(h.ticket_id);
-
-        // Create cells in the order defined by index.html headers
         row.innerHTML = `
             <td class="checkbox-column">
-                <input type="checkbox" class="holding-checkbox" data-holding-id="${h.ticket_id}" data-cusip="${cusipDisplay}" data-par="${(h.par_value_num ?? 0).toFixed(2)}" ${isChecked ? 'checked' : ''} aria-label="Select holding ${cusipDisplay}">
+                <input type="checkbox" class="holding-checkbox"
+                       data-holding-id="${h.ticket_id}"
+                       data-external-ticket="${h.external_ticket}"
+                       data-cusip="${cusipDisplay}"
+                       data-description="${descriptionDisplay}"
+                       data-par="${parValue.toFixed(2)}"
+                       ${isChecked ? 'checked' : ''}
+                       aria-label="Select holding ${cusipDisplay}">
             </td>
             <td style="text-align: left;">${cusipDisplay}</td>
             <td style="text-align: left;">${descriptionDisplay}</td>
@@ -192,7 +217,6 @@ export function renderTable(holdingsPage) {
         `;
          tableBody.appendChild(row);
     });
-    // console.log(`Holdings table rendering complete (${holdingsPage.length} rows).`); // Log completion
 
     updateSelectAllCheckboxState();
     if(emailInterestBtn) emailInterestBtn.disabled = state.selectedHoldingIds.size === 0;
@@ -206,17 +230,22 @@ export function updateSortIndicators() {
         const arrowSpan = th.querySelector('.sort-arrow');
         if (!arrowSpan) return;
 
-        let backendKey = key;
-        // Ensure these mappings match the backend serializer/filter fields exactly
-        if (key === 'wal') backendKey = 'holding_average_life';
-        if (key === 'security_cusip') backendKey = 'security__cusip';
-        if (key === 'security_description') backendKey = 'security__description';
-        if (key === 'coupon') backendKey = 'security__coupon';
-        if (key === 'maturity_date') backendKey = 'security__maturity_date';
-        if (key === 'call_date') backendKey = 'security__call_date';
-        // Add other mappings if necessary (e.g., book_yield -> book_yield)
+        // Use the backend key directly from state for comparison
+        const backendKey = state.currentSortKey; // This is already the backend key
+        const frontendKey = th.dataset.key; // Get the key associated with THIS header
 
-        if (backendKey === state.currentSortKey) {
+        // Map the backend key back to a potential frontend key for matching
+        let keyToMatch = backendKey;
+        if (backendKey === 'holding_average_life') keyToMatch = 'wal';
+        if (backendKey === 'security__cusip') keyToMatch = 'security_cusip';
+        if (backendKey === 'security__description') keyToMatch = 'security_description';
+        if (backendKey === 'security__coupon') keyToMatch = 'coupon';
+        if (backendKey === 'security__maturity_date') keyToMatch = 'maturity_date';
+        if (backendKey === 'security__call_date') keyToMatch = 'call_date';
+        // Add other necessary reverse mappings if needed
+
+        // Update arrow based on whether THIS header's key matches the current sort key
+        if (frontendKey === keyToMatch) {
             th.classList.add('sorted');
             arrowSpan.textContent = state.currentSortDir === 'asc' ? ' ▲' : ' ▼';
         } else {
@@ -228,18 +257,17 @@ export function updateSortIndicators() {
 
 /** Calculates and renders the total values for the holdings table footer (based on current page). */
 export function renderTotals(holdingsPage) {
-    const totalPar = holdingsPage.reduce((sum, h) => sum + (h.par_value_num ?? 0), 0);
+    // Use the calculated par_value from the serializer if available, otherwise calculate
+    const getRowPar = (h) => h.par_value ? parseFloatSafe(h.par_value) : (h.par_value_num ?? 0);
 
-    const weightedYieldSum = totalPar > 0 ? holdingsPage.reduce((sum, h) => sum + ((h.par_value_num ?? 0) * (h.book_yield_num ?? 0)), 0) : 0;
+    const totalPar = holdingsPage.reduce((sum, h) => sum + getRowPar(h), 0);
+    const weightedYieldSum = totalPar > 0 ? holdingsPage.reduce((sum, h) => sum + (getRowPar(h) * (h.book_yield_num ?? 0)), 0) : 0;
     const totalYield = totalPar > 0 ? weightedYieldSum / totalPar : 0;
-
-    const weightedWalSum = totalPar > 0 ? holdingsPage.reduce((sum, h) => sum + ((h.par_value_num ?? 0) * (h.holding_average_life_num ?? 0)), 0) : 0;
+    const weightedWalSum = totalPar > 0 ? holdingsPage.reduce((sum, h) => sum + (getRowPar(h) * (h.holding_average_life_num ?? 0)), 0) : 0;
     const totalWal = totalPar > 0 ? weightedWalSum / totalPar : 0;
-
-    const weightedDurationSum = totalPar > 0 ? holdingsPage.reduce((sum, h) => sum + ((h.par_value_num ?? 0) * (h.holding_duration_num ?? 0)), 0) : 0;
+    const weightedDurationSum = totalPar > 0 ? holdingsPage.reduce((sum, h) => sum + (getRowPar(h) * (h.holding_duration_num ?? 0)), 0) : 0;
     const totalDuration = totalPar > 0 ? weightedDurationSum / totalPar : 0;
 
-    // Use specific element references defined at the top
     if (totalsParEl) totalsParEl.textContent = totalPar.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     if (totalsYieldEl) totalsYieldEl.textContent = totalYield.toFixed(3);
     if (totalsWalEl) totalsWalEl.textContent = totalWal.toFixed(2);
@@ -253,79 +281,49 @@ export function renderMuniOfferingsTable(offeringsData) {
          return;
     }
     muniOfferingsTableBody.innerHTML = ''; // Clear previous content
-
-    const colSpan = (muniTableHeaders?.length || 14);
+    const colSpan = (muniTableHeaders?.length || 14); // Calculate colspan based on headers
 
     if (!offeringsData || offeringsData.length === 0) {
         const hasActiveFilters = state.activeMuniFilters.some(f => f.value !== '');
-        // Modify message slightly to reflect it might be loading or empty
-        const message = state.currentMuniOfferingsData.count === -1 // Use -1 as a loading indicator if needed
-            ? 'Loading offerings...'
-            : (hasActiveFilters ? 'No offerings match filter criteria.' : (state.currentMuniOfferingsData.count === 0 ? 'No municipal offerings available.' : 'No offerings on this page.'));
+        const message = state.currentMuniOfferingsData.count === -1 ? 'Loading offerings...' : (hasActiveFilters ? 'No offerings match filter criteria.' : (state.currentMuniOfferingsData.count === 0 ? 'No municipal offerings available.' : 'No offerings on this page.'));
         muniOfferingsTableBody.innerHTML = `<tr><td colspan="${colSpan}">${message}</td></tr>`;
         if (selectAllMunisCheckbox) { selectAllMunisCheckbox.checked = false; selectAllMunisCheckbox.indeterminate = false; }
         if (emailBuyInterestBtn) { emailBuyInterestBtn.disabled = true; }
         return;
     }
 
-    // Generate rows using processed data
     offeringsData.forEach(o => {
         const row = document.createElement('tr');
-        row.dataset.offeringId = o.id; // Use integer PK
+        row.dataset.offeringId = o.id; // Use integer PK for identification
+        const isChecked = state.selectedMuniOfferingIds.has(o.id); // Check if selected
+        const cusipDisplay = o.cusip ?? 'N/A';
+        const descriptionDisplay = o.description ?? '';
+        const amountDisplay = (o.amount_num ?? 0); // Use processed amount_num
 
-        const isChecked = state.selectedMuniOfferingIds.has(o.id); // Check against the Set
-        const checkboxCell = document.createElement('td');
-        checkboxCell.className = 'checkbox-column';
-        // *** FIX: Update data-amount attribute to reflect multiplied value ***
-        checkboxCell.innerHTML = `<input type="checkbox" class="muni-checkbox" data-offering-id="${o.id}" data-cusip="${o.cusip ?? 'N/A'}" data-amount="${(o.amount_num ?? 0).toFixed(2)}" ${isChecked ? 'checked' : ''} aria-label="Select offering ${o.cusip ?? 'N/A'}">`;
-        // *** End Fix ***
-        row.appendChild(checkboxCell);
-
-        // Helper function to add cells, using processed values
-        const addCell = (content, align = 'left', dataKey = null) => {
-            const cell = document.createElement('td');
-            let displayContent = 'N/A'; // Default display value
-
-            if (content instanceof Date) {
-                // Format Date objects
-                displayContent = content.toLocaleDateString();
-            } else if (typeof content === 'number') {
-                // Format numbers based on dataKey
-                 if (dataKey && ['amount', 'price', 'call_price'].includes(dataKey)) {
-                    // Use localeString for amount (which is now multiplied)
-                     displayContent = content.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                 } else if (dataKey && ['coupon', 'yield_rate'].includes(dataKey)) {
-                     displayContent = content.toFixed(3);
-                 } else {
-                     // Default number formatting (e.g., for ID if it were displayed)
-                     displayContent = content.toString();
-                 }
-            } else if (content !== null && content !== undefined && content !== '') {
-                // Use the string content directly if it's valid
-                displayContent = content;
-            }
-            // If content is still null/undefined after checks, it remains 'N/A'
-
-            cell.textContent = displayContent;
-            cell.style.textAlign = align;
-            row.appendChild(cell);
-        };
-
-        // Add cells using processed properties
-        addCell(o.cusip, 'left', 'cusip');
-        addCell(o.amount_num, 'right', 'amount'); // Use processed number (now * 1000)
-        addCell(o.description, 'left', 'description');
-        addCell(o.coupon_num, 'right', 'coupon'); // Use processed number
-        addCell(o.maturity_date_obj, 'center', 'maturity_date'); // Use processed date object
-        addCell(o.yield_rate_num, 'right', 'yield_rate'); // Use processed number
-        addCell(o.price_num, 'right', 'price'); // Use processed number
-        addCell(o.moody_rating, 'left', 'moody_rating');
-        addCell(o.sp_rating, 'left', 'sp_rating');
-        addCell(o.call_date_obj, 'center', 'call_date'); // Use processed date object
-        addCell(o.call_price_num, 'right', 'call_price'); // Use processed number
-        addCell(o.state, 'left', 'state');
-        addCell(o.insurance, 'left', 'insurance');
-
+        row.innerHTML = `
+            <td class="checkbox-column">
+                <input type="checkbox" class="muni-checkbox"
+                       data-offering-id="${o.id}"
+                       data-cusip="${cusipDisplay}"
+                       data-description="${descriptionDisplay}"
+                       data-amount="${amountDisplay.toFixed(2)}"
+                       ${isChecked ? 'checked' : ''}
+                       aria-label="Select offering ${cusipDisplay}">
+            </td>
+            <td style="text-align: left;">${cusipDisplay}</td>
+            <td style="text-align: right;">${amountDisplay.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            <td style="text-align: left;">${descriptionDisplay}</td>
+            <td style="text-align: right;">${(o.coupon_num ?? 0).toFixed(3)}</td>
+            <td style="text-align: center;">${o.maturity_date_obj ? o.maturity_date_obj.toLocaleDateString() : 'N/A'}</td>
+            <td style="text-align: right;">${(o.yield_rate_num ?? 0).toFixed(3)}</td>
+            <td style="text-align: right;">${(o.price_num ?? 0).toFixed(6)}</td>
+            <td style="text-align: left;">${o.moody_rating ?? 'N/A'}</td>
+            <td style="text-align: left;">${o.sp_rating ?? 'N/A'}</td>
+            <td style="text-align: center;">${o.call_date_obj ? o.call_date_obj.toLocaleDateString() : 'N/A'}</td>
+            <td style="text-align: right;">${(o.call_price_num ?? 0).toFixed(6)}</td>
+            <td style="text-align: left;">${o.state ?? 'N/A'}</td>
+            <td style="text-align: left;">${o.insurance ?? 'N/A'}</td>
+        `;
         muniOfferingsTableBody.appendChild(row);
     });
 
@@ -341,8 +339,6 @@ export function updateMuniSortIndicators() {
         const key = th.dataset.key;
         const arrowSpan = th.querySelector('.sort-arrow');
         if (!arrowSpan) return;
-
-        // No complex mapping needed here based on original code
         if (key === state.currentMuniSortKey) {
             th.classList.add('sorted');
             arrowSpan.textContent = state.currentMuniSortDir === 'asc' ? ' ▲' : ' ▼';
@@ -353,22 +349,15 @@ export function updateMuniSortIndicators() {
     });
 }
 
-/**
- * Renders pagination controls.
- * @param {HTMLElement} containerElement - The DOM element to render controls into.
- * @param {object | null} paginationData - The pagination state object. Null to clear.
- * @param {string} dataType - Identifier ('holdings' or 'munis').
- */
+/** Renders pagination controls. */
 export function renderPaginationControls(containerElement, paginationData, dataType) {
     if (!containerElement) return;
     containerElement.innerHTML = '';
 
-    // Ensure paginationData and count are valid before proceeding
     if (!paginationData || typeof paginationData.count !== 'number' || paginationData.count <= 0 || paginationData.count <= PAGE_SIZE) {
         containerElement.style.display = 'none';
         return;
     }
-
     containerElement.style.display = 'flex';
 
     const { count, nextUrl, previousUrl, currentPage } = paginationData;
@@ -390,31 +379,19 @@ export function renderPaginationControls(containerElement, paginationData, dataT
         if (url && pageNum) {
             button.dataset.page = pageNum;
             button.dataset.type = dataType;
-            // Event listener added in main.js using delegation
         } else if (!pageNum && url) {
              try {
-                // Ensure the URL is absolute or relative to the current origin before parsing
                 const absoluteUrl = new URL(url, window.location.origin);
                 const pageParam = absoluteUrl.searchParams.get('page');
-                if (pageParam) {
-                     button.dataset.page = pageParam;
-                     button.dataset.type = dataType;
-                } else {
-                     console.warn(`Could not extract page number from URL: ${url}`);
-                     button.disabled = true;
-                }
-            } catch (e) {
-                console.error("Error parsing pagination URL:", url, e);
-                button.disabled = true; // Disable if URL is invalid
-            }
+                if (pageParam) { button.dataset.page = pageParam; button.dataset.type = dataType; }
+                else { console.warn(`Could not extract page number from URL: ${url}`); button.disabled = true; }
+            } catch (e) { console.error("Error parsing pagination URL:", url, e); button.disabled = true; }
         }
         return button;
     };
 
-
     const prevPageNum = currentPage > 1 ? currentPage - 1 : null;
     const prevButton = createButton('Previous', previousUrl, prevPageNum);
-
     const nextPageNum = currentPage < totalPages ? currentPage + 1 : null;
     const nextButton = createButton('Next', nextUrl, nextPageNum);
 
@@ -425,96 +402,65 @@ export function renderPaginationControls(containerElement, paginationData, dataT
     containerElement.appendChild(buttonsContainer);
 }
 
-/** Clears ONLY the holdings-related UI elements (Table, Totals, Charts, Selection, Pagination). */
+/** Clears ONLY the holdings-related UI elements. */
 export function clearHoldingsUI() {
     console.log("Clearing Holdings UI (Table, Totals, Charts, Selection, Pagination)...");
     const colSpanHoldings = (tableHeaders?.length || 13) + 1;
-
-    // Clear Table Body
-    if (tableBody) {
-        tableBody.innerHTML = `<tr><td colspan="${colSpanHoldings}">Select customer/portfolio...</td></tr>`;
-    }
-    // Clear Totals Row
-    renderTotals([]); // Render empty totals
-
-    // Destroy Charts
-    // Object.keys(state.chartInstances).forEach(charts.destroyChart); // Keep existing instances but clear data
-    charts.renderCharts([]); // Render empty charts to clear them
-    // state.resetChartInstances(); // Don't reset state, just clear data
-
-    // Clear Selections
+    if (tableBody) tableBody.innerHTML = `<tr><td colspan="${colSpanHoldings}">Select customer/portfolio...</td></tr>`;
+    renderTotals([]);
+    const holdingsChartIds = ['yieldVsMaturityChart', 'parByMaturityYearChart', 'couponPieChart', 'portfolioCashFlowChart'];
+    holdingsChartIds.forEach(charts.destroyChart);
     clearHoldingSelection();
-
-    // Clear Pagination
     renderPaginationControls(holdingsPaginationControls, null);
+    // Also hide simulation results when holdings are cleared
+    hideSimulationResults();
 }
 
-/** Clears the entire table/chart area (Holdings AND Munis). Used less often now. */
+/** Clears the entire table/chart area (Holdings AND Munis). */
 export function clearTableAndCharts() {
-    console.log("Clearing BOTH Holdings and Muni UI..."); // Log clearing action
-
-    // Clear Holdings part
-    clearHoldingsUI(); // Use the specific function
-
-    // Also clear muni table/pagination
+    console.log("Clearing BOTH Holdings and Muni UI...");
+    clearHoldingsUI();
     const colSpanMunis = (muniTableHeaders?.length || 14);
-     if (muniOfferingsTableBody) {
-        // Set a generic loading/cleared message for munis
-        muniOfferingsTableBody.innerHTML = `<tr><td colspan="${colSpanMunis}">Offerings will load here...</td></tr>`;
-     }
-     clearMuniOfferingSelection(); // Clear selections
-     renderPaginationControls(muniPaginationControls, null); // Clear pagination
+     if (muniOfferingsTableBody) muniOfferingsTableBody.innerHTML = `<tr><td colspan="${colSpanMunis}">Offerings will load here...</td></tr>`;
+     clearMuniOfferingSelection();
+     renderPaginationControls(muniPaginationControls, null);
 }
 
-
-/** Applies the specified theme ('light' or 'dark') and re-renders charts. */
+/** Applies the specified theme and re-renders charts if data exists. */
 export function applyTheme(theme) {
     const isDark = theme === 'dark';
     document.body.classList.toggle('dark-mode', isDark);
     if(darkModeToggle) darkModeToggle.textContent = isDark ? 'Toggle Light Mode' : 'Toggle Dark Mode';
 
-    // Wrap localStorage check in try...catch
     try {
-        localStorage.setItem('themeCheck', '1');
-        localStorage.removeItem('themeCheck');
-        // Re-render charts only if they have data (now uses full data)
-        // The trigger to re-render with full data should happen elsewhere (e.g., after initial load or filter change)
-        // However, we still need to update the *existing* charts if the theme changes *after* they've been rendered.
-        if (Object.keys(state.chartInstances).length > 0) {
-            console.log("Theme changed, attempting to re-render charts with existing data (if any)...");
-            // Re-rendering requires fetching all data again, which might be slow.
-            // A better approach for *just* theme change might be to update options and call chart.update()
-            // For now, we'll trigger the full refresh as it's simpler, but be aware of potential performance impact.
-            renderChartsWithAllData(); // Re-fetch all data and render charts for the new theme
+        localStorage.setItem('themeCheck', '1'); localStorage.removeItem('themeCheck');
+        const portfolioId = portfolioFilterSelect?.value;
+        if (portfolioId && Object.keys(state.chartInstances).length > 0) {
+            console.log("Theme changed, re-rendering all charts...");
+            renderChartsWithAllData(); // This fetches data and renders charts
+        } else {
+             console.log("Theme changed, but no portfolio selected or no charts rendered yet.");
         }
     } catch (e) {
-        console.warn("localStorage not accessible, charts will not update theme colors dynamically if persistence fails.");
-        // Attempt re-render even if localStorage fails
-        if (Object.keys(state.chartInstances).length > 0) {
-             renderChartsWithAllData();
-        }
+        console.warn("localStorage not accessible, cannot persist theme. Charts may not update theme.");
+         const portfolioId = portfolioFilterSelect?.value;
+         if (portfolioId && Object.keys(state.chartInstances).length > 0) renderChartsWithAllData();
     }
 }
 
-
-/** Shows the create portfolio modal and populates customer dropdown if needed. */
+/** Shows the create portfolio modal. */
 export function showCreatePortfolioModal() {
-    console.log("Showing create portfolio modal. Admin:", IS_ADMIN); // Use imported IS_ADMIN
-
+    console.log("Showing create portfolio modal. Admin:", IS_ADMIN);
     if(createPortfolioForm) createPortfolioForm.reset();
-    if(modalErrorMessage) {
-        modalErrorMessage.textContent = '';
-        modalErrorMessage.style.display = 'none';
-    }
+    if(modalErrorMessageCreatePortfolio) { modalErrorMessageCreatePortfolio.textContent = ''; modalErrorMessageCreatePortfolio.style.display = 'none'; }
     if(adminCustomerSelect) adminCustomerSelect.innerHTML = '<option value="">-- Select Customer --</option>';
 
-    if (IS_ADMIN) { // Use imported IS_ADMIN
+    if (IS_ADMIN) {
         if(adminCustomerSelectGroup) adminCustomerSelectGroup.classList.remove('hidden');
-        api.fetchCustomersForAdminModal(); // Use api.js function
+        api.fetchCustomersForAdminModal();
     } else {
         if(adminCustomerSelectGroup) adminCustomerSelectGroup.classList.add('hidden');
     }
-
     if(createPortfolioModal) createPortfolioModal.classList.add('visible');
 }
 
@@ -525,7 +471,7 @@ export function hideCreatePortfolioModal() {
 
 /** Populates the admin customer select dropdown in the modal. */
 export function populateAdminCustomerDropdown(customerList) {
-     state.setAvailableCustomers(customerList); // Update state
+     state.setAvailableCustomers(customerList);
      if(adminCustomerSelect) {
         adminCustomerSelect.innerHTML = '<option value="">-- Select Customer --</option>';
         state.availableCustomers.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
@@ -539,187 +485,134 @@ export function populateAdminCustomerDropdown(customerList) {
      }
 }
 
-/** Updates the state (checked, indeterminate) of the "Select All" checkbox for holdings. */
+/** Updates the state of the "Select All" checkbox for holdings. */
 export function updateSelectAllCheckboxState() {
     if (!selectAllCheckbox || !tableBody) return;
-
     const visibleCheckboxes = tableBody.querySelectorAll('.holding-checkbox');
     const totalVisible = visibleCheckboxes.length;
     const totalSelectedOnPage = Array.from(visibleCheckboxes).filter(cb => cb.checked).length;
 
-    if (totalVisible === 0) {
-        selectAllCheckbox.checked = false;
-        selectAllCheckbox.indeterminate = false;
-    } else if (totalSelectedOnPage === totalVisible) {
-        selectAllCheckbox.checked = true;
-        selectAllCheckbox.indeterminate = false;
-    } else if (totalSelectedOnPage > 0) {
-        selectAllCheckbox.checked = false;
-        selectAllCheckbox.indeterminate = true;
-    } else {
-        selectAllCheckbox.checked = false;
-        selectAllCheckbox.indeterminate = false;
-    }
+    if (totalVisible === 0) { selectAllCheckbox.checked = false; selectAllCheckbox.indeterminate = false; }
+    else if (totalSelectedOnPage === totalVisible) { selectAllCheckbox.checked = true; selectAllCheckbox.indeterminate = false; }
+    else if (totalSelectedOnPage > 0) { selectAllCheckbox.checked = false; selectAllCheckbox.indeterminate = true; }
+    else { selectAllCheckbox.checked = false; selectAllCheckbox.indeterminate = false; }
 }
 
 /** Clears holding selection state and UI. */
 export function clearHoldingSelection() {
-    state.clearSelectedHoldingIds(); // Use state function
+    state.clearSelectedHoldingIds();
     if(tableBody) tableBody.querySelectorAll('.holding-checkbox').forEach(cb => cb.checked = false);
-    if (selectAllCheckbox) {
-        selectAllCheckbox.checked = false;
-        selectAllCheckbox.indeterminate = false;
-    }
-    if (emailInterestBtn) {
-        emailInterestBtn.disabled = true;
-    }
-    if (emailStatusMessage) {
-        emailStatusMessage.textContent = '';
-        emailStatusMessage.style.display = 'none';
-    }
+    if (selectAllCheckbox) { selectAllCheckbox.checked = false; selectAllCheckbox.indeterminate = false; }
+    if (emailInterestBtn) { emailInterestBtn.disabled = true; }
+    if (emailStatusMessage) { emailStatusMessage.textContent = ''; emailStatusMessage.style.display = 'none'; }
 }
 
 /** Updates the "Select All" checkbox state for muni offerings. */
 export function updateSelectAllMunisCheckboxState() {
     if (!selectAllMunisCheckbox || !muniOfferingsTableBody) return;
-
     const visibleCheckboxes = muniOfferingsTableBody.querySelectorAll('.muni-checkbox');
     const totalVisible = visibleCheckboxes.length;
     const totalSelectedOnPage = Array.from(visibleCheckboxes).filter(cb => cb.checked).length;
 
-    if (totalVisible === 0) {
-        selectAllMunisCheckbox.checked = false;
-        selectAllMunisCheckbox.indeterminate = false;
-    } else if (totalSelectedOnPage === totalVisible) {
-        selectAllMunisCheckbox.checked = true;
-        selectAllMunisCheckbox.indeterminate = false;
-    } else if (totalSelectedOnPage > 0) {
-        selectAllMunisCheckbox.checked = false;
-        selectAllMunisCheckbox.indeterminate = true;
-    } else {
-        selectAllMunisCheckbox.checked = false;
-        selectAllMunisCheckbox.indeterminate = false;
-    }
+    if (totalVisible === 0) { selectAllMunisCheckbox.checked = false; selectAllMunisCheckbox.indeterminate = false; }
+    else if (totalSelectedOnPage === totalVisible) { selectAllMunisCheckbox.checked = true; selectAllMunisCheckbox.indeterminate = false; }
+    else if (totalSelectedOnPage > 0) { selectAllMunisCheckbox.checked = false; selectAllMunisCheckbox.indeterminate = true; }
+    else { selectAllMunisCheckbox.checked = false; selectAllMunisCheckbox.indeterminate = false; }
 }
 
 /** Clears muni offering selection state and UI. */
 export function clearMuniOfferingSelection() {
-    state.clearSelectedMuniOfferingIds(); // Use state function
+    state.clearSelectedMuniOfferingIds();
     if(muniOfferingsTableBody) muniOfferingsTableBody.querySelectorAll('.muni-checkbox').forEach(cb => cb.checked = false);
-    if (selectAllMunisCheckbox) {
-        selectAllMunisCheckbox.checked = false;
-        selectAllMunisCheckbox.indeterminate = false;
-    }
-    if (emailBuyInterestBtn) {
-        emailBuyInterestBtn.disabled = true;
-    }
-    if (emailBuyStatusMessage) {
-        emailBuyStatusMessage.textContent = '';
-        emailBuyStatusMessage.style.display = 'none';
-    }
+    if (selectAllMunisCheckbox) { selectAllMunisCheckbox.checked = false; selectAllMunisCheckbox.indeterminate = false; }
+    if (emailBuyInterestBtn) { emailBuyInterestBtn.disabled = true; }
+    if (emailBuyStatusMessage) { emailBuyStatusMessage.textContent = ''; emailBuyStatusMessage.style.display = 'none'; }
 }
 
-// --- Chart Loading State ---
-
-/** Adds a visual loading indicator to chart containers. */
+/** Adds a visual loading indicator to all chart containers. */
 export function showChartLoadingState() {
-    chartContainers.forEach(container => {
-        container.classList.add('loading'); // Add a class for styling
-        // Optional: Add a spinner element dynamically if needed
-        // let spinner = container.querySelector('.spinner');
-        // if (!spinner) {
-        //     spinner = document.createElement('div');
-        //     spinner.className = 'spinner'; // Style this class in CSS
-        //     container.appendChild(spinner);
-        // }
-        // spinner.style.display = 'block';
-    });
+    chartContainers.forEach(container => container.classList.add('loading'));
 }
 
-/** Removes the visual loading indicator from chart containers. */
+/** Removes the visual loading indicator from all chart containers. */
 export function hideChartLoadingState() {
-    chartContainers.forEach(container => {
-        container.classList.remove('loading');
-        // Optional: Hide spinner element
-        // const spinner = container.querySelector('.spinner');
-        // if (spinner) spinner.style.display = 'none';
-    });
+    chartContainers.forEach(container => container.classList.remove('loading'));
 }
 
+// --- Orchestration Functions ---
 
-// --- Orchestration Functions (Called by API or Main) ---
-
-/**
- * Processes and displays the fetched holdings *page* data in the table and totals row.
- * NOTE: This function NO LONGER renders charts.
- */
+/** Processes and displays the fetched holdings *page* data. */
 export function processAndDisplayHoldingsPage() {
-    // Ensure we are using the paged data from state
     const processedHoldingsPage = processHoldings(state.currentHoldingsData.results);
-    renderTable(processedHoldingsPage); // Render table with processed page data
-    renderTotals(processedHoldingsPage); // Render totals based on processed page data
-    updateSortIndicators(); // Update sort indicators
-    // charts.renderCharts(processedHoldings); // *** REMOVED: Charts are now rendered separately with all data ***
+    renderTable(processedHoldingsPage);
+    renderTotals(processedHoldingsPage);
+    updateSortIndicators();
 }
 
 /** Processes and displays the fetched muni offerings page. */
 export function processAndDisplayMuniOfferings() {
-    const processedOfferings = processMuniOfferings(state.currentMuniOfferingsData.results); // Process data
-    renderMuniOfferingsTable(processedOfferings); // Render table with processed data
-    updateMuniSortIndicators(); // Update sort indicators after rendering
+    const processedOfferings = processMuniOfferings(state.currentMuniOfferingsData.results);
+    renderMuniOfferingsTable(processedOfferings);
+    updateMuniSortIndicators();
 }
 
-/**
- * NEW: Fetches ALL filtered holdings and renders the charts based on that full dataset.
- * This is intended to be called after the paged table data is loaded or filters change.
- */
+/** Fetches ALL filtered holdings AND cash flows, then renders ALL charts. */
 export async function renderChartsWithAllData() {
     const portfolioId = portfolioFilterSelect?.value;
     if (!portfolioId) {
         console.log("renderChartsWithAllData: No portfolio selected, clearing charts.");
-        charts.renderCharts([]); // Clear charts if no portfolio
+        charts.renderCharts([]);
+        charts.renderPortfolioCashFlowChart('portfolioCashFlowChart', []);
         return;
     }
 
-    console.log(`renderChartsWithAllData: Fetching all holdings for portfolio ID ${portfolioId} to render charts...`);
-    showChartLoadingState(); // Show loading state
+    console.log(`renderChartsWithAllData: Fetching data for portfolio ID ${portfolioId}...`);
+    showChartLoadingState();
 
     try {
-        const allHoldingsRaw = await api.fetchAllFilteredHoldings(); // Fetch all data
+        const [allHoldingsRaw, portfolioCashFlows] = await Promise.all([
+            api.fetchAllFilteredHoldings(portfolioId),
+            api.fetchPortfolioCashFlows(portfolioId)
+        ]);
 
         if (!allHoldingsRaw || allHoldingsRaw.length === 0) {
-            console.log("renderChartsWithAllData: No holdings found for charts.");
-            charts.renderCharts([]); // Render empty charts
+            console.log("renderChartsWithAllData: No holdings data found for standard charts.");
+            charts.renderCharts([]);
         } else {
-            console.log(`renderChartsWithAllData: Processing ${allHoldingsRaw.length} holdings for charts.`);
+            console.log(`renderChartsWithAllData: Processing ${allHoldingsRaw.length} holdings for standard charts.`);
             const allHoldingsProcessed = processHoldings(allHoldingsRaw);
-            charts.renderCharts(allHoldingsProcessed); // Render charts with the full, processed data
+            await charts.renderCharts(allHoldingsProcessed); // Renders standard charts
         }
+
+        const cashFlowChartId = 'portfolioCashFlowChart';
+        if (!portfolioCashFlows || portfolioCashFlows.length === 0) {
+            console.log("renderChartsWithAllData: No cash flow data found.");
+            charts.renderPortfolioCashFlowChart(cashFlowChartId, []);
+        } else {
+             console.log(`renderChartsWithAllData: Rendering cash flow chart with ${portfolioCashFlows.length} data points.`);
+            charts.renderPortfolioCashFlowChart(cashFlowChartId, portfolioCashFlows);
+        }
+
     } catch (error) {
         console.error("Error fetching or rendering charts with all data:", error);
-        charts.renderCharts([]); // Clear charts on error
+        charts.renderCharts([]);
+        charts.renderPortfolioCashFlowChart('portfolioCashFlowChart', []);
     } finally {
-        hideChartLoadingState(); // Hide loading state regardless of success/failure
+        hideChartLoadingState();
     }
 }
 
 
-// --- Event Handlers (Triggered by user interaction, often call API functions) ---
+// --- Event Handlers (Triggered by user interaction) ---
 
 /** Handles the selection of a customer from the main dropdown. */
 export async function handleCustomerSelection() {
-    const previousCustomerId = state.selectedCustomerId;
     const newSelectedCustomerId = customerSelect ? customerSelect.value : null;
-    if (!newSelectedCustomerId) return; // Exit if customerSelect doesn't exist or no value selected
+    if (!newSelectedCustomerId || state.selectedCustomerId === newSelectedCustomerId) return;
 
-    state.setSelectedCustomerId(newSelectedCustomerId); // Update global state
-
-    if (state.selectedCustomerId === previousCustomerId && previousCustomerId !== null) {
-        return; // No change
-    }
-
+    state.setSelectedCustomerId(newSelectedCustomerId);
     console.log(`Customer selected: ID ${state.selectedCustomerId}`);
-    clearHoldingsUI(); // Clears table, totals, charts, selection, pagination
+    clearHoldingsUI(); // Clear previous holdings UI
 
     if (!state.selectedCustomerId) {
         if(portfolioNameEl) portfolioNameEl.textContent = "Please select a customer.";
@@ -730,25 +623,22 @@ export async function handleCustomerSelection() {
 
     const selectedCustomer = state.customers.find(c => c.id == state.selectedCustomerId);
     const customerDisplayName = selectedCustomer?.name || `Customer ${selectedCustomer?.customer_number || state.selectedCustomerId}`;
-
     if(portfolioNameEl) portfolioNameEl.textContent = `Loading portfolios for ${customerDisplayName}...`;
     if(portfolioFilterContainer) portfolioFilterContainer.classList.add('hidden');
     if(deletePortfolioBtn) deletePortfolioBtn.disabled = true;
 
-    await api.loadPortfolios(state.selectedCustomerId); // Use api.js function
+    await api.loadPortfolios(state.selectedCustomerId);
 }
 
-/** Handles the selection of a portfolio from the dropdown. (UI Updates Only) */
-export function handlePortfolioSelection() { // Made non-async, only updates UI
-    if (!portfolioFilterSelect) return; // Ensure select exists
-
+/** Handles the selection of a portfolio from the dropdown (UI Updates Only). */
+export function handlePortfolioSelection() {
+    if (!portfolioFilterSelect) return;
     const selectedPortfolioId = portfolioFilterSelect.value;
     const selectedOption = portfolioFilterSelect.options[portfolioFilterSelect.selectedIndex];
     const isDefaultPortfolio = selectedOption?.dataset?.isDefault === 'true';
 
-    console.log(`Portfolio selected (UI Update): ID '${selectedPortfolioId}' (Default: ${isDefaultPortfolio}), Customer ID: ${state.selectedCustomerId}`);
-
-    clearHoldingsUI(); // Clear table, totals, charts, selection, pagination
+    console.log(`Portfolio selected (UI Update): ID '${selectedPortfolioId}' (Default: ${isDefaultPortfolio})`);
+    clearHoldingsUI(); // Clear previous holdings UI
 
     if(deletePortfolioBtn) deletePortfolioBtn.disabled = (!selectedPortfolioId || isDefaultPortfolio);
 
@@ -758,33 +648,261 @@ export function handlePortfolioSelection() { // Made non-async, only updates UI
     if (!selectedPortfolioId) {
         console.log("No specific portfolio selected (UI Update).");
         if(portfolioNameEl) portfolioNameEl.textContent = `${customerDisplayName} - Select a Portfolio`;
-        return; // Stop here, let main.js trigger fetch if needed
+        return;
     }
 
     const selectedPortfolio = state.currentPortfolios.find(p => p.id == selectedPortfolioId);
     const portfolioDisplayName = selectedPortfolio?.name || `Portfolio ${selectedPortfolioId}`;
-    if(portfolioNameEl) portfolioNameEl.textContent = `Loading ${portfolioDisplayName}...`; // Set loading title
-
-    // Fetching is now triggered by the event listener in main.js after this function runs.
+    if(portfolioNameEl) portfolioNameEl.textContent = `Loading ${portfolioDisplayName}...`;
 }
 
-// Add utility function for status messages if not already present
-export function showStatusMessageGeneric(statusElement, message, isError = false, duration = 5000) {
-    if (!statusElement) return;
-    statusElement.textContent = message;
-    statusElement.className = 'status-message'; // Reset classes
-    statusElement.classList.add(isError ? 'error' : 'success');
-    statusElement.style.display = 'block'; // Make it visible
+// --- NEW: Portfolio Swap Simulation UI Functions ---
 
-    // Clear message after duration (if duration > 0)
-    if (duration > 0) {
-        setTimeout(() => {
-            // Only clear if the message hasn't been changed in the meantime
-            if (statusElement.textContent === message) {
-                statusElement.textContent = '';
-                statusElement.style.display = 'none';
-            }
-        }, duration);
+/** Shows the portfolio swap simulation modal and populates its lists. */
+export function showPortfolioSwapModal() {
+    if (!portfolioSwapModal || !swapSellListContainer || !swapBuyListContainer) {
+        console.error("Swap modal elements not found.");
+        return;
+    }
+    console.log("Showing Portfolio Swap Modal...");
+    // Clear any previous error messages
+    if (modalErrorMessageSwap) {
+        modalErrorMessageSwap.textContent = '';
+        modalErrorMessageSwap.style.display = 'none';
+    }
+    // Populate the lists based on current selections
+    populateSwapModalLists();
+    // Make the modal visible
+    portfolioSwapModal.classList.add('visible');
+}
+
+/** Hides the portfolio swap simulation modal. */
+export function hidePortfolioSwapModal() {
+    if (portfolioSwapModal) {
+        portfolioSwapModal.classList.remove('visible');
+        console.log("Hiding Portfolio Swap Modal.");
+    }
+}
+
+/** Populates the Sell and Buy lists in the swap modal based on current table selections. */
+function populateSwapModalLists() {
+    if (!swapSellListContainer || !swapBuyListContainer) return;
+
+    // --- Populate "Holdings to Sell" List ---
+    swapSellListContainer.innerHTML = ''; // Clear previous items
+    const holdingsToSell = [];
+    // Find selected holdings from the current page data using ticket_id from state
+    state.currentHoldingsData.results.forEach(holding => {
+        if (state.selectedHoldingIds.has(holding.ticket_id) && holding.external_ticket !== null) {
+            holdingsToSell.push({
+                external_ticket: holding.external_ticket,
+                cusip: holding.security_cusip ?? 'N/A',
+                description: holding.security_description ?? 'No Description'
+            });
+        }
+    });
+
+    if (holdingsToSell.length === 0) {
+        swapSellListContainer.innerHTML = '<p class="empty-list-message">Select holdings from the main table to "sell".</p>';
+    } else {
+        holdingsToSell.forEach(item => {
+            const listItem = document.createElement('div');
+            listItem.className = 'simulation-list-item';
+            listItem.dataset.externalTicket = item.external_ticket;
+            listItem.innerHTML = `
+                <div class="item-details">
+                    <span class="item-cusip">${item.cusip}</span>
+                    <span class="item-desc">${item.description}</span>
+                </div>
+                <div class="item-actions">
+                    <button type="button" class="remove-item-btn" title="Remove from simulation">X</button>
+                </div>
+            `;
+            // Add event listener to the remove button
+            listItem.querySelector('.remove-item-btn').addEventListener('click', (e) => {
+                const ticketToRemove = e.target.closest('.simulation-list-item').dataset.externalTicket;
+                // Remove from modal list
+                e.target.closest('.simulation-list-item').remove();
+                // Uncheck the corresponding checkbox in the main table
+                const mainTableCheckbox = tableBody?.querySelector(`.holding-checkbox[data-external-ticket="${ticketToRemove}"]`);
+                if (mainTableCheckbox) mainTableCheckbox.checked = false;
+                // Update state
+                const holdingIdToRemoveFromState = mainTableCheckbox?.dataset.holdingId; // Get ticket_id for state
+                if (holdingIdToRemoveFromState) state.deleteSelectedHoldingId(holdingIdToRemoveFromState);
+                updateSelectAllCheckboxState(); // Update main select-all checkbox
+                // Check if list is now empty
+                if (swapSellListContainer.children.length === 0) {
+                     swapSellListContainer.innerHTML = '<p class="empty-list-message">Select holdings from the main table to "sell".</p>';
+                }
+            });
+            swapSellListContainer.appendChild(listItem);
+        });
+    }
+
+    // --- Populate "Offerings to Buy" List ---
+    swapBuyListContainer.innerHTML = ''; // Clear previous items
+    const offeringsToBuy = [];
+    // Find selected offerings from the current page data using ID from state
+    state.currentMuniOfferingsData.results.forEach(offering => {
+        if (state.selectedMuniOfferingIds.has(offering.id) && offering.id !== null) {
+            offeringsToBuy.push({
+                id: offering.id, // Keep internal ID for removal logic
+                cusip: offering.cusip ?? 'N/A',
+                description: offering.description ?? 'No Description',
+                // Use the processed amount_num (already * 1000) as default par
+                default_par: offering.amount_num ?? 0
+            });
+        }
+    });
+
+    if (offeringsToBuy.length === 0) {
+        swapBuyListContainer.innerHTML = '<p class="empty-list-message">Select offerings from the muni table to "buy".</p>';
+    } else {
+        offeringsToBuy.forEach(item => {
+            const listItem = document.createElement('div');
+            listItem.className = 'simulation-list-item';
+            listItem.dataset.offeringId = item.id; // Use internal ID for removal
+            listItem.dataset.offeringCusip = item.cusip; // Store CUSIP for API payload
+            const defaultParFormatted = item.default_par.toFixed(2); // Format default par
+
+            listItem.innerHTML = `
+                <div class="item-details">
+                    <span class="item-cusip">${item.cusip}</span>
+                    <span class="item-desc">${item.description}</span>
+                </div>
+                <div class="item-actions">
+                    <label for="par-buy-${item.id}" class="sr-only">Par to Buy</label>
+                    <input type="number" id="par-buy-${item.id}" class="par-input"
+                           value="${defaultParFormatted}"
+                           min="0.01" step="any" required
+                           title="Enter Par Amount to Buy">
+                    <button type="button" class="remove-item-btn" title="Remove from simulation">X</button>
+                </div>
+            `;
+            // Add event listener to the remove button
+            listItem.querySelector('.remove-item-btn').addEventListener('click', (e) => {
+                const offeringIdToRemove = e.target.closest('.simulation-list-item').dataset.offeringId;
+                // Remove from modal list
+                e.target.closest('.simulation-list-item').remove();
+                // Uncheck the corresponding checkbox in the muni table
+                const muniTableCheckbox = muniOfferingsTableBody?.querySelector(`.muni-checkbox[data-offering-id="${offeringIdToRemove}"]`);
+                if (muniTableCheckbox) muniTableCheckbox.checked = false;
+                // Update state
+                if (offeringIdToRemove) state.deleteSelectedMuniOfferingId(parseInt(offeringIdToRemove, 10));
+                updateSelectAllMunisCheckboxState(); // Update muni select-all checkbox
+                 // Check if list is now empty
+                if (swapBuyListContainer.children.length === 0) {
+                     swapBuyListContainer.innerHTML = '<p class="empty-list-message">Select offerings from the muni table to "buy".</p>';
+                }
+            });
+            swapBuyListContainer.appendChild(listItem);
+        });
+    }
+}
+
+/** Displays the results of the portfolio swap simulation. */
+export function displaySimulationResults(results) {
+    if (!simulationResultsSection || !simulationResultsContent) {
+        console.error("Simulation results section or content area not found.");
+        return;
+    }
+    console.log("Displaying simulation results:", results);
+    simulationResultsContent.innerHTML = ''; // Clear previous results
+
+    // --- Helper to format metrics object into HTML ---
+    const formatMetricsToHtml = (metrics, title) => {
+        if (!metrics) return `<p>No ${title.toLowerCase()} data available.</p>`;
+
+        let concentrationHtml = '';
+        if (metrics.concentration_by_sec_type && Object.keys(metrics.concentration_by_sec_type).length > 0) {
+            concentrationHtml = `
+                <h4>Concentration by Security Type</h4>
+                <table class="concentration-table">
+                    <thead><tr><th>Type</th><th>Percentage</th></tr></thead>
+                    <tbody>
+                        ${Object.entries(metrics.concentration_by_sec_type)
+                            .map(([type, value]) => `<tr><td>${type}</td><td>${value}</td></tr>`) // Value is already formatted string %
+                            .join('')}
+                    </tbody>
+                </table>`;
+        }
+
+        return `
+            <h3>${title}</h3>
+            <div class="simulation-metrics-grid">
+                <div class="metric-item"><strong>Total Par Value</strong><span>${metrics.total_par_value || 'N/A'}</span></div>
+                <div class="metric-item"><strong>Gain/Loss</strong><span>${metrics.gain_loss || 'N/A'}</span></div>
+                <div class="metric-item"><strong>Holding Count</strong><span>${metrics.holding_count ?? 'N/A'}</span></div>
+                ${metrics.wal ? `<div class="metric-item"><strong>WAL</strong><span>${metrics.wal}</span></div>` : ''}
+                ${metrics.duration ? `<div class="metric-item"><strong>Duration</strong><span>${metrics.duration}</span></div>` : ''}
+                ${metrics.yield ? `<div class="metric-item"><strong>Yield</strong><span>${metrics.yield}</span></div>` : ''}
+            </div>
+            ${concentrationHtml}
+        `;
+    };
+
+     // --- Helper to format delta metrics object into HTML ---
+     const formatDeltaToHtml = (delta, title) => {
+        if (!delta) return `<p>No ${title.toLowerCase()} data available.</p>`;
+
+        let concentrationHtml = '';
+        if (delta.concentration_by_sec_type && Object.keys(delta.concentration_by_sec_type).length > 0) {
+            concentrationHtml = `
+                <h4>Concentration Change by Security Type</h4>
+                <table class="concentration-table">
+                     <thead><tr><th>Type</th><th>Change</th></tr></thead>
+                    <tbody>
+                        ${Object.entries(delta.concentration_by_sec_type)
+                            .map(([type, value]) => `<tr><td>${type}</td><td>${value}</td></tr>`) // Value is already formatted string +/- %
+                            .join('')}
+                    </tbody>
+                </table>`;
+        }
+
+        // Note: Delta values are already formatted with +/- signs where appropriate by API
+        return `
+            <h3>${title}</h3>
+            <div class="simulation-metrics-grid">
+                <div class="metric-item"><strong>Total Par Value Change</strong><span>${delta.total_par_value || 'N/A'}</span></div>
+                <div class="metric-item"><strong>Gain/Loss Change</strong><span>${delta.gain_loss || 'N/A'}</span></div>
+                <div class="metric-item"><strong>Holding Count Change</strong><span>${delta.holding_count ?? 'N/A'}</span></div>
+                 ${delta.wal ? `<div class="metric-item"><strong>WAL Change</strong><span>${delta.wal}</span></div>` : ''}
+                ${delta.duration ? `<div class="metric-item"><strong>Duration Change</strong><span>${delta.duration}</span></div>` : ''}
+                ${delta.yield ? `<div class="metric-item"><strong>Yield Change</strong><span>${delta.yield}</span></div>` : ''}
+            </div>
+            ${concentrationHtml}
+        `;
+    };
+
+    // --- Build Results HTML ---
+    let resultsHtml = '';
+    resultsHtml += formatMetricsToHtml(results.current_portfolio, 'Current Portfolio');
+    resultsHtml += formatMetricsToHtml(results.simulated_portfolio, 'Simulated Portfolio');
+    resultsHtml += formatDeltaToHtml(results.delta, 'Change (Delta)');
+
+    // Add Analysis section if present
+    if (results.analysis) {
+        resultsHtml += `
+            <h3>Analysis</h3>
+            <div class="simulation-metrics-grid">
+                ${Object.entries(results.analysis)
+                    .map(([key, value]) => `<div class="metric-item"><strong>${key.replace(/_/g, ' ')}</strong><span>${value}</span></div>`)
+                    .join('')}
+            </div>
+        `;
+    }
+
+    simulationResultsContent.innerHTML = resultsHtml;
+    simulationResultsSection.classList.remove('hidden'); // Show the results section
+    // Scroll to the results section
+    simulationResultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/** Hides the simulation results section. */
+export function hideSimulationResults() {
+    if (simulationResultsSection) {
+        simulationResultsSection.classList.add('hidden');
+        simulationResultsContent.innerHTML = '<p>Run a simulation to see results here.</p>'; // Reset content
     }
 }
 

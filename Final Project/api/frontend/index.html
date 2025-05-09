@@ -8,8 +8,8 @@
     <link rel="stylesheet" href="{% static 'style.css' %}">
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-trendline"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-trendline"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
@@ -22,7 +22,8 @@
         <a href="#muni-offerings-section" class="header-link header-nav-link">Go to Offerings</a>
     </div>
     <div class="header-right">
-        <button id="dark-mode-toggle" type="button">Toggle Dark Mode</button> </div>
+        <button id="dark-mode-toggle" type="button">Toggle Dark Mode</button>
+    </div>
 </header>
 
 <div class="container" id="main-content">
@@ -37,25 +38,31 @@
             <select id="portfolio-filter-select">
                 <option value="">-- Select Portfolio --</option>
             </select>
-            <button id="delete-portfolio-btn" type="button" class="control-action-btn btn-danger" title="Delete selected portfolio" disabled>Delete Portfolio</button> </div>
-        <div id="filters-container"></div>
+            <button id="delete-portfolio-btn" type="button" class="control-action-btn btn-danger" title="Delete selected portfolio" disabled>Delete Portfolio</button>
+        </div>
+        <div id="filters-container">
+            </div>
         <div class="filter-buttons-container">
             <div class="filter-buttons-left">
-                <button id="add-filter-btn" type="button" class="filter-action-btn btn-primary">Add Holdings Filter</button> <button id="clear-all-filters-btn" type="button" class="filter-action-btn btn-secondary">Clear Holdings Filters</button> <button id="create-portfolio-btn" type="button" class="control-action-btn btn-info">Save Filtered View as Portfolio</button> </div>
+                <button id="add-filter-btn" type="button" class="filter-action-btn btn-primary">Add Holdings Filter</button>
+                <button id="clear-all-filters-btn" type="button" class="filter-action-btn btn-secondary">Clear Holdings Filters</button>
+                <button id="create-portfolio-btn" type="button" class="control-action-btn btn-info">Save Filtered View as Portfolio</button>
+            </div>
             <div class="filter-buttons-right">
+                <button id="simulate-swap-btn" type="button" class="control-action-btn btn-success" title="Simulate Portfolio Swap">Simulate Swap</button>
                 <button id="export-excel-btn" type="button" class="control-action-btn btn-success" title="Export current holdings view to Excel (XLSX)">Export Excel</button>
                 <button id="export-pdf-btn" type="button" class="control-action-btn btn-info" title="Export current view to PDF">Export PDF</button>
-                </div>
+            </div>
         </div>
     </div>
 
     <h2 id="portfolio-name">Loading…</h2>
 
-    <div class="charts-grid">
+    <div class="charts-grid-container">
         <div class="chart-container"><canvas id="yieldVsMaturityChart"></canvas></div>
         <div class="chart-container"><canvas id="parByMaturityYearChart"></canvas></div>
         <div class="chart-container"><canvas id="couponPieChart"></canvas></div>
-        <div class="chart-container"><canvas id="priceVsYieldChart"></canvas></div>
+        <div class="chart-container"><canvas id="portfolioCashFlowChart"></canvas></div>
     </div>
 
     <div class="section-container">
@@ -77,30 +84,50 @@
                         <th data-key="maturity_date" data-type="date">Maturity Date<span class="sort-arrow"></span></th>
                         <th data-key="call_date" data-type="date">Call Date<span class="sort-arrow"></span></th>
                         <th data-key="intention_code" data-type="string">Intention<span class="sort-arrow"></span></th>
-                        </tr>
+                    </tr>
                 </thead>
                 <tbody></tbody>
                 <tfoot>
                     <tr>
                         <td colspan="3">Totals</td>
-                        <td id="totals-par" style="text-align: right;">0</td> <td></td> <td></td> <td></td> <td id="totals-yield" style="text-align: right;">0</td> <td id="totals-wal" style="text-align: right;">0</td> <td id="totals-duration" style="text-align: right;">0</td> <td colspan="3"></td> </tr>
+                        <td id="totals-par" style="text-align: right;">0</td>
+                        <td></td> <td></td>
+                        <td></td>
+                        <td id="totals-yield" style="text-align: right;">0</td>
+                        <td id="totals-wal" style="text-align: right;">0</td>
+                        <td id="totals-duration" style="text-align: right;">0</td>
+                        <td colspan="3"></td>
+                    </tr>
                 </tfoot>
             </table>
         </div>
-        <div id="holdings-pagination-controls" class="pagination-controls">
-            </div>
+        <div id="holdings-pagination-controls" class="pagination-controls"></div>
         <div class="email-action-container">
-            <button id="email-interest-btn" type="button" class="control-action-btn btn-success" disabled>Sell Bonds</button> <div id="email-status-message" class="status-message"></div>
+            <button id="email-interest-btn" type="button" class="control-action-btn btn-success" disabled>Sell Bonds</button>
+            <div id="email-status-message" class="status-message"></div>
         </div>
     </div>
 
+    <div id="simulation-results-section" class="section-container hidden">
+        <h2>Portfolio Swap Simulation Results</h2>
+        <div id="simulation-results-content">
+            <p>Run a simulation to see results here.</p>
+        </div>
+        <div class="simulation-results-actions" style="margin-top: 1em; text-align: right;">
+            <button id="close-simulation-results-btn" type="button" class="btn-secondary">Close Results</button>
+            </div>
+    </div>
+
+
     <div id="muni-offerings-section" class="muni-offerings-container section-container">
         <h2>Municipal Offerings</h2>
-
-        <div id="muni-filters-container" class="filters-sub-container"></div>
+        <div id="muni-filters-container" class="filters-sub-container">
+            </div>
         <div class="filter-buttons-container">
              <div class="filter-buttons-left">
-                <button id="add-muni-filter-btn" type="button" class="filter-action-btn btn-primary">Add Offering Filter</button> <button id="clear-all-muni-filters-btn" type="button" class="filter-action-btn btn-secondary">Clear Offering Filters</button> </div>
+                <button id="add-muni-filter-btn" type="button" class="filter-action-btn btn-primary">Add Offering Filter</button>
+                <button id="clear-all-muni-filters-btn" type="button" class="filter-action-btn btn-secondary">Clear Offering Filters</button>
+             </div>
              </div>
         <div class="table-container">
             <table id="muni-offerings-table">
@@ -123,20 +150,23 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr><td colspan="14">Loading offerings...</td></tr> </tbody>
-                </table>
+                    <tr><td colspan="14">Loading offerings...</td></tr>
+                </tbody>
+            </table>
         </div>
-        <div id="muni-pagination-controls" class="pagination-controls">
-            </div>
-         <div class="email-action-container">
-            <button id="email-buy-interest-btn" type="button" class="control-action-btn btn-primary" disabled>Buy Bonds</button> <div id="email-buy-status-message" class="status-message"></div>
+        <div id="muni-pagination-controls" class="pagination-controls"></div>
+        <div class="email-action-container">
+            <button id="email-buy-interest-btn" type="button" class="control-action-btn btn-primary" disabled>Buy Bonds</button>
+            <div id="email-buy-status-message" class="status-message"></div>
         </div>
     </div>
+
 </div> <div id="create-portfolio-modal" class="modal-overlay">
     <div class="modal-content">
         <div class="modal-header">
             <h3>Save View as New Portfolio</h3>
-            <button class="modal-close-btn" type="button" id="modal-close-btn">&times;</button> </div>
+            <button class="modal-close-btn" type="button" id="modal-close-create-portfolio-btn">&times;</button>
+        </div>
         <form id="create-portfolio-form">
             <div class="modal-body">
                 <div class="form-group">
@@ -149,19 +179,52 @@
                         <option value="">Loading customers...</option>
                     </select>
                 </div>
-                <div id="modal-error-message" class="modal-error-message"></div>
+                <div id="modal-error-message-create-portfolio" class="modal-error-message"></div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn-secondary" id="modal-cancel-btn">Cancel</button>
-                <button type="submit" class="btn-primary">Save Portfolio</button> </div>
+                <button type="button" class="btn-secondary" id="modal-cancel-create-portfolio-btn">Cancel</button>
+                <button type="submit" class="btn-primary">Save Portfolio</button>
+            </div>
         </form>
     </div>
 </div>
 
+<div id="portfolio-swap-modal" class="modal-overlay">
+    <div class="modal-content modal-lg"> <div class="modal-header">
+            <h3>Simulate Portfolio Swap</h3>
+            <button class="modal-close-btn" type="button" id="modal-close-swap-btn">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="simulation-columns">
+                <div class="simulation-column">
+                    <h4>Holdings to "Sell"</h4>
+                    <div id="swap-sell-list" class="simulation-list-container">
+                        <p class="empty-list-message">Select holdings from the main table to "sell".</p>
+                    </div>
+                </div>
+
+                <div class="simulation-column">
+                    <h4>Offerings to "Buy"</h4>
+                    <div id="swap-buy-list" class="simulation-list-container">
+                        <p class="empty-list-message">Select offerings from the muni table to "buy".</p>
+                    </div>
+                </div>
+            </div>
+            <div id="modal-error-message-swap" class="modal-error-message"></div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn-secondary" id="modal-cancel-swap-btn">Cancel</button>
+            <button type="button" class="btn-primary" id="run-simulation-btn">Run Simulation</button>
+        </div>
+    </div>
+</div>
+
+
 <script>
     // Make the admin status available globally on the window object
+    // This value is injected by the Django template.
     window.IS_ADMIN_USER = {% if is_admin %}true{% else %}false{% endif %};
-    console.log("User admin status (set on window):", window.IS_ADMIN_USER); // Debug log
+    console.log("User admin status (set on window):", window.IS_ADMIN_USER);
 </script>
 
 <script type="module" src="{% static 'config.js' %}"></script>
