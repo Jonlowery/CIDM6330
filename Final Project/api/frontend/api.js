@@ -1,6 +1,8 @@
 // api.js
 // Handles all communication with the backend API.
 // VERSION: Added runPortfolioSwapSimulation function.
+// MODIFIED: Corrected handleEmailInterestClick to fetch all selected holdings.
+// MODIFIED: Corrected calls to showStatusMessageGeneric.
 
 "use strict";
 
@@ -10,6 +12,8 @@ import * as ui from './ui.js'; // For updating UI during/after API calls
 import * as filters from './filters.js'; // To get filter state and trigger fetches
 // Renamed import for clarity (ui.js functions are used directly now)
 // import { processAndDisplayHoldingsPage, processAndDisplayMuniOfferings, renderChartsWithAllData } from './ui.js';
+// Import showStatusMessageGeneric directly from utils.js
+import { parseFloatSafe, showStatusMessageGeneric } from './utils.js';
 
 // --- DOM Element References (needed for UI updates within API functions) ---
 const customerSelect = document.getElementById('customer-select');
@@ -422,7 +426,7 @@ export async function fetchAllFilteredHoldings(sourcePortfolioId = null) {
     const sortParam = `ordering=${state.currentSortDir === 'desc' ? '-' : ''}${backendSortKey}`;
     const filterParams = buildFilterParamString(state.activeFilters); // Use helper
 
-    const fetchAllPageSize = 100;
+    const fetchAllPageSize = 100; // Fetch in larger chunks for "all"
     const baseUrl = `${API_ROOT}/holdings/?portfolio=${portfolioId}&page_size=${fetchAllPageSize}&${sortParam}${filterParams ? '&' + filterParams : ''}`;
     console.log(`[fetchAllFilteredHoldings] Base URL: ${baseUrl}`);
 
@@ -435,7 +439,7 @@ export async function fetchAllFilteredHoldings(sourcePortfolioId = null) {
             if (!res.ok) {
                 if (res.status === 404) {
                     console.warn(`Page ${currentPage} not found while fetching all holdings. Stopping.`);
-                    break;
+                    break; // Stop if a page is not found (e.g., if total count was miscalculated or data changed)
                 } else {
                     let errorData = { detail: `HTTP error! Status: ${res.status}` };
                     try { errorData = await res.json(); } catch (e) { /* ignore */ }
@@ -448,17 +452,17 @@ export async function fetchAllFilteredHoldings(sourcePortfolioId = null) {
             if (data.results && data.results.length > 0) {
                 allHoldings = allHoldings.concat(data.results);
             }
-            nextUrl = data.next;
-            currentPage++;
+            nextUrl = data.next; // Get the URL for the next page
+            currentPage++; // Increment for logging, though nextUrl is the source of truth
 
-        } while (nextUrl);
+        } while (nextUrl); // Continue as long as there's a next page URL
 
         console.log(`Fetched a total of ${allHoldings.length} holdings.`);
         return allHoldings;
 
     } catch (error) {
         console.error("Error fetching all holdings:", error);
-        throw error;
+        throw error; // Re-throw to be handled by caller
     }
 }
 
@@ -516,7 +520,7 @@ export async function loadMuniOfferings(page = 1) {
     }
 
     const colSpan = (muniTableHeaders?.length || 14);
-    if (!muniOfferingsTableBody.querySelector('tr[data-offering-id]')) {
+    if (!muniOfferingsTableBody.querySelector('tr[data-offering-id]')) { // Check if table is empty or has initial message
         muniOfferingsTableBody.innerHTML = `<tr><td colspan="${colSpan}">Loading offerings (Page ${page})...</td></tr>`;
     }
     ui.renderPaginationControls(muniPaginationControls, null);
@@ -533,7 +537,7 @@ export async function loadMuniOfferings(page = 1) {
         if (!response.ok) {
             if (response.status === 404 && page > 1) {
                 console.warn(`Page ${page} not found for muni offerings. Fetching page 1 instead.`);
-                await loadMuniOfferings(1);
+                await loadMuniOfferings(1); // Attempt to load page 1
                 return;
             } else {
                  let errorData = { detail: `HTTP error! Status: ${response.status}` };
@@ -580,7 +584,7 @@ export async function fetchCustomersForAdminModal(page = 1, accumulatedCustomers
     }
 
     try {
-        const adminPageSize = 100;
+        const adminPageSize = 100; // Fetch in larger chunks for admin modal
         const response = await fetch(`${API_ROOT}/customers/?page_size=${adminPageSize}&page=${page}`);
         if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
 
@@ -589,19 +593,21 @@ export async function fetchCustomersForAdminModal(page = 1, accumulatedCustomers
         accumulatedCustomers = accumulatedCustomers.concat(fetchedCustomers);
 
         if (data.next) {
+            // Extract page number from the 'next' URL
             let nextPageNum = null;
             try {
-                const url = new URL(data.next);
+                const url = new URL(data.next); // data.next is a full URL
                 nextPageNum = parseInt(url.searchParams.get('page'), 10);
             } catch (e) { console.error("Error parsing next page URL for admin customers:", data.next, e); }
 
             if (nextPageNum && !isNaN(nextPageNum)) {
-                await fetchCustomersForAdminModal(nextPageNum, accumulatedCustomers);
+                await fetchCustomersForAdminModal(nextPageNum, accumulatedCustomers); // Recursive call
             } else {
                  console.warn("Could not determine next page number from URL:", data.next, "- displaying accumulated customers.");
-                 ui.populateAdminCustomerDropdown(accumulatedCustomers);
+                 ui.populateAdminCustomerDropdown(accumulatedCustomers); // Populate with what we have
             }
         } else {
+            // No more pages, all customers fetched
             console.log("Finished fetching all customers for admin modal:", accumulatedCustomers.length);
             ui.populateAdminCustomerDropdown(accumulatedCustomers);
         }
@@ -609,7 +615,7 @@ export async function fetchCustomersForAdminModal(page = 1, accumulatedCustomers
         console.error("Failed to fetch customers for admin modal:", error);
         if(adminCustomerSelect) {
             adminCustomerSelect.innerHTML = '<option value="">Error loading customers</option>';
-            adminCustomerSelect.disabled = false;
+            adminCustomerSelect.disabled = false; // Re-enable for manual retry if desired
         }
         if(modalErrorMessageCreatePortfolio) { // Use specific ID
             modalErrorMessageCreatePortfolio.textContent = 'Error loading customer list for modal.';
@@ -627,7 +633,7 @@ export async function handleCreatePortfolioSubmit(event) {
     if(modalErrorMessageCreatePortfolio) { // Use specific ID
         modalErrorMessageCreatePortfolio.textContent = 'Processing...';
         modalErrorMessageCreatePortfolio.style.display = 'block';
-        modalErrorMessageCreatePortfolio.classList.remove('error');
+        modalErrorMessageCreatePortfolio.classList.remove('error'); // Clear previous error class
     }
 
     const portfolioName = newPortfolioNameInput ? newPortfolioNameInput.value.trim() : '';
@@ -641,10 +647,10 @@ export async function handleCreatePortfolioSubmit(event) {
     }
 
     const payload = { name: portfolioName };
-    let ownerIdForPayload = null;
+    let ownerIdForPayload = null; // This will be the customer ID whose portfolio list needs refresh
     const isCustomerSelectionVisible = adminCustomerSelectGroup && !adminCustomerSelectGroup.classList.contains('hidden');
 
-    if (isCustomerSelectionVisible) {
+    if (isCustomerSelectionVisible) { // Admin is creating for a specific customer
         ownerIdForPayload = adminCustomerSelect ? adminCustomerSelect.value : null;
         if (!ownerIdForPayload) {
             if(modalErrorMessageCreatePortfolio) {
@@ -655,7 +661,7 @@ export async function handleCreatePortfolioSubmit(event) {
             return;
         }
         try {
-            payload.owner_id_input = parseInt(ownerIdForPayload, 10);
+            payload.owner_id_input = parseInt(ownerIdForPayload, 10); // Backend expects owner_id_input
             if (isNaN(payload.owner_id_input)) throw new Error("Invalid ID");
         } catch (e) {
              if(modalErrorMessageCreatePortfolio) {
@@ -666,11 +672,13 @@ export async function handleCreatePortfolioSubmit(event) {
              return;
         }
         console.log("Admin selected owner_id_input:", payload.owner_id_input);
-    } else {
+    } else { // Non-admin creating for themselves
         console.log("Non-admin creating portfolio. Backend will assign owner.");
         ownerIdForPayload = state.selectedCustomerId; // Store for potential refresh
+        // For non-admins, owner_id_input is not sent; backend uses request.user
     }
 
+    // Fetch filtered holdings to include their IDs in the new portfolio
     try {
         const sourcePortfolioId = portfolioFilterSelect?.value;
         if (!sourcePortfolioId) throw new Error("Please select the source portfolio to filter and save from.");
@@ -678,20 +686,22 @@ export async function handleCreatePortfolioSubmit(event) {
         if(modalErrorMessageCreatePortfolio) modalErrorMessageCreatePortfolio.textContent = 'Fetching filtered holdings...';
         console.log(`Fetching filtered holdings from source portfolio ID: ${sourcePortfolioId} to copy...`);
 
-        const filteredHoldings = await fetchAllFilteredHoldings(sourcePortfolioId);
+        const filteredHoldings = await fetchAllFilteredHoldings(sourcePortfolioId); // Use the source portfolio
 
         if (filteredHoldings && filteredHoldings.length > 0) {
+            // The backend expects a list of 'external_ticket' (which are integers)
             payload.initial_holding_ids = filteredHoldings
-                .map(h => h.external_ticket)
-                .filter(id => typeof id === 'number' && Number.isInteger(id));
+                .map(h => h.external_ticket) // Assuming 'external_ticket' is the correct integer ID
+                .filter(id => typeof id === 'number' && Number.isInteger(id)); // Ensure they are numbers
 
             if (payload.initial_holding_ids.length !== filteredHoldings.length) {
                 console.warn("Some filtered holdings were missing a valid integer 'external_ticket'.");
+                // This could happen if 'external_ticket' is null or not a number for some holdings.
             }
             console.log(`Adding ${payload.initial_holding_ids.length} external_ticket IDs to the payload.`);
         } else {
             console.log("No holdings matched the current filters. Creating an empty portfolio.");
-            payload.initial_holding_ids = [];
+            payload.initial_holding_ids = []; // Send empty array if no holdings
         }
 
     } catch (error) {
@@ -704,6 +714,7 @@ export async function handleCreatePortfolioSubmit(event) {
         return;
     }
 
+
     if(modalErrorMessageCreatePortfolio) modalErrorMessageCreatePortfolio.textContent = 'Sending request...';
     console.log("Final create portfolio payload:", JSON.stringify(payload));
 
@@ -715,12 +726,12 @@ export async function handleCreatePortfolioSubmit(event) {
         });
 
         console.log("Create portfolio response status:", response.status);
-        const responseData = await response.json().catch(() => ({ detail: response.statusText }));
+        const responseData = await response.json().catch(() => ({ detail: response.statusText })); // Graceful JSON parse
 
         if (!response.ok) {
             console.error("Raw API Error Response Data:", responseData);
             let errorMsg = `Error ${response.status}: ${responseData.detail || JSON.stringify(responseData)}`;
-            // Try to format validation errors better
+            // Try to format validation errors better if they come as an object
              if (typeof responseData === 'object' && responseData !== null && !responseData.detail) {
                  errorMsg = Object.entries(responseData)
                      .map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors.join(', ') : String(errors)}`)
@@ -732,20 +743,24 @@ export async function handleCreatePortfolioSubmit(event) {
         const newPortfolio = responseData;
         console.log('Successfully created portfolio:', newPortfolio);
         ui.hideCreatePortfolioModal();
-        alert(`Portfolio "${newPortfolio.name}" created successfully!`);
+        alert(`Portfolio "${newPortfolio.name}" created successfully!`); // Simple success alert
 
-        const customerIdToRefresh = payload.owner_id_input || ownerIdForPayload;
+        // Determine which customer's portfolio list to refresh
+        const customerIdToRefresh = payload.owner_id_input || ownerIdForPayload; // Admin choice or current user's customer ID
 
         if (customerIdToRefresh) {
+            // If the new portfolio belongs to the currently selected customer, refresh their portfolio list
             const isCurrentCustomer = customerIdToRefresh == state.selectedCustomerId;
             if (isCurrentCustomer) {
-                await loadPortfolios(customerIdToRefresh, 1);
+                await loadPortfolios(customerIdToRefresh, 1); // Refresh portfolio dropdown for this customer
+                // Try to auto-select the newly created portfolio
                 if (portfolioFilterSelect && Array.from(portfolioFilterSelect.options).some(opt => opt.value == newPortfolio.id)) {
                     portfolioFilterSelect.value = newPortfolio.id;
-                    ui.handlePortfolioSelection();
-                    await filters.applyHoldingsFiltersAndRefreshAll(1);
+                    ui.handlePortfolioSelection(); // Update UI
+                    await filters.applyHoldingsFiltersAndRefreshAll(1); // Load its data
                 } else {
-                     console.warn("Newly created portfolio not found in dropdown.");
+                     console.warn("Newly created portfolio not found in dropdown after refresh. Defaulting or clearing.");
+                     // Fallback: select the first available portfolio or clear if none
                      if (portfolioFilterSelect && portfolioFilterSelect.options.length > 0 && portfolioFilterSelect.options[0].value) {
                          portfolioFilterSelect.value = portfolioFilterSelect.options[0].value;
                          ui.handlePortfolioSelection();
@@ -756,11 +771,13 @@ export async function handleCreatePortfolioSubmit(event) {
                      }
                 }
             } else {
-                 console.log(`Portfolio created for other customer ${customerIdToRefresh}. No UI refresh.`);
+                 // If admin created for a different customer, no UI change for current view, but log it.
+                 console.log(`Portfolio created for other customer ${customerIdToRefresh}. Current view for customer ${state.selectedCustomerId} remains.`);
             }
         } else {
+            // Should not happen if logic is correct, but as a fallback, reload main customer list.
             console.warn("No customer ID determined after portfolio creation. Reloading main customer list.");
-            await loadCustomers();
+            await loadCustomers(); // Fallback: reload all customers
         }
 
     } catch (error) {
@@ -795,92 +812,121 @@ export async function handleDeletePortfolio() {
     try {
         const response = await fetch(`${API_ROOT}/portfolios/${portfolioIdToDelete}/`, {
             method: 'DELETE',
-            headers: { 'X-CSRFToken': CSRF_TOKEN, 'Accept': 'application/json' }
+            headers: { 'X-CSRFToken': CSRF_TOKEN, 'Accept': 'application/json' } // Ensure CSRF and Accept
         });
 
         console.log(`Delete portfolio response status: ${response.status}`);
 
-        if (response.status === 204) {
+        if (response.status === 204) { // Successfully deleted (No Content)
             alert(`Portfolio "${portfolioNameToDelete}" deleted successfully.`);
+            // Refresh the portfolio list for the current customer
             if (state.selectedCustomerId) {
-                 await loadPortfolios(state.selectedCustomerId, 1);
+                 await loadPortfolios(state.selectedCustomerId, 1); // Reload page 1 of portfolios
             }
         } else {
+            // Handle errors (e.g., 403 Forbidden, 404 Not Found, 500 Server Error)
             let errorMsg = `Error ${response.status}: Failed to delete portfolio.`;
             try {
-                const errorData = await response.json();
+                const errorData = await response.json(); // Try to parse JSON error response
                 errorMsg += ` ${errorData.detail || JSON.stringify(errorData)}`;
-            } catch (e) { errorMsg += ` ${response.statusText}`; }
+            } catch (e) { errorMsg += ` ${response.statusText}`; } // Fallback to statusText
             throw new Error(errorMsg);
         }
     } catch (error) {
         console.error("Failed to delete portfolio:", error);
-        alert(`Error deleting portfolio: ${error.message}`);
+        alert(`Error deleting portfolio: ${error.message}`); // Show error to user
     }
  }
 
 /** Handles the "Sell Bonds" button click, sending data to the backend. */
 export async function handleEmailInterestClick() {
     if (!state.selectedCustomerId) {
-        ui.showStatusMessageGeneric(emailStatusMessage, "Error: No customer selected.", true);
+        showStatusMessageGeneric(emailStatusMessage, "Error: No customer selected.", true);
         return;
     }
     if (state.selectedHoldingIds.size === 0) {
-        ui.showStatusMessageGeneric(emailStatusMessage, "Error: No bonds selected.", true);
+        showStatusMessageGeneric(emailStatusMessage, "Error: No bonds selected.", true);
         return;
     }
 
     if(emailInterestBtn) emailInterestBtn.disabled = true;
-    ui.showStatusMessageGeneric(emailStatusMessage, "Sending email...", false, 0); // Use utils version
-
-    const selectedBondsPayload = [];
-    state.currentHoldingsData.results.forEach(holding => {
-        if (state.selectedHoldingIds.has(holding.ticket_id)) {
-            // Use the calculated par_value if available, else calculate
-            const parValue = holding.par_value ? parseFloatSafe(holding.par_value) : (holding.par_value_num ?? 0);
-            selectedBondsPayload.push({
-                cusip: holding.security_cusip || 'N/A',
-                par: parValue.toFixed(2) // Send formatted par
-            });
-        }
-    });
-
-    if (selectedBondsPayload.length !== state.selectedHoldingIds.size) {
-        console.warn("Some selected bond details not found on current page. Email might be incomplete.");
-    }
-    if (selectedBondsPayload.length === 0) {
-         ui.showStatusMessageGeneric(emailStatusMessage, "Error: Could not find details for selected bonds.", true);
-         if(emailInterestBtn) emailInterestBtn.disabled = state.selectedHoldingIds.size === 0;
-         return;
-    }
-
-    const payload = {
-        customer_id: parseInt(state.selectedCustomerId, 10),
-        selected_bonds: selectedBondsPayload
-    };
-    console.log("Sending email interest payload:", payload);
+    showStatusMessageGeneric(emailStatusMessage, "Preparing email data...", false, 0);
 
     try {
+        // *** MODIFICATION START ***
+        // Fetch details for ALL selected holdings, not just those on the current page.
+        // We use fetchAllFilteredHoldings which gets all holdings matching current filters.
+        // Then we filter this list by state.selectedHoldingIds.
+        console.log("Fetching all filtered holdings to get details for selected bonds...");
+        const allFilteredHoldingsRaw = await fetchAllFilteredHoldings(); // Uses current portfolio and filters
+
+        if (!allFilteredHoldingsRaw || allFilteredHoldingsRaw.length === 0) {
+            showStatusMessageGeneric(emailStatusMessage, "Error: Could not retrieve holding details.", true);
+            if(emailInterestBtn) emailInterestBtn.disabled = false; // Re-enable button
+            return;
+        }
+
+        // Process these holdings to ensure consistent data structure (e.g., par_value_num)
+        const allFilteredHoldingsProcessed = ui.processHoldings(allFilteredHoldingsRaw);
+
+        const selectedBondsPayload = [];
+        // Iterate over the set of selected IDs
+        for (const selectedTicketId of state.selectedHoldingIds) {
+            const holdingDetail = allFilteredHoldingsProcessed.find(h => h.ticket_id === selectedTicketId);
+            if (holdingDetail) {
+                const parValue = holdingDetail.par_value ? parseFloatSafe(holdingDetail.par_value) : (holdingDetail.par_value_num ?? 0);
+                selectedBondsPayload.push({
+                    cusip: holdingDetail.security_cusip || 'N/A',
+                    par: parValue.toFixed(2) // Send formatted par
+                });
+            } else {
+                console.warn(`Details for selected holding ID ${selectedTicketId} not found in allFilteredHoldingsProcessed. It might have been filtered out or an issue with data consistency.`);
+                // Optionally, inform the user or skip this item
+            }
+        }
+
+        if (selectedBondsPayload.length === 0 && state.selectedHoldingIds.size > 0) {
+             showStatusMessageGeneric(emailStatusMessage, "Error: Could not find details for any of the selected bonds. They might not match current filters.", true);
+             if(emailInterestBtn) emailInterestBtn.disabled = state.selectedHoldingIds.size === 0; // Check original set size
+             return;
+        }
+        // *** MODIFICATION END ***
+
+        if (selectedBondsPayload.length === 0) { // Should be caught by state.selectedHoldingIds.size === 0, but double check
+             showStatusMessageGeneric(emailStatusMessage, "Error: No bond details to send.", true);
+             if(emailInterestBtn) emailInterestBtn.disabled = false;
+             return;
+        }
+        
+        showStatusMessageGeneric(emailStatusMessage, "Sending email...", false, 0); // Update status
+
+        const payload = {
+            customer_id: parseInt(state.selectedCustomerId, 10),
+            selected_bonds: selectedBondsPayload
+        };
+        console.log("Sending email interest payload:", payload);
+
         const response = await fetch(`${API_ROOT}/email-salesperson-interest/`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
             body: JSON.stringify(payload),
         });
-        const responseData = await response.json().catch(() => ({}));
+        const responseData = await response.json().catch(() => ({})); // Graceful JSON parse
 
         if (response.ok) {
             console.log("Email sent successfully:", responseData);
-            ui.showStatusMessageGeneric(emailStatusMessage, responseData.message || "Email sent successfully!", false);
-            ui.clearHoldingSelection();
+            showStatusMessageGeneric(emailStatusMessage, responseData.message || "Email sent successfully!", false);
+            ui.clearHoldingSelection(); // Clear selection after successful send
         } else {
             console.error("API Error sending email:", response.status, responseData);
             const errorDetail = responseData.error || responseData.detail || response.statusText || 'Failed.';
-            ui.showStatusMessageGeneric(emailStatusMessage, `Error: ${errorDetail}`, true);
+            showStatusMessageGeneric(emailStatusMessage, `Error: ${errorDetail}`, true);
         }
     } catch (error) {
-        console.error("Network/Fetch Error sending email:", error);
-        ui.showStatusMessageGeneric(emailStatusMessage, "Network error. Please try again.", true);
+        console.error("Error during email interest process:", error);
+        showStatusMessageGeneric(emailStatusMessage, `Error preparing or sending email: ${error.message || "Network error. Please try again."}`, true);
     } finally {
+        // Re-enable button based on whether there are still selections (e.g. if send failed but selections remain)
         if(emailInterestBtn) emailInterestBtn.disabled = state.selectedHoldingIds.size === 0;
     }
 }
@@ -888,20 +934,30 @@ export async function handleEmailInterestClick() {
 /** Handles the "Indicate Interest in Buying" button click. */
 export async function handleEmailBuyInterestClick() {
     if (!state.selectedCustomerId) {
-        ui.showStatusMessageGeneric(emailBuyStatusMessage, "Error: No customer selected.", true);
+        showStatusMessageGeneric(emailBuyStatusMessage, "Error: No customer selected.", true);
         return;
     }
     if (state.selectedMuniOfferingIds.size === 0) {
-        ui.showStatusMessageGeneric(emailBuyStatusMessage, "Error: No offerings selected.", true);
+        showStatusMessageGeneric(emailBuyStatusMessage, "Error: No offerings selected.", true);
         return;
     }
 
     if(emailBuyInterestBtn) emailBuyInterestBtn.disabled = true;
-    ui.showStatusMessageGeneric(emailBuyStatusMessage, "Sending email...", false, 0); // Use utils version
+    showStatusMessageGeneric(emailBuyStatusMessage, "Preparing email data...", false, 0);
+
+    // *** POTENTIAL IMPROVEMENT AREA START ***
+    // Similar to handleEmailInterestClick, to ensure ALL selected muni offerings are included,
+    // you would ideally fetch details for all IDs in state.selectedMuniOfferingIds.
+    // This would require a function like `fetchAllFilteredMuniOfferings()` which currently
+    // does not exist in this codebase.
+    // The current implementation below will only find details for offerings on the CURRENTLY VISIBLE PAGE.
+    // If you implement `fetchAllFilteredMuniOfferings()`, you would call it here,
+    // then filter its results by `state.selectedMuniOfferingIds`.
 
     const selectedOfferingsPayload = [];
+    // This iterates only the current page's data.
     state.currentMuniOfferingsData.results.forEach(offering => {
-        if (state.selectedMuniOfferingIds.has(offering.id)) {
+        if (state.selectedMuniOfferingIds.has(offering.id)) { // offering.id is the integer PK
             selectedOfferingsPayload.push({
                 cusip: offering.cusip || 'N/A',
                 description: offering.description || 'N/A' // Send description
@@ -910,13 +966,25 @@ export async function handleEmailBuyInterestClick() {
     });
 
     if (selectedOfferingsPayload.length !== state.selectedMuniOfferingIds.size) {
-        console.warn("Some selected offering details not found on current page. Email might be incomplete.");
+        console.warn("Some selected offering details not found on current page. Email might be incomplete. Consider implementing fetchAllFilteredMuniOfferings().");
+        // For now, we'll proceed with what we found on the current page.
+        // A more robust solution would fetch all details.
     }
-    if (selectedOfferingsPayload.length === 0) {
-         ui.showStatusMessageGeneric(emailBuyStatusMessage, "Error: Could not find details for selected offerings.", true);
+
+    if (selectedOfferingsPayload.length === 0 && state.selectedMuniOfferingIds.size > 0) {
+         showStatusMessageGeneric(emailBuyStatusMessage, "Error: Could not find details for selected offerings on the current page.", true);
          if(emailBuyInterestBtn) emailBuyInterestBtn.disabled = state.selectedMuniOfferingIds.size === 0;
          return;
     }
+    // *** POTENTIAL IMPROVEMENT AREA END ***
+
+    if (selectedOfferingsPayload.length === 0) {
+         showStatusMessageGeneric(emailBuyStatusMessage, "Error: No offering details to send.", true);
+         if(emailBuyInterestBtn) emailBuyInterestBtn.disabled = false;
+         return;
+    }
+
+    showStatusMessageGeneric(emailBuyStatusMessage, "Sending email...", false, 0); // Update status
 
     const payload = {
         customer_id: parseInt(state.selectedCustomerId, 10),
@@ -931,22 +999,22 @@ export async function handleEmailBuyInterestClick() {
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
             body: JSON.stringify(payload),
         });
-        const responseData = await response.json().catch(() => ({}));
+        const responseData = await response.json().catch(() => ({})); // Graceful JSON parse
 
         if (response.ok) {
             console.log("Buy interest email sent successfully:", responseData);
-            ui.showStatusMessageGeneric(emailBuyStatusMessage, responseData.message || "Buy interest email sent successfully!", false);
-            ui.clearMuniOfferingSelection();
+            showStatusMessageGeneric(emailBuyStatusMessage, responseData.message || "Buy interest email sent successfully!", false);
+            ui.clearMuniOfferingSelection(); // Clear selection on success
         } else {
             console.error("API Error sending buy interest email:", response.status, responseData);
             const errorDetail = responseData.error || responseData.detail || response.statusText || 'Failed.';
-            ui.showStatusMessageGeneric(emailBuyStatusMessage, `Error: ${errorDetail}`, true);
+            showStatusMessageGeneric(emailBuyStatusMessage, `Error: ${errorDetail}`, true);
         }
     } catch (error) {
         console.error("Network/Fetch Error sending buy interest email:", error);
-        ui.showStatusMessageGeneric(emailBuyStatusMessage, "Network error. Please try again.", true);
+        showStatusMessageGeneric(emailBuyStatusMessage, "Network error. Please try again.", true);
     } finally {
-         if(emailBuyInterestBtn) emailBuyInterestBtn.disabled = state.selectedMuniOfferingIds.size === 0;
+        if(emailBuyInterestBtn) emailBuyInterestBtn.disabled = state.selectedMuniOfferingIds.size === 0;
     }
 }
 
@@ -989,7 +1057,7 @@ export async function runPortfolioSwapSimulation(portfolioId, holdingsToRemove, 
         });
 
         console.log(`Simulation response status for portfolio ${portfolioId}:`, response.status);
-        const responseData = await response.json().catch(() => ({ detail: response.statusText }));
+        const responseData = await response.json().catch(() => ({ detail: response.statusText })); // Graceful JSON parse
 
         if (!response.ok) {
             console.error("API Error during simulation:", response.status, responseData);

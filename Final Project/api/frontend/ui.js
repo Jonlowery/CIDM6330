@@ -71,6 +71,10 @@ const closeSimulationResultsBtn = document.getElementById('close-simulation-resu
 /** Processes raw holding data for display. */
 export function processHoldings(holdingsPage) {
     // console.log("Processing holdings data (raw):", JSON.stringify(holdingsPage)); // Log raw data string
+    if (!holdingsPage || !Array.isArray(holdingsPage)) {
+        console.warn("processHoldings: Input is not an array or is null/undefined.", holdingsPage);
+        return []; // Return empty array if input is invalid
+    }
     holdingsPage.forEach((h, index) => {
         // console.log(`Processing holding ${index}:`, h); // Log each raw holding
 
@@ -110,6 +114,10 @@ export function processHoldings(holdingsPage) {
 
 /** Processes raw muni offering data for display. */
 export function processMuniOfferings(offeringsPage) {
+    if (!offeringsPage || !Array.isArray(offeringsPage)) {
+        console.warn("processMuniOfferings: Input is not an array or is null/undefined.", offeringsPage);
+        return []; // Return empty array if input is invalid
+    }
     // console.log("Processing muni offerings data:", offeringsPage); // Log raw data
     offeringsPage.forEach(offering => {
         // Amount is already a number from serializer, but ensure it's not null
@@ -543,7 +551,8 @@ export function hideChartLoadingState() {
 
 /** Processes and displays the fetched holdings *page* data. */
 export function processAndDisplayHoldingsPage() {
-    const processedHoldingsPage = processHoldings(state.currentHoldingsData.results);
+    const holdingsToProcess = state.currentHoldingsData.results || [];
+    const processedHoldingsPage = processHoldings(holdingsToProcess);
     renderTable(processedHoldingsPage);
     renderTotals(processedHoldingsPage);
     updateSortIndicators();
@@ -551,7 +560,8 @@ export function processAndDisplayHoldingsPage() {
 
 /** Processes and displays the fetched muni offerings page. */
 export function processAndDisplayMuniOfferings() {
-    const processedOfferings = processMuniOfferings(state.currentMuniOfferingsData.results);
+    const offeringsToProcess = state.currentMuniOfferingsData.results || [];
+    const processedOfferings = processMuniOfferings(offeringsToProcess);
     renderMuniOfferingsTable(processedOfferings);
     updateMuniSortIndicators();
 }
@@ -692,7 +702,8 @@ function populateSwapModalLists() {
     swapSellListContainer.innerHTML = ''; // Clear previous items
     const holdingsToSell = [];
     // Find selected holdings from the current page data using ticket_id from state
-    state.currentHoldingsData.results.forEach(holding => {
+    const currentHoldingsForSwap = state.currentHoldingsData.results || []; // Ensure it's an array
+    currentHoldingsForSwap.forEach(holding => {
         if (state.selectedHoldingIds.has(holding.ticket_id) && holding.external_ticket !== null) {
             holdingsToSell.push({
                 external_ticket: holding.external_ticket,
@@ -743,7 +754,8 @@ function populateSwapModalLists() {
     swapBuyListContainer.innerHTML = ''; // Clear previous items
     const offeringsToBuy = [];
     // Find selected offerings from the current page data using ID from state
-    state.currentMuniOfferingsData.results.forEach(offering => {
+    const currentOfferingsForSwap = state.currentMuniOfferingsData.results || []; // Ensure it's an array
+    currentOfferingsForSwap.forEach(offering => {
         if (state.selectedMuniOfferingIds.has(offering.id) && offering.id !== null) {
             offeringsToBuy.push({
                 id: offering.id, // Keep internal ID for removal logic
@@ -800,37 +812,112 @@ function populateSwapModalLists() {
     }
 }
 
-/** Displays the results of the portfolio swap simulation. */
-export function displaySimulationResults(results) {
+/**
+ * Displays the results of the portfolio swap simulation.
+ * @param {object} apiResponse - The full response object from the simulation API.
+ */
+export function displaySimulationResults(apiResponse) {
     if (!simulationResultsSection || !simulationResultsContent) {
         console.error("Simulation results section or content area not found.");
+        simulationResultsContent.innerHTML = '<p class="text-red-500">Error: UI elements for results are missing.</p>';
+        if (simulationResultsSection) simulationResultsSection.classList.remove('hidden');
         return;
     }
-    console.log("Displaying simulation results:", results);
+    console.log("[UI] Displaying simulation results:", JSON.parse(JSON.stringify(apiResponse))); // Log the full response
     simulationResultsContent.innerHTML = ''; // Clear previous results
+
+    // --- Correctly access nested metric objects ---
+    const currentMetrics = apiResponse.current_portfolio_metrics;
+    const simulatedMetrics = apiResponse.simulated_portfolio_metrics;
+    const deltaMetrics = apiResponse.delta_metrics;
+    // const swapAnalysis = apiResponse.swap_analysis; // Removed as per request
+
+    /**
+     * Helper function to process concentration data:
+     * Groups "Municipal Offering" and any types containing "MUNI" into a single "MUNI" category.
+     * @param {object} concentrationData - The original concentration_by_sec_type object.
+     * @returns {object} - Processed concentration data.
+     */
+    const processConcentration = (concentrationData) => {
+        if (!concentrationData || typeof concentrationData !== 'object') {
+            return {};
+        }
+        const processed = {};
+        let muniTotal = 0;
+        let muniTotalExists = false;
+
+        for (const [type, valueStr] of Object.entries(concentrationData)) {
+            // Values are strings like "10.00%" or "+5.00%"
+            const value = parseFloat(String(valueStr).replace('%', '')) || 0;
+            if (type.toUpperCase().includes("MUNI") || type === "Municipal Offering") {
+                muniTotal += value;
+                muniTotalExists = true;
+            } else {
+                // If the type already exists, sum it up (should not happen with backend data, but good practice)
+                processed[type] = (processed[type] || 0) + value;
+            }
+        }
+
+        if (muniTotalExists) {
+            processed["MUNI"] = muniTotal;
+        }
+        
+        // Convert back to string percentages for display
+        for (const key in processed) {
+            // For delta, we need to preserve the sign if it's already there
+            const originalValueStr = concentrationData[key] || (key === "MUNI" ? (Object.values(concentrationData).find(v => String(v).startsWith('+') || String(v).startsWith('-')) || "0%") : "0%");
+            const sign = String(originalValueStr).startsWith('+') ? '+' : (String(originalValueStr).startsWith('-') ? '-' : '');
+            
+            if (key === "MUNI" && String(Object.values(concentrationData).find(v => String(v).startsWith('+') || String(v).startsWith('-')) || "").includes('%')) {
+                 // If any original MUNI type in delta had a sign, apply it to the sum
+                 const firstSignedMuniValue = Object.entries(concentrationData).find(
+                    ([type, valStr]) => (type.toUpperCase().includes("MUNI") || type === "Municipal Offering") && (String(valStr).startsWith('+') || String(valStr).startsWith('-'))
+                 );
+                 const deltaSign = firstSignedMuniValue && (String(firstSignedMuniValue[1]).startsWith('+') || String(firstSignedMuniValue[1]).startsWith('-')) ? (String(firstSignedMuniValue[1]).startsWith('+') ? '+' : '-') : '';
+                 processed[key] = `${deltaSign}${Math.abs(processed[key]).toFixed(2)}%`;
+
+            } else if (String(originalValueStr).includes('%') && (String(originalValueStr).startsWith('+') || String(originalValueStr).startsWith('-'))) {
+                 processed[key] = `${sign}${Math.abs(processed[key]).toFixed(2)}%`; // Preserve sign for delta
+            }
+            else {
+                 processed[key] = `${processed[key].toFixed(2)}%`;
+            }
+        }
+        return processed;
+    };
+
 
     // --- Helper to format metrics object into HTML ---
     const formatMetricsToHtml = (metrics, title) => {
-        if (!metrics) return `<p>No ${title.toLowerCase()} data available.</p>`;
+        if (!metrics || typeof metrics !== 'object' || Object.keys(metrics).length === 0) {
+            console.warn(`[UI] No data or empty object for ${title.toLowerCase()}`);
+            return `<p>No ${title.toLowerCase()} data available.</p>`;
+        }
+        console.log(`[UI] Formatting metrics for ${title}:`, JSON.parse(JSON.stringify(metrics)));
 
+        const processedConcentration = processConcentration(metrics.concentration_by_sec_type);
         let concentrationHtml = '';
-        if (metrics.concentration_by_sec_type && Object.keys(metrics.concentration_by_sec_type).length > 0) {
+        if (Object.keys(processedConcentration).length > 0) {
             concentrationHtml = `
                 <h4>Concentration by Security Type</h4>
                 <table class="concentration-table">
                     <thead><tr><th>Type</th><th>Percentage</th></tr></thead>
                     <tbody>
-                        ${Object.entries(metrics.concentration_by_sec_type)
-                            .map(([type, value]) => `<tr><td>${type}</td><td>${value}</td></tr>`) // Value is already formatted string %
+                        ${Object.entries(processedConcentration)
+                            .map(([type, value]) => `<tr><td>${type}</td><td>${value}</td></tr>`)
                             .join('')}
                     </tbody>
                 </table>`;
+        } else {
+            console.log(`[UI] No concentration data for ${title} after processing.`);
         }
 
         return `
             <h3>${title}</h3>
             <div class="simulation-metrics-grid">
                 <div class="metric-item"><strong>Total Par Value</strong><span>${metrics.total_par_value || 'N/A'}</span></div>
+                <div class="metric-item"><strong>Total Market Value</strong><span>${metrics.total_market_value || 'N/A'}</span></div>
+                <div class="metric-item"><strong>Total Book Value</strong><span>${metrics.total_book_value || 'N/A'}</span></div>
                 <div class="metric-item"><strong>Gain/Loss</strong><span>${metrics.gain_loss || 'N/A'}</span></div>
                 <div class="metric-item"><strong>Holding Count</strong><span>${metrics.holding_count ?? 'N/A'}</span></div>
                 ${metrics.wal ? `<div class="metric-item"><strong>WAL</strong><span>${metrics.wal}</span></div>` : ''}
@@ -843,27 +930,35 @@ export function displaySimulationResults(results) {
 
      // --- Helper to format delta metrics object into HTML ---
      const formatDeltaToHtml = (delta, title) => {
-        if (!delta) return `<p>No ${title.toLowerCase()} data available.</p>`;
+        if (!delta || typeof delta !== 'object' || Object.keys(delta).length === 0) {
+            console.warn(`[UI] No data or empty object for ${title.toLowerCase()}`);
+            return `<p>No ${title.toLowerCase()} data available.</p>`;
+        }
+        console.log(`[UI] Formatting delta for ${title}:`, JSON.parse(JSON.stringify(delta)));
 
+        const processedConcentration = processConcentration(delta.concentration_by_sec_type);
         let concentrationHtml = '';
-        if (delta.concentration_by_sec_type && Object.keys(delta.concentration_by_sec_type).length > 0) {
+        if (Object.keys(processedConcentration).length > 0) {
             concentrationHtml = `
                 <h4>Concentration Change by Security Type</h4>
                 <table class="concentration-table">
                      <thead><tr><th>Type</th><th>Change</th></tr></thead>
                     <tbody>
-                        ${Object.entries(delta.concentration_by_sec_type)
-                            .map(([type, value]) => `<tr><td>${type}</td><td>${value}</td></tr>`) // Value is already formatted string +/- %
+                        ${Object.entries(processedConcentration)
+                            .map(([type, value]) => `<tr><td>${type}</td><td>${value}</td></tr>`) // Value is already string with % and +/-
                             .join('')}
                     </tbody>
                 </table>`;
+        } else {
+            console.log(`[UI] No delta concentration data for ${title} after processing.`);
         }
 
-        // Note: Delta values are already formatted with +/- signs where appropriate by API
         return `
             <h3>${title}</h3>
             <div class="simulation-metrics-grid">
                 <div class="metric-item"><strong>Total Par Value Change</strong><span>${delta.total_par_value || 'N/A'}</span></div>
+                <div class="metric-item"><strong>Total Market Value Change</strong><span>${delta.total_market_value || 'N/A'}</span></div>
+                <div class="metric-item"><strong>Total Book Value Change</strong><span>${delta.total_book_value || 'N/A'}</span></div>
                 <div class="metric-item"><strong>Gain/Loss Change</strong><span>${delta.gain_loss || 'N/A'}</span></div>
                 <div class="metric-item"><strong>Holding Count Change</strong><span>${delta.holding_count ?? 'N/A'}</span></div>
                  ${delta.wal ? `<div class="metric-item"><strong>WAL Change</strong><span>${delta.wal}</span></div>` : ''}
@@ -876,33 +971,39 @@ export function displaySimulationResults(results) {
 
     // --- Build Results HTML ---
     let resultsHtml = '';
-    resultsHtml += formatMetricsToHtml(results.current_portfolio, 'Current Portfolio');
-    resultsHtml += formatMetricsToHtml(results.simulated_portfolio, 'Simulated Portfolio');
-    resultsHtml += formatDeltaToHtml(results.delta, 'Change (Delta)');
+    // Use the correctly accessed metric objects
+    resultsHtml += formatMetricsToHtml(currentMetrics, 'Current Portfolio Metrics');
+    resultsHtml += formatMetricsToHtml(simulatedMetrics, 'Simulated Portfolio Metrics');
+    resultsHtml += formatDeltaToHtml(deltaMetrics, 'Change (Delta) Metrics');
 
-    // Add Analysis section if present
-    if (results.analysis) {
-        resultsHtml += `
-            <h3>Analysis</h3>
-            <div class="simulation-metrics-grid">
-                ${Object.entries(results.analysis)
-                    .map(([key, value]) => `<div class="metric-item"><strong>${key.replace(/_/g, ' ')}</strong><span>${value}</span></div>`)
-                    .join('')}
-            </div>
-        `;
-    }
+    // Add Analysis section if present - REMOVED as per request
+    // if (swapAnalysis && typeof swapAnalysis === 'object' && Object.keys(swapAnalysis).length > 0) {
+    //     console.log("[UI] Formatting swap analysis:", JSON.parse(JSON.stringify(swapAnalysis)));
+    //     resultsHtml += `
+    //         <h3>Swap Analysis</h3>
+    //         <div class="simulation-metrics-grid">
+    //             ${Object.entries(swapAnalysis)
+    //                 .map(([key, value]) => `<div class="metric-item"><strong>${key.replace(/_/g, ' ')}</strong><span>${value}</span></div>`)
+    //                 .join('')}
+    //         </div>
+    //     `;
+    // } else {
+    //     console.log("[UI] No swap analysis data to display or section removed.");
+    // }
 
     simulationResultsContent.innerHTML = resultsHtml;
     simulationResultsSection.classList.remove('hidden'); // Show the results section
     // Scroll to the results section
     simulationResultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    console.log("[UI] Finished displaying simulation results.");
 }
+
 
 /** Hides the simulation results section. */
 export function hideSimulationResults() {
     if (simulationResultsSection) {
         simulationResultsSection.classList.add('hidden');
         simulationResultsContent.innerHTML = '<p>Run a simulation to see results here.</p>'; // Reset content
+        console.log("[UI] Hid simulation results.");
     }
 }
-
