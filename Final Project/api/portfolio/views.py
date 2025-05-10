@@ -75,7 +75,7 @@ def portfolio_analyzer_view(request):
 
 # --- Helper Function for Simulation Calculations ---
 def calculate_portfolio_metrics(holdings_list):
-    """ 
+    """
     Calculates basic metrics for a list of holding objects/dicts.
     Handles both actual CustomerHolding instances and hypothetical buy dictionaries.
     """
@@ -110,11 +110,11 @@ def calculate_portfolio_metrics(holdings_list):
             book_price = holding_data.get('book_price')
             factor = holding_data.get('factor', Decimal("1.0")) # Default factor if not present
             sec_type_name = holding_data.get('security_type_name', "Unknown Offering Type")
-            
+
             log.debug(f"Simulated BUY: CUSIP {holding_data.get('cusip')}, Face {original_face_amount}, MktPrice {market_price}, BookPrice {book_price}, Factor {factor}, Type {sec_type_name}")
 
         elif is_dict: # Older hypothetical holding structure (if any part still uses it - should be phased out)
-            security_obj_for_metrics = holding_data.get('security') 
+            security_obj_for_metrics = holding_data.get('security')
             original_face_amount = holding_data.get('original_face_amount')
             market_price = holding_data.get('market_price')
             book_price = holding_data.get('book_price')
@@ -152,7 +152,7 @@ def calculate_portfolio_metrics(holdings_list):
         except InvalidOperation:
             log.warning(f"Could not convert financial values to Decimal for metric calculation. Face: {original_face_amount}, MktP: {market_price}, BookP: {book_price}, Factor: {factor}")
             continue
-            
+
         current_par_for_item = original_face_amount * factor
         total_par += current_par_for_item
 
@@ -177,7 +177,7 @@ def calculate_portfolio_metrics(holdings_list):
     if metrics["total_book_value"] != Decimal("0.00") or metrics["total_market_value"] != Decimal("0.00"):
         metrics["gain_loss"] = (metrics["total_market_value"] - metrics["total_book_value"]).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     else:
-        metrics["gain_loss"] = Decimal("0.00") 
+        metrics["gain_loss"] = Decimal("0.00")
 
     if total_par > 0:
         for sec_type_name_key, type_par_value in par_by_sec_type.items(): # Use different var names
@@ -185,7 +185,7 @@ def calculate_portfolio_metrics(holdings_list):
             metrics["concentration_by_sec_type"][sec_type_name_key] = percentage
     else:
         metrics["concentration_by_sec_type"] = {}
-    
+
     log.debug(f"Calculated metrics: TotalPar={metrics['total_par_value']}, TotalMktVal={metrics['total_market_value']}, TotalBookVal={metrics['total_book_value']}, GainLoss={metrics['gain_loss']}, Count={metrics['holding_count']}")
     return metrics
 
@@ -205,6 +205,8 @@ class CustomerViewSet(viewsets.ModelViewSet):
         user = self.request.user
         base_queryset = Customer.objects.select_related('salesperson')
         if user.is_staff or user.is_superuser: return base_queryset.all()
+        # For non-admin users, if distinct results are needed and this causes issues,
+        # alternative strategies for distinctness might be required.
         return base_queryset.filter(users=user).distinct()
 
 class SecurityViewSet(viewsets.ModelViewSet):
@@ -355,26 +357,26 @@ class PortfolioViewSet(viewsets.ModelViewSet):
         removed_tickets = {item['external_ticket'] for item in holdings_to_remove_input}
         for holding in current_holdings_qs:
             if holding.external_ticket not in removed_tickets:
-                simulated_holdings_list.append(holding) 
+                simulated_holdings_list.append(holding)
             else:
                 log.debug(f"Simulating SALE of holding external_ticket: {holding.external_ticket}")
 
         # Add "bought" offerings as hypothetical holdings
         offering_cusips_to_buy = {item['offering_cusip'].upper() for item in offerings_to_buy_input}
-        
+
         municipal_offerings_db = MunicipalOffering.objects.filter(cusip__in=offering_cusips_to_buy)
         offerings_map = {off.cusip: off for off in municipal_offerings_db}
 
         for item_to_buy in offerings_to_buy_input:
             offering_cusip = item_to_buy['offering_cusip'].upper()
-            par_to_buy = item_to_buy['par_to_buy'] 
+            par_to_buy = item_to_buy['par_to_buy']
 
             offering_obj = offerings_map.get(offering_cusip)
 
             if not offering_obj:
                 log.warning(f"Simulate swap: MunicipalOffering CUSIP {offering_cusip} not found.")
                 return Response({"error": f"MunicipalOffering CUSIP {offering_cusip} not found."}, status=status.HTTP_400_BAD_REQUEST)
-            
+
             # Construct hypothetical buy using ONLY offering data
             hypothetical_buy = {
                 "is_hypothetical_buy": True,
@@ -402,7 +404,7 @@ class PortfolioViewSet(viewsets.ModelViewSet):
         # --- 3. Calculate metrics for the SIMULATED portfolio ---
         simulated_metrics = calculate_portfolio_metrics(simulated_holdings_list)
         log.debug(f"Simulated portfolio metrics: {simulated_metrics}")
-        
+
         # --- 4. Calculate DELTA metrics ---
         delta_metrics = {}
         all_metric_keys = set(current_metrics.keys()) | set(simulated_metrics.keys())
@@ -416,12 +418,12 @@ class PortfolioViewSet(viewsets.ModelViewSet):
             delta_metrics[field] = delta.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
         delta_metrics["holding_count"] = simulated_metrics.get("holding_count", 0) - current_metrics.get("holding_count", 0)
-        
+
         delta_metrics["concentration_by_sec_type"] = {}
         current_concentration = current_metrics.get("concentration_by_sec_type", {})
         simulated_concentration = simulated_metrics.get("concentration_by_sec_type", {})
         all_sec_types = set(current_concentration.keys()) | set(simulated_concentration.keys())
-        
+
         for sec_type_name in all_sec_types:
             current_pct = current_concentration.get(sec_type_name, Decimal("0.00"))
             simulated_pct = simulated_concentration.get(sec_type_name, Decimal("0.00"))
@@ -429,7 +431,7 @@ class PortfolioViewSet(viewsets.ModelViewSet):
             if not isinstance(simulated_pct, Decimal): simulated_pct = Decimal(str(simulated_pct or "0.00"))
             delta_pct = simulated_pct - current_pct
             delta_metrics["concentration_by_sec_type"][sec_type_name] = delta_pct.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        
+
         log.debug(f"Delta metrics: {delta_metrics}")
 
         # --- 5. Format for Response ---
@@ -448,11 +450,11 @@ class PortfolioViewSet(viewsets.ModelViewSet):
             return {key: f"{value:+.2f}%" for key, value in conc_dict.items()}
 
         delta_formatted_response = format_metrics_for_response(delta_metrics)
-        if "concentration_by_sec_type" in delta_metrics: 
+        if "concentration_by_sec_type" in delta_metrics:
             delta_formatted_response["concentration_by_sec_type"] = format_delta_concentration_for_response(
                 delta_metrics["concentration_by_sec_type"]
             )
-        
+
         analysis_results = {
             "break_even_analysis": "Calculation logic not yet implemented.",
             "horizon_net_benefit_analysis": "Calculation logic not yet implemented."
@@ -463,7 +465,7 @@ class PortfolioViewSet(viewsets.ModelViewSet):
             "current_portfolio_metrics": format_metrics_for_response(current_metrics),
             "simulated_portfolio_metrics": format_metrics_for_response(simulated_metrics),
             "delta_metrics": delta_formatted_response,
-            "swap_analysis": analysis_results 
+            "swap_analysis": analysis_results
         }
         log.info(f"Simulation for portfolio {portfolio.id} completed successfully.")
         return Response(response_data, status=status.HTTP_200_OK)
@@ -484,12 +486,12 @@ class PortfolioViewSet(viewsets.ModelViewSet):
 
         if not holding_filterset.is_valid():
              log.warning(f"Aggregated CF - Invalid filter parameters received: {holding_filterset.errors}")
-             filtered_holdings = holding_filterset.queryset.none() 
+             filtered_holdings = holding_filterset.queryset.none()
         else:
             filtered_holdings = holding_filterset.qs
 
         log.info(f"Aggregated CF - Initial holding count: {holdings_qs.count()}, Filtered holding count: {filtered_holdings.count()}")
-        
+
         if not filtered_holdings.exists():
             log.info(f"Aggregated CF - Portfolio {portfolio.id} has no holdings matching the filter criteria. Returning empty list.")
             return Response([], status=status.HTTP_200_OK)
@@ -528,7 +530,7 @@ class PortfolioViewSet(viewsets.ModelViewSet):
 
         log.info(f"Aggregated CF - Processed {total_holdings_processed}/{filtered_holdings.count()} filtered holdings, aggregating {total_individual_flows} individual flows for portfolio {portfolio.id}.")
         formatted_response = []
-        for flow_date_obj in sorted(aggregated_flows_by_date.keys()): 
+        for flow_date_obj in sorted(aggregated_flows_by_date.keys()):
             data = aggregated_flows_by_date[flow_date_obj]
             total_interest = data['interest'].quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             total_principal = data['principal'].quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -544,29 +546,37 @@ class CustomerHoldingViewSet(viewsets.ModelViewSet):
     serializer_class = CustomerHoldingSerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [DjangoFilterBackend, OrderingFilter]
-    filterset_class = CustomerHoldingFilterSet 
+    filterset_class = CustomerHoldingFilterSet
     ordering_fields = [
         'external_ticket', 'intention_code', 'original_face_amount',
         'settlement_date', 'settlement_price', 'book_price', 'book_yield',
         'market_date', 'market_price', 'market_yield',
         'security__cusip', 'security__description', 'security__maturity_date',
-        'security__coupon', 'security__factor', 'security__cpr', 
+        'security__coupon', 'security__factor', 'security__cpr',
         'portfolio__name', 'last_modified_at', 'calculated_par_value',
-        'security__wal', 'holding_duration', 'holding_average_life', 
+        'security__wal', 'holding_duration', 'holding_average_life',
     ]
-    ordering = ['portfolio', 'security__cusip']
+    ordering = ['portfolio', 'security__cusip'] # Default ordering if client doesn't specify
     lookup_field = 'external_ticket'
 
     def get_queryset(self):
         user = self.request.user
+        # Base queryset with necessary select_related for efficiency
         base_queryset = CustomerHolding.objects.select_related(
             'portfolio__owner', 'security', 'security__security_type', 'security__interest_schedule'
         )
+
+        # Apply permissions: staff/superusers see all, others see only their customers' holdings
         if user.is_staff or user.is_superuser:
             permitted_queryset = base_queryset.all()
         else:
-            permitted_queryset = base_queryset.filter(portfolio__owner__users=user).distinct()
+            # Permanent change: Removed .distinct() as it was causing sorting issues.
+            # If duplicate rows appear for non-admin users and this is undesired,
+            # a different approach to ensure uniqueness will be needed.
+            log.info(f"CustomerHoldingViewSet: Applying filter for non-admin user {user.username} WITHOUT .distinct().")
+            permitted_queryset = base_queryset.filter(portfolio__owner__users=user)
 
+        # Annotate with calculated_par_value (used for display or potentially sorting if added to ordering_fields)
         annotated_queryset = permitted_queryset.annotate(
             calculated_par_value=ExpressionWrapper(
                 F('original_face_amount') * Coalesce(F('security__factor'), Value(Decimal('1.0'))),
@@ -576,39 +586,31 @@ class CustomerHoldingViewSet(viewsets.ModelViewSet):
         return annotated_queryset
 
     def list(self, request, *args, **kwargs):
+        """
+        Overrides the default list action to add logging for received query parameters.
+        """
         log.info("="*50)
         log.info(f"CustomerHoldingViewSet LIST request received.")
-        log.info(f"User: {request.user.username}")
-        log.info(f"Query Params: {request.query_params.dict()}")
-        
-        initial_queryset = self.get_queryset()
-        log.info(f"Initial queryset count (after permissions/annotations): {initial_queryset.count()}")
-        
-        filterset = self.filterset_class(request.query_params, queryset=initial_queryset)
+        log.info(f"User: {request.user.username} (Is Staff: {request.user.is_staff}, Is Superuser: {request.user.is_superuser})")
+        # --- ADDED LOGGING FOR RECEIVED QUERY PARAMETERS ---
+        log.info(f"RECEIVED Query Params by Backend: {request.query_params.dict()}")
+        print(f"DEBUG RECEIVED Query Params by Backend: {request.query_params.dict()}") # Also print to console
+        # --- END ADDED LOGGING ---
 
-        if not filterset.is_valid():
-            log.warning(f"FilterSet validation FAILED. Errors: {filterset.errors}")
-            return Response(filterset.errors, status=status.HTTP_400_BAD_REQUEST)
-        else:
-            queryset = filterset.qs
-            log.info(f"FilterSet validation PASSED.")
-            log.info(f"Filtered queryset count (after filterset.qs): {queryset.count()}")
-            try:
-                log.debug(f"Generated SQL Query (approximate):\n{queryset.query}")
-            except Exception as sql_err:
-                log.warning(f"Could not log SQL query: {sql_err}")
-            
+        queryset = self.filter_queryset(self.get_queryset())
+
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
-            log.info(f"Returning PAGINATED response.")
+            log.info(f"Returning PAGINATED response. Page size: {len(serializer.data)} items.")
             log.info("="*50)
             return self.get_paginated_response(serializer.data)
 
         serializer = self.get_serializer(queryset, many=True)
-        log.info(f"Returning NON-PAGINATED response.")
+        log.info(f"Returning NON-PAGINATED response. Total items: {len(serializer.data)}.")
         log.info("="*50)
         return Response(serializer.data)
+
 
     def perform_create(self, serializer):
         user = self.request.user
@@ -650,7 +652,7 @@ class CustomerHoldingViewSet(viewsets.ModelViewSet):
             formatted_flows = [
                 {"date": flow_tuple[0].date().to_date().isoformat(),
                  "amount": str(Decimal(str(flow_tuple[0].amount())).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
-                 "type": flow_tuple[1] 
+                 "type": flow_tuple[1]
                  }
                 for flow_tuple in ql_detailed_flows
             ]
