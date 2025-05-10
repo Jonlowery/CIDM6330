@@ -68,7 +68,7 @@ body.dark-mode {
     --table-border-color: #444;
     --table-header-bg: #3a3a3a;
     --table-header-text: #e0e0e0;
-    --table-odd-row-bg: #2c2c2c;
+    --table-odd-row-bg: #2c2c2c; /* Same as container for seamless look if needed */
     --table-hover-bg: #454545;
     --input-border-color: #555;
     --input-bg-color: #333;
@@ -454,6 +454,14 @@ button.remove-muni-filter-btn {
     box-sizing: border-box;
     position: relative; /* For loading overlay if added */
 }
+
+/* *** ADDED: Ensure canvas background is transparent in dark mode *** */
+body.dark-mode .chart-container canvas {
+    background-color: transparent !important; /* Make canvas transparent to show container's dark bg */
+}
+/* ****************************************************************** */
+
+
 /* Loading state for charts (optional) */
 .chart-container.loading::after {
     content: 'Loading chart...';
