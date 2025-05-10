@@ -1,6 +1,9 @@
 // main.js
 // Entry point for the application. Sets up event listeners and initializes the app.
 // VERSION: Corrected calls to showStatusMessageGeneric (imported from utils.js).
+// MODIFIED: Added logout button functionality.
+// MODIFIED: Updated logout URL to /api-auth/logout/
+// MODIFIED: Logout now uses POST with CSRF token.
 
 "use strict";
 
@@ -10,8 +13,7 @@ import * as filters from './filters.js';
 import * as charts from './charts.js';
 import * as exports from './export.js';
 import * as state from './state.js';
-import { IS_ADMIN } from './config.js';
-// Import utility functions from utils.js
+import { IS_ADMIN, CSRF_TOKEN } from './config.js'; // *** ADDED CSRF_TOKEN import ***
 import { parseFloatSafe, showStatusMessageGeneric } from './utils.js';
 
 // --- DOM Element References (for attaching listeners) ---
@@ -38,6 +40,7 @@ const selectAllMunisCheckbox = document.getElementById('select-all-munis');
 const emailBuyInterestBtn = document.getElementById('email-buy-interest-btn');
 const holdingsPaginationControls = document.getElementById('holdings-pagination-controls');
 const muniPaginationControls = document.getElementById('muni-pagination-controls');
+const logoutBtn = document.getElementById('logout-btn');
 
 // Create Portfolio Modal Elements
 const createPortfolioModal = document.getElementById('create-portfolio-modal');
@@ -261,33 +264,25 @@ function toggleTheme() {
     ui.applyTheme(currentTheme); // Apply theme via ui.js (handles chart re-rendering)
 }
 
-// --- Portfolio Swap Simulation Handler ---
 /** Handles the click on the "Run Simulation" button inside the swap modal. */
 async function handleRunSimulation() {
     console.log("Run Simulation button clicked.");
-    // 1. Get Portfolio ID
     const portfolioId = portfolioFilterSelect?.value;
     if (!portfolioId) {
-        // *** FIX: Use showStatusMessageGeneric directly ***
         showStatusMessageGeneric(modalErrorMessageSwap, "Error: No portfolio selected.", true, 0);
         return;
     }
 
-    // 2. Gather Holdings to Remove (external_ticket)
     const holdingsToRemove = [];
     if (swapSellListContainer) {
         swapSellListContainer.querySelectorAll('.simulation-list-item').forEach(item => {
             const ticket = parseInt(item.dataset.externalTicket, 10);
             if (!isNaN(ticket)) {
                 holdingsToRemove.push({ external_ticket: ticket });
-            } else {
-                console.warn("Skipping sell item due to invalid external_ticket:", item);
             }
         });
     }
-    console.log("Holdings to Remove:", holdingsToRemove);
 
-    // 3. Gather Offerings to Buy (offering_cusip, par_to_buy)
     const offeringsToBuy = [];
     let validationError = false;
     if (swapBuyListContainer) {
@@ -297,56 +292,90 @@ async function handleRunSimulation() {
             const parValue = parseFloatSafe(parInput?.value);
 
             if (!cusip) {
-                console.warn("Skipping buy item due to missing CUSIP:", item);
                 validationError = true;
-                // *** FIX: Use showStatusMessageGeneric directly ***
                 showStatusMessageGeneric(modalErrorMessageSwap, `Error: Missing CUSIP for an offering to buy.`, true, 0);
                 return;
             }
             if (parValue === null || parValue <= 0) {
-                console.warn("Skipping buy item due to invalid par amount:", item, parInput?.value);
                 validationError = true;
-                // *** FIX: Use showStatusMessageGeneric directly ***
                 showStatusMessageGeneric(modalErrorMessageSwap, `Error: Invalid or zero par amount for CUSIP ${cusip}.`, true, 0);
                 if (parInput) parInput.style.borderColor = 'red';
                 return;
             }
             if (parInput) parInput.style.borderColor = '';
-
-            offeringsToBuy.push({
-                offering_cusip: cusip,
-                par_to_buy: parValue.toFixed(8)
-            });
+            offeringsToBuy.push({ offering_cusip: cusip, par_to_buy: parValue.toFixed(8) });
         });
     }
     if (validationError) return;
-    console.log("Offerings to Buy:", offeringsToBuy);
 
-    // 4. Check if anything to simulate
     if (holdingsToRemove.length === 0 && offeringsToBuy.length === 0) {
-         // *** FIX: Use showStatusMessageGeneric directly ***
          showStatusMessageGeneric(modalErrorMessageSwap, "Please select holdings to sell or offerings to buy.", true, 0);
          return;
     }
 
-    // 5. Show Loading State & Call API
     if (runSimulationBtn) runSimulationBtn.disabled = true;
-    // *** FIX: Use showStatusMessageGeneric directly ***
     showStatusMessageGeneric(modalErrorMessageSwap, "Running simulation...", false, 0);
 
     try {
         const results = await api.runPortfolioSwapSimulation(portfolioId, holdingsToRemove, offeringsToBuy);
-        console.log("Simulation API call successful.");
         ui.hidePortfolioSwapModal();
         ui.displaySimulationResults(results);
     } catch (error) {
         console.error("Simulation failed:", error);
-        // *** FIX: Use showStatusMessageGeneric directly ***
         showStatusMessageGeneric(modalErrorMessageSwap, `Simulation failed: ${error.message}`, true, 0);
     } finally {
         if (runSimulationBtn) runSimulationBtn.disabled = false;
     }
 }
+
+// *** MODIFIED: Logout Handler to use POST with CSRF token ***
+async function handleLogout() {
+    console.log("Attempting to logout via POST...");
+    const logoutUrl = '/api-auth/logout/';
+
+    if (!CSRF_TOKEN) {
+        console.error("CSRF Token not found. Cannot logout securely via POST.");
+        // Fallback or error message
+        alert("Logout failed: CSRF token missing. Please ensure you're properly connected.");
+        return;
+    }
+
+    try {
+        const response = await fetch(logoutUrl, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': CSRF_TOKEN,
+                'Content-Type': 'application/json' // Optional, but good practice if sending any body
+            },
+            // body: JSON.stringify({}) // Django's LogoutView doesn't require a body for POST
+        });
+
+        // Django's LogoutView usually redirects upon successful logout.
+        // The fetch API, by default, will follow redirects.
+        // If the final response URL is different from the logout URL, a redirect happened.
+        // Or, if it returns a 200/204 and the page content is the "Logged out" page.
+        if (response.ok) { // Status 200-299
+            console.log("Logout POST request successful. Status:", response.status);
+            // The browser should have followed any redirect from Django's LogoutView.
+            // Typically, this redirect goes to the login page or LOGOUT_REDIRECT_URL.
+            // To ensure the UI reflects the logged-out state, we can redirect to home or login page.
+            // If the logout view itself renders a "You are logged out" page, this might not be strictly necessary
+            // but redirecting ensures a clean state.
+            alert("You have been logged out."); // Optional: notify user
+            window.location.href = '/'; // Redirect to homepage, or your login page e.g., '/accounts/login/'
+        } else {
+            // Handle cases where the logout URL itself returns an error (e.g., 403, 405, 500)
+            console.error("Logout POST request failed. Status:", response.status);
+            const errorData = await response.text(); // Get error text for debugging
+            console.error("Logout error details:", errorData);
+            alert(`Logout failed: Server responded with status ${response.status}. Please try again or contact support.`);
+        }
+    } catch (error) {
+        console.error("Network error during logout:", error);
+        alert("Logout failed: A network error occurred. Please check your connection and try again.");
+    }
+}
+// ************************************************************
 
 
 // --- Event Listener Setup ---
@@ -359,10 +388,7 @@ function setupEventListeners() {
         portfolioFilterSelect.addEventListener('change', async () => {
             ui.handlePortfolioSelection();
             if (portfolioFilterSelect.value) {
-                console.log(`Portfolio selection changed: ${portfolioFilterSelect.value}, fetching holdings/charts...`);
                 await filters.applyHoldingsFiltersAndRefreshAll(1);
-            } else {
-                 console.log("Portfolio selection cleared.");
             }
         });
     }
@@ -382,14 +408,9 @@ function setupEventListeners() {
         th.addEventListener('click', () => {
             const key = th.dataset.key;
             if (!key) return;
-            console.log(`Holdings Sort Clicked: Header Key='${key}'`);
-            const currentKey = state.currentSortKey;
-            const currentDir = state.currentSortDir;
-            const backendKey = api.mapFrontendKeyToBackend(key); // Ensure this function exists in api.js
-            const newDir = (backendKey === currentKey && currentDir === 'asc') ? 'desc' : 'asc';
-            console.log(`Holdings Sort Details: BackendKey=${backendKey}, New Direction=${newDir}`);
+            const backendKey = api.mapFrontendKeyToBackend(key);
+            const newDir = (backendKey === state.currentSortKey && state.currentSortDir === 'asc') ? 'desc' : 'asc';
             state.setHoldingsSort(backendKey, newDir);
-            console.log("Holdings Sort: Triggering fetch for page 1...");
             filters.applyHoldingsFiltersAndFetchPageOnly(1);
         });
     });
@@ -399,13 +420,8 @@ function setupEventListeners() {
         th.addEventListener('click', () => {
             const key = th.dataset.key;
             if (!key) return;
-            console.log(`Muni Sort Clicked: Header Key='${key}'`);
-            const currentMuniKey = state.currentMuniSortKey;
-            const currentMuniDir = state.currentMuniSortDir;
-            const newDir = (key === currentMuniKey && currentMuniDir === 'asc') ? 'desc' : 'asc';
-            console.log(`Muni Sort Details: Key=${key}, New Direction=${newDir}`);
+            const newDir = (key === state.currentMuniSortKey && state.currentMuniSortDir === 'asc') ? 'desc' : 'asc';
             state.setMuniSort(key, newDir);
-            console.log("Muni Sort: Triggering fetch for page 1...");
             filters.applyMuniFiltersAndFetchPage(1);
         });
     });
@@ -456,6 +472,9 @@ function setupEventListeners() {
         if (event.target === portfolioSwapModal) ui.hidePortfolioSwapModal();
     });
     if (closeSimulationResultsBtn) closeSimulationResultsBtn.addEventListener('click', ui.hideSimulationResults);
+
+    // Logout Button Listener
+    if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
 }
 
 
@@ -468,12 +487,12 @@ document.addEventListener('DOMContentLoaded', () => {
     filters.generateMuniColumnOptions();
     filters.addMuniFilterRow();
 
-    const Chart = window.Chart;
-    if (typeof Chart !== 'undefined') {
+    const ChartJS = window.Chart;
+    if (typeof ChartJS !== 'undefined') {
         if (window.pluginTrendlineLinear && typeof window.pluginTrendlineLinear.id === 'string') {
              try {
-                if (!Chart.registry.plugins.get(window.pluginTrendlineLinear.id)) {
-                    Chart.register(window.pluginTrendlineLinear);
+                if (!ChartJS.registry.plugins.get(window.pluginTrendlineLinear.id)) {
+                    ChartJS.register(window.pluginTrendlineLinear);
                     console.log("Trendline plugin registered.");
                 } else {
                     console.log("Trendline plugin already registered.");
@@ -486,7 +505,6 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
         localStorage.setItem('themeCheck', '1'); localStorage.removeItem('themeCheck');
         preferredTheme = localStorage.getItem('portfolioTheme') || 'light';
-        console.log("Theme preference loaded:", preferredTheme);
     } catch (e) { console.warn("Could not access localStorage for theme preference:", e); }
     ui.applyTheme(preferredTheme);
 

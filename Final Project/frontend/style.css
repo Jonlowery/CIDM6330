@@ -1,4 +1,4 @@
-/* --- CSS (Includes styles for new modal, delete button, email action, muni offerings, and pagination) --- */
+/* --- CSS (Includes styles for new modal, delete button, email action, muni offerings, pagination, and SWAP SIMULATION) --- */
 
 /* Define CSS variables for theming (light and dark modes) */
 :root {
@@ -17,6 +17,7 @@
     --table-hover-bg: #e2e6ea;
     --input-border-color: #ccc;
     --input-bg-color: #fff;
+    --input-focus-border-color: #007bff; /* Added focus color */
     --button-primary-bg: #007bff;
     --button-primary-text: white;
     --button-secondary-bg: #6c757d;
@@ -49,9 +50,11 @@
     --pagination-button-hover-bg: color-mix(in srgb, var(--button-secondary-bg) 80%, black);
     --pagination-button-disabled-bg: color-mix(in srgb, var(--button-secondary-bg) 50%, transparent);
     --pagination-text-color: var(--text-color);
-    /* Chart specific */
-    --chart-container-bg: var(--container-bg); /* Use container bg for charts */
-    --chart-container-shadow: var(--section-shadow);
+    /* Simulation Specific */
+    --simulation-list-bg: #f1f3f5;
+    --simulation-list-item-bg: #fff;
+    --simulation-list-item-border: #e0e0e0;
+    --simulation-results-table-header-bg: var(--table-header-bg);
 }
 
 body.dark-mode {
@@ -65,10 +68,11 @@ body.dark-mode {
     --table-border-color: #444;
     --table-header-bg: #3a3a3a;
     --table-header-text: #e0e0e0;
-    --table-odd-row-bg: #2c2c2c;
+    --table-odd-row-bg: #2c2c2c; /* Same as container for seamless look if needed */
     --table-hover-bg: #454545;
     --input-border-color: #555;
     --input-bg-color: #333;
+    --input-focus-border-color: #4dabf7; /* Added focus color for dark */
     --button-primary-bg: #0d6efd;
     --button-secondary-bg: #5c636a;
     --button-danger-bg: #e34d5a;
@@ -95,9 +99,11 @@ body.dark-mode {
     --pagination-button-hover-bg: color-mix(in srgb, var(--button-secondary-bg) 80%, white);
     --pagination-button-disabled-bg: color-mix(in srgb, var(--button-secondary-bg) 30%, transparent);
     --pagination-text-color: var(--text-color);
-    /* Chart specific */
-    --chart-container-bg: #2d3748; /* Darker background for charts in dark mode */
-    --chart-container-shadow: 0 2px 4px rgba(0,0,0,0.4); /* Darker shadow */
+    /* Simulation Specific */
+    --simulation-list-bg: #252525;
+    --simulation-list-item-bg: #333;
+    --simulation-list-item-border: #484848;
+    --simulation-results-table-header-bg: var(--table-header-bg);
 }
 
 /* Basic HTML and Body styling */
@@ -147,7 +153,7 @@ header.app-header .header-left {
 header.app-header .header-right {
     display: flex;
     align-items: center;
-    gap: 1em;
+    gap: 1em; /* Adjusted gap to accommodate new button */
 }
 
 header.app-header a {
@@ -169,8 +175,7 @@ header.app-header h1 {
     color: var(--header-text-color); /* Ensure H1 uses the main header text color */
 }
 
-/* Original Header Link Style (kept for potential future use, but overridden by header-nav-link) */
-.header-link {
+.header-link { /* General style for header links if needed elsewhere */
     color: var(--header-link-color);
     text-decoration: none;
     font-weight: bold;
@@ -186,23 +191,19 @@ body.dark-mode .header-link:hover {
      color: color-mix(in srgb, var(--header-link-color) 80%, white);
 }
 
-/* NEW: Style for the navigation link placed next to the title */
-.header-left .header-nav-link {
-    font-size: 1em; /* Slightly smaller than h1 */
-    font-weight: normal; /* Not bold */
-    color: var(--header-nav-link-color); /* Use the muted color */
-    padding: 0; /* Remove padding */
+.header-left .header-nav-link { /* Specific for "Go to Offerings" */
+    font-size: 1em;
+    font-weight: normal;
+    color: var(--header-nav-link-color);
+    padding: 0;
     margin: 0;
-    /* transition: color 0.2s ease; */ /* Optional: keep transition */
 }
 .header-left .header-nav-link:hover {
-    color: var(--header-text-color); /* Use main header text color on hover */
+    color: var(--header-text-color);
     text-decoration: underline;
 }
 
-
-/* Header button styling */
-header.app-header button {
+header.app-header button { /* General style for buttons in header */
     height: auto;
     padding: 0.5em 1em;
     border-radius: 6px;
@@ -217,10 +218,17 @@ header.app-header button {
     background-color: var(--button-secondary-bg);
     color: var(--button-secondary-text);
 }
-
 #dark-mode-toggle:hover {
     background-color: color-mix(in srgb, var(--button-secondary-bg) 80%, black);
 }
+
+/* *** ADDED: Style for the logout button, inherits .btn-danger from HTML *** */
+#logout-btn {
+    /* Uses .btn-danger class for background and text color from variables */
+    /* Additional specific styles if needed */
+}
+/* *********************************************************************** */
+
 
 /* Main container styling */
 .container {
@@ -233,14 +241,13 @@ header.app-header button {
 /* Section Container Styling (General) */
 .section-container {
     background-color: var(--section-bg);
-    padding: 1.5em; /* Increased padding */
+    padding: 1.5em;
     border-radius: 8px;
     box-shadow: var(--section-shadow);
-    margin-bottom: 1.5em; /* Space between sections */
+    margin-bottom: 1.5em;
     box-sizing: border-box;
 }
 
-/* Section Titles */
 .section-container h2 {
     color: var(--header-text-color);
     margin-top: 0;
@@ -250,25 +257,21 @@ header.app-header button {
     font-size: 1.3em;
 }
 
-
-/* Portfolio name heading */
 h2#portfolio-name {
     color: var(--header-text-color);
     text-align: center;
     margin-top: 0;
     margin-bottom: 1em;
     min-height: 1.2em;
-    font-size: 1.5em; /* Make it slightly larger */
+    font-size: 1.5em;
 }
 
 /* Controls section styling */
 .controls {
     display: flex;
-    flex-direction: column; /* Stack control groups vertically */
-    gap: 1em; /* Gap between control groups */
-    /* Inherits background, padding, shadow from .section-container */
+    flex-direction: column;
+    gap: 1em;
 }
-
 
 .control-row {
     display: flex;
@@ -277,7 +280,6 @@ h2#portfolio-name {
     gap: 0.8em;
 }
 
-/* Filters container (Holdings) */
 #filters-container {
     display: flex;
     flex-direction: column;
@@ -287,16 +289,14 @@ h2#portfolio-name {
     margin-top: 1em;
 }
 
-/* NEW: Filters Sub-Container (Muni Offerings) */
 #muni-filters-container.filters-sub-container {
     display: flex;
     flex-direction: column;
     gap: 0.8em;
-    margin-bottom: 1em; /* Space before filter buttons */
-    padding-bottom: 1em; /* Space below filters */
-    border-bottom: 1px solid var(--table-border-color); /* Separator */
+    margin-bottom: 1em;
+    padding-bottom: 1em;
+    border-bottom: 1px solid var(--table-border-color);
 }
-
 
 .filter-row {
     display: flex;
@@ -305,17 +305,15 @@ h2#portfolio-name {
     gap: 0.8em;
 }
 
-/* Apply to labels in both filter sections */
 .filter-row label {
     margin-right: 0.5em;
     font-weight: bold;
     white-space: nowrap;
     color: var(--text-color);
-    flex-basis: 100px; /* Slightly wider basis for filter labels */
+    flex-basis: 100px;
     text-align: right;
     flex-shrink: 0;
 }
-
 
 label { /* General label reset */
     margin-right: 0.5em;
@@ -340,7 +338,17 @@ input[type="date"] {
     min-width: 100px;
     height: 38px;
     box-sizing: border-box;
+    transition: border-color 0.2s ease;
 }
+select:focus,
+input[type="text"]:focus,
+input[type="number"]:focus,
+input[type="date"]:focus {
+    border-color: var(--input-focus-border-color);
+    outline: none;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--input-focus-border-color) 30%, transparent);
+}
+
 
 body.dark-mode input::placeholder { color: #bbb; opacity: 1; }
 body.dark-mode input::-ms-input-placeholder { color: #bbb; }
@@ -350,12 +358,11 @@ body.dark-mode input::-ms-input-placeholder { color: #bbb; }
 
 .filter-row select,
 .filter-row input { flex-basis: 150px; }
-.filter-row label:first-child { flex-basis: 100px; text-align: right; } /* Match wider label basis */
+.filter-row label:first-child { flex-basis: 100px; text-align: right; }
 
-/* General button styling */
 button.filter-action-btn,
-button.remove-filter-btn, /* Include remove-filter-btn here */
-button.remove-muni-filter-btn, /* Include remove-muni-filter-btn here */
+button.remove-filter-btn,
+button.remove-muni-filter-btn,
 button.control-action-btn {
     padding: 0.6em 1em;
     border-radius: 6px;
@@ -365,7 +372,7 @@ button.control-action-btn {
     transition: background-color 0.2s ease, opacity 0.2s ease;
     height: 38px;
     box-sizing: border-box;
-    color: var(--button-primary-text); /* Default text color */
+    color: var(--button-primary-text);
     flex-shrink: 0;
 }
 
@@ -374,110 +381,119 @@ button:disabled {
     cursor: not-allowed;
 }
 
-/* Specific button colors */
 .btn-primary { background-color: var(--button-primary-bg); color: var(--button-primary-text); }
 .btn-primary:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-primary-bg) 80%, black); }
+body.dark-mode .btn-primary:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-primary-bg) 80%, white); }
+
 
 .btn-secondary { background-color: var(--button-secondary-bg); color: var(--button-secondary-text); }
 .btn-secondary:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-secondary-bg) 80%, black); }
+body.dark-mode .btn-secondary:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-secondary-bg) 80%, white); }
 
 .btn-danger { background-color: var(--button-danger-bg); color: var(--button-danger-text); }
 .btn-danger:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-danger-bg) 80%, black); }
+body.dark-mode .btn-danger:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-danger-bg) 80%, white); }
 
 .btn-info { background-color: var(--button-info-bg); color: var(--button-info-text); }
 .btn-info:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-info-bg) 80%, black); }
+body.dark-mode .btn-info:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-info-bg) 80%, white); }
 
 .btn-success { background-color: var(--button-success-bg); color: var(--button-success-text); }
 .btn-success:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-success-bg) 80%, black); }
+body.dark-mode .btn-success:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-success-bg) 80%, white); }
 
 
-/* Removed align-self and margin-top from individual buttons */
 #delete-portfolio-btn { margin-left: 0.5em; flex-grow: 0; }
 
-/* Apply consistent small styling to BOTH remove filter buttons */
 button.remove-filter-btn,
 button.remove-muni-filter-btn {
     padding: 0.4em 0.8em;
     font-size: 0.9em;
-    height: auto; /* Override general button height */
+    height: auto;
     flex-grow: 0;
     flex-basis: auto;
-    /* Inherits btn-danger background/color */
 }
 
-/* Container for filter/action buttons - MODIFIED */
 .filter-buttons-container {
     display: flex;
-    flex-wrap: wrap; /* Allow wrapping */
-    justify-content: space-between; /* Push left and right groups apart */
-    gap: 1em; /* Add gap between left and right groups when wrapped */
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 1em;
     margin-top: 1em;
     border-top: 1px solid var(--table-border-color);
     padding-top: 1em;
-    align-items: center; /* Align items vertically */
-}
-
-/* NEW: Group for left-aligned buttons */
-.filter-buttons-left {
-    display: flex;
-    flex-wrap: wrap; /* Allow buttons within this group to wrap */
-    gap: 0.8em; /* Space between buttons in this group */
     align-items: center;
 }
 
-/* NEW: Group for right-aligned buttons */
+.filter-buttons-left,
 .filter-buttons-right {
     display: flex;
-    flex-wrap: wrap; /* Allow buttons within this group to wrap */
-    gap: 0.8em; /* Space between buttons in this group */
+    flex-wrap: wrap;
+    gap: 0.8em;
     align-items: center;
 }
 
-/* Adjust filter button container within muni section */
 .muni-offerings-container .filter-buttons-container {
-    border-top: none; /* Remove top border if filters are above */
+    border-top: none;
     padding-top: 0;
     margin-top: 0;
-    margin-bottom: 1em; /* Add space before table */
-     /* Ensure muni buttons stay left-aligned if only left group exists */
+    margin-bottom: 1em;
     justify-content: flex-start;
 }
 
-
-/* --- Charts Grid Layout --- */
+/* Charts grid layout */
 .charts-grid-container {
     display: grid;
-    /* Always create 2 equal columns */
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 1.5em; /* Space between chart containers */
-    align-items: start; /* Align items at the start of the grid area */
-    margin-bottom: 1.5em; /* Consistent margin */
+    gap: 1.5em;
+    align-items: start;
+    margin-bottom: 1.5em;
     padding: 0;
     box-sizing: border-box;
 }
 
 .chart-container {
-    width: 100%; /* Make container fill grid cell */
-    height: 350px; /* Define a fixed height */
-    /* Use CSS variables for background and shadow */
-    background-color: var(--chart-container-bg);
-    box-shadow: var(--chart-container-shadow);
-    padding: 1em; /* Inner padding */
-    border-radius: 8px; /* Rounded corners */
-    box-sizing: border-box; /* Include padding in width/height */
-    position: relative; /* Needed for Chart.js responsiveness */
-    transition: background-color 0.3s; /* Smooth theme transition */
+    width: 100%;
+    height: 350px;
+    background-color: var(--container-bg);
+    padding: 1em;
+    border-radius: 8px;
+    box-shadow: var(--section-shadow);
+    box-sizing: border-box;
+    position: relative;
 }
+
+body.dark-mode .chart-container canvas {
+    background-color: transparent !important;
+}
+
+
+/* Loading state for charts (optional) */
+.chart-container.loading::after {
+    content: 'Loading chart...';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(255,255,255,0.7);
+    color: #333;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-style: italic;
+    z-index: 10;
+}
+body.dark-mode .chart-container.loading::after {
+    background: rgba(0,0,0,0.7);
+    color: #ccc;
+}
+
 
 /* Table container styling (reusable) */
 .table-container {
     overflow-x: auto;
-    /* Background, radius, shadow handled by .section-container */
     box-sizing: border-box;
-    margin-bottom: 1em; /* Space between table and pagination/action buttons */
+    margin-bottom: 1em;
 }
 
-/* Table styling (applies to both holdings and muni offerings) */
 table {
     border-collapse: collapse;
     width: 100%;
@@ -501,12 +517,10 @@ th {
     position: relative;
     user-select: none;
 }
-
 th:hover {
     background-color: color-mix(in srgb, var(--table-header-bg) 85%, var(--text-color) 15%);
 }
 
-/* Checkbox column styling (shared) */
 th.checkbox-column, td.checkbox-column {
     width: 40px;
     padding: 0.4em;
@@ -522,7 +536,6 @@ td.checkbox-column input {
     vertical-align: middle;
 }
 
-/* Sort Arrow Styling (Shared) */
 th .sort-arrow {
     font-size: 0.8em;
     margin-left: 5px;
@@ -535,9 +548,7 @@ th.sorted .sort-arrow {
     opacity: 1;
 }
 
-
 /* Holdings Table Specifics */
-/* Holdings Table Cell Alignment */
 #holdings-table td:nth-child(2), /* CUSIP */
 #holdings-table td:nth-child(3) { text-align: left; } /* Description */
 
@@ -548,11 +559,6 @@ th.sorted .sort-arrow {
 #holdings-table td:nth-child(8), /* Book Yield */
 #holdings-table td:nth-child(9), /* WAL */
 #holdings-table td:nth-child(10) { text-align: right; } /* Duration */
-
-#holdings-table td:nth-child(11), /* Maturity */
-#holdings-table td:nth-child(12), /* Call Date */
-#holdings-table td:nth-child(13) { text-align: center; } /* Intention */
-
 
 #holdings-table tbody tr:nth-child(odd) {
     background-color: var(--table-odd-row-bg);
@@ -569,19 +575,20 @@ th.sorted .sort-arrow {
     text-align: right;
     color: var(--text-color);
 }
-#holdings-table tfoot td:nth-child(1) { /* First cell in footer (colspan) */
+#holdings-table tfoot td:first-child { /* Colspan cell */
     text-align: left;
 }
 
-/* --- NEW: Pagination Controls Styles --- */
+
+/* Pagination Controls Styles */
 .pagination-controls {
     display: flex;
-    justify-content: space-between; /* Space out buttons and info */
+    justify-content: space-between;
     align-items: center;
-    padding: 0.8em 0; /* Add some vertical padding */
-    margin-bottom: 1em; /* Space before email action */
+    padding: 0.8em 0;
+    margin-bottom: 1em;
     border-top: 1px solid var(--table-border-color);
-    margin-top: -1px; /* Overlap border with table container bottom border */
+    margin-top: -1px;
 }
 
 .pagination-controls .page-info {
@@ -605,68 +612,56 @@ th.sorted .sort-arrow {
     color: var(--pagination-button-text);
     font-size: 0.9em;
 }
-
 .pagination-controls button:hover:not(:disabled) {
     background-color: var(--pagination-button-hover-bg);
 }
-
 .pagination-controls button:disabled {
     background-color: var(--pagination-button-disabled-bg);
     opacity: 0.6;
     cursor: not-allowed;
 }
 
-
-/* Email Action Container (Shared Styles) */
+/* Email Action Container */
 .email-action-container {
     display: flex;
     align-items: center;
     gap: 1em;
-    /* Removed background, padding, shadow - handled by section-container */
     box-sizing: border-box;
 }
 
 .email-action-container button {
-    /* Uses .control-action-btn and color classes */
     flex-shrink: 0;
 }
 
-/* Status Message Styling (Shared Styles) */
+/* Status Message Styling */
 .status-message {
     padding: 0.5em 1em;
     border-radius: 6px;
     font-size: 0.9em;
     display: none; /* Hidden by default */
-    flex-grow: 1; /* Allow message to take remaining space */
+    flex-grow: 1;
     text-align: center;
 }
-
 .status-message.success {
     background-color: color-mix(in srgb, var(--status-success-color) 20%, transparent);
     color: var(--status-success-color);
     border: 1px solid color-mix(in srgb, var(--status-success-color) 50%, transparent);
 }
-
 .status-message.error {
     background-color: color-mix(in srgb, var(--status-error-color) 20%, transparent);
     color: var(--status-error-color);
     border: 1px solid color-mix(in srgb, var(--status-error-color) 50%, transparent);
 }
 
-/* --- Muni Offerings Table Styles --- */
-.muni-offerings-container {
-    /* Uses .section-container styles */
-}
+/* Muni Offerings Table Styles */
+.muni-offerings-container { /* Uses .section-container styles */ }
 
-/* Specific alignments for muni table if needed */
 #muni-offerings-table th,
 #muni-offerings-table td {
-    /* Inherit base styles */
-    font-size: 0.9em; /* Slightly smaller font for potentially wider table */
+    font-size: 0.9em;
 }
 
-/* Example alignments (adjust based on final data/preference) */
-#muni-offerings-table td:nth-child(2), /* Cusip (after checkbox) */
+#muni-offerings-table td:nth-child(2), /* Cusip */
 #muni-offerings-table td:nth-child(4), /* Description */
 #muni-offerings-table td:nth-child(9), /* Moody */
 #muni-offerings-table td:nth-child(10), /* S&P */
@@ -681,10 +676,6 @@ th.sorted .sort-arrow {
 #muni-offerings-table td:nth-child(12) { /* Call Price */
     text-align: right;
 }
-#muni-offerings-table td:nth-child(6), /* Maturity */
-#muni-offerings-table td:nth-child(11) { /* Call Date */
-    text-align: center;
-}
 
 #muni-offerings-table tbody tr:nth-child(odd) {
     background-color: var(--table-odd-row-bg);
@@ -694,7 +685,7 @@ th.sorted .sort-arrow {
 }
 
 
-/* --- Modal Styles --- */
+/* --- Modal Styles (General) --- */
 .modal-overlay {
     position: fixed;
     top: 0;
@@ -702,10 +693,16 @@ th.sorted .sort-arrow {
     width: 100%;
     height: 100%;
     background-color: var(--modal-overlay-bg);
-    display: none;
+    display: none; /* Hidden by default */
     align-items: center;
     justify-content: center;
     z-index: 2000;
+    overflow-y: auto; /* Allow scrolling if modal content is too tall */
+    padding: 20px; /* Add some padding for smaller viewports */
+    box-sizing: border-box;
+}
+.modal-overlay.visible {
+    display: flex;
 }
 
 .modal-content {
@@ -714,9 +711,13 @@ th.sorted .sort-arrow {
     border-radius: 8px;
     box-shadow: 0 5px 15px rgba(0,0,0,0.2);
     width: 90%;
-    max-width: 500px;
+    max-width: 500px; /* Default max-width */
     border: 1px solid var(--modal-border-color);
     color: var(--modal-text-color);
+    position: relative; /* For positioning within the overlay */
+    max-height: 90vh; /* Max height to prevent overflow on short screens */
+    display: flex; /* Use flexbox for internal layout */
+    flex-direction: column; /* Stack header, body, footer */
 }
 
 .modal-header {
@@ -724,11 +725,13 @@ th.sorted .sort-arrow {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 1em;
+    padding-bottom: 0.5em; /* Add padding below header */
+    border-bottom: 1px solid var(--modal-border-color); /* Separator line */
 }
-
 .modal-header h3 {
     margin: 0;
-    color: var(--header-text-color);
+    color: var(--header-text-color); /* Use header text color for modal titles */
+    font-size: 1.2em;
 }
 
 .modal-close-btn {
@@ -740,23 +743,27 @@ th.sorted .sort-arrow {
     padding: 0;
     line-height: 1;
 }
+.modal-close-btn:hover {
+    color: var(--button-danger-bg);
+}
 
 .modal-body {
     margin-bottom: 1.5em;
+    overflow-y: auto; /* Allow body to scroll if content exceeds modal height */
+    flex-grow: 1; /* Allow body to take available space */
 }
 
 .modal-body .form-group {
     margin-bottom: 1em;
 }
-
 .modal-body label {
     display: block;
     margin-bottom: 0.5em;
     font-weight: bold;
-    text-align: left; /* Ensure modal labels are left-aligned */
+    text-align: left;
 }
-
 .modal-body input[type="text"],
+.modal-body input[type="number"], /* Added number type */
 .modal-body select {
     width: 100%;
     padding: 0.6em 0.8em;
@@ -767,13 +774,22 @@ th.sorted .sort-arrow {
     box-sizing: border-box;
     height: 38px;
 }
+.modal-body input[type="text"]:focus,
+.modal-body input[type="number"]:focus,
+.modal-body select:focus {
+    border-color: var(--input-focus-border-color);
+    outline: none;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--input-focus-border-color) 30%, transparent);
+}
+
 
 .modal-footer {
     display: flex;
     justify-content: flex-end;
     gap: 0.8em;
+    padding-top: 1em; /* Add padding above footer */
+    border-top: 1px solid var(--modal-border-color); /* Separator line */
 }
-
 .modal-footer button {
     padding: 0.6em 1.2em;
     border-radius: 6px;
@@ -782,22 +798,202 @@ th.sorted .sort-arrow {
     font-weight: bold;
     transition: background-color 0.2s ease;
 }
-
 .modal-footer .btn-primary { background-color: var(--button-primary-bg); color: var(--button-primary-text); }
 .modal-footer .btn-primary:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-primary-bg) 80%, black); }
+body.dark-mode .modal-footer .btn-primary:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-primary-bg) 80%, white); }
 
 .modal-footer .btn-secondary { background-color: var(--button-secondary-bg); color: var(--button-secondary-text); }
 .modal-footer .btn-secondary:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-secondary-bg) 80%, black); }
+body.dark-mode .modal-footer .btn-secondary:hover:not(:disabled) { background-color: color-mix(in srgb, var(--button-secondary-bg) 80%, white); }
+
 
 .modal-error-message {
     color: var(--modal-error-color);
     font-size: 0.9em;
     margin-top: 1em;
     text-align: center;
-    display: none;
+    display: none; /* Hidden by default */
 }
 
-.modal-overlay.visible { display: flex; }
+
+/* --- NEW: Portfolio Swap Simulation Modal Specific Styles --- */
+.modal-content.modal-lg {
+    max-width: 900px; /* Wider modal for two columns */
+}
+
+.simulation-columns {
+    display: flex;
+    gap: 1.5em; /* Space between "Sell" and "Buy" columns */
+    margin-bottom: 1.5em;
+}
+
+.simulation-column {
+    flex: 1; /* Each column takes equal width */
+    display: flex;
+    flex-direction: column;
+}
+
+.simulation-column h4 {
+    margin-top: 0;
+    margin-bottom: 0.8em;
+    padding-bottom: 0.4em;
+    border-bottom: 1px solid var(--modal-border-color);
+    color: var(--header-text-color);
+    font-size: 1.1em;
+}
+
+.simulation-list-container {
+    background-color: var(--simulation-list-bg);
+    border: 1px solid var(--modal-border-color);
+    border-radius: 6px;
+    padding: 0.8em;
+    min-height: 150px; /* Minimum height for the list areas */
+    max-height: 300px; /* Max height before scrolling */
+    overflow-y: auto;
+    flex-grow: 1; /* Allow list to grow */
+}
+
+.simulation-list-item {
+    background-color: var(--simulation-list-item-bg);
+    border: 1px solid var(--simulation-list-item-border);
+    border-radius: 4px;
+    padding: 0.6em 0.8em;
+    margin-bottom: 0.5em;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.9em;
+}
+.simulation-list-item:last-child {
+    margin-bottom: 0;
+}
+
+.simulation-list-item .item-details {
+    flex-grow: 1;
+    margin-right: 0.5em; /* Space before par input or remove button */
+}
+.simulation-list-item .item-cusip {
+    font-weight: bold;
+    display: block;
+    margin-bottom: 0.2em;
+}
+.simulation-list-item .item-desc {
+    font-size: 0.9em;
+    color: color-mix(in srgb, var(--text-color) 70%, transparent);
+}
+body.dark-mode .simulation-list-item .item-desc {
+    color: color-mix(in srgb, var(--text-color) 70%, transparent);
+}
+
+
+.simulation-list-item .item-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+}
+
+.simulation-list-item input[type="number"].par-input {
+    width: 100px; /* Fixed width for par input */
+    padding: 0.4em 0.6em;
+    height: auto; /* Override general input height */
+    font-size: 0.9em;
+    text-align: right;
+}
+
+.simulation-list-item button.remove-item-btn {
+    background-color: var(--button-danger-bg);
+    color: var(--button-danger-text);
+    padding: 0.3em 0.6em;
+    font-size: 0.8em;
+    border-radius: 4px;
+    line-height: 1;
+    height: auto; /* Override general button height */
+}
+.simulation-list-item button.remove-item-btn:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--button-danger-bg) 80%, black);
+}
+body.dark-mode .simulation-list-item button.remove-item-btn:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--button-danger-bg) 80%, white);
+}
+
+
+.empty-list-message {
+    color: color-mix(in srgb, var(--text-color) 60%, transparent);
+    text-align: center;
+    font-style: italic;
+    padding: 1em 0;
+}
+
+
+/* --- NEW: Portfolio Swap Simulation Results Section Styles --- */
+#simulation-results-section {
+    /* Uses .section-container styles */
+    /* Initially hidden by .hidden class in HTML */
+}
+
+#simulation-results-content {
+    /* Styles for the content area of results */
+}
+
+#simulation-results-content h3 { /* Titles like "Current Portfolio", "Simulated Portfolio", "Delta" */
+    color: var(--header-text-color);
+    font-size: 1.2em;
+    margin-top: 1.5em;
+    margin-bottom: 0.8em;
+    padding-bottom: 0.3em;
+    border-bottom: 1px solid var(--table-border-color);
+}
+#simulation-results-content h3:first-child {
+    margin-top: 0;
+}
+
+.simulation-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); /* Responsive columns */
+    gap: 1em;
+    margin-bottom: 1.5em;
+}
+
+.metric-item {
+    background-color: var(--simulation-list-bg); /* Use a slightly different bg for metrics */
+    padding: 0.8em 1em;
+    border-radius: 6px;
+    border: 1px solid var(--simulation-list-item-border);
+}
+.metric-item strong {
+    display: block;
+    margin-bottom: 0.3em;
+    color: var(--text-color);
+    font-size: 0.9em;
+}
+.metric-item span {
+    font-size: 1.1em;
+    font-weight: bold;
+    color: var(--header-text-color); /* Make metric value stand out */
+}
+
+/* Table for concentration details */
+.concentration-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 0.5em;
+    font-size: 0.9em;
+}
+.concentration-table th,
+.concentration-table td {
+    border: 1px solid var(--simulation-list-item-border);
+    padding: 0.5em 0.7em;
+    text-align: left;
+}
+.concentration-table th {
+    background-color: var(--simulation-results-table-header-bg); /* Use a variable for this */
+    font-weight: bold;
+}
+.concentration-table td:last-child {
+    text-align: right;
+}
+
+
 .hidden { display: none !important; }
 
 
@@ -806,20 +1002,14 @@ th.sorted .sort-arrow {
     .container { max-width: 95%; }
 }
 
-/* --- REMOVED: Media query that changed chart grid to 1 column --- */
-/* @media (max-width: 992px) { ... } */
-
-@media (max-width: 992px) { /* Keep other 992px rules */
+@media (max-width: 992px) {
     .filter-row, .control-row {
         flex-direction: column;
         align-items: stretch;
     }
-    .filter-row select,
-    .filter-row input,
-    .control-row select,
-    .control-row button,
-    button.remove-filter-btn, /* Ensure these stack correctly */
-    button.remove-muni-filter-btn {
+    .filter-row select, .filter-row input,
+    .control-row select, .control-row button,
+    button.remove-filter-btn, button.remove-muni-filter-btn {
         width: 100%;
         flex-basis: auto;
         margin-left: 0;
@@ -832,64 +1022,63 @@ th.sorted .sort-arrow {
     #delete-portfolio-btn { margin-top: 0.5em; }
     header.app-header { padding: 0 1em; }
     .container { padding: 1.5em 1em; max-width: 100%; }
-    /* Stack charts vertically on medium screens - REMOVED */
-    /* .charts-grid-container { grid-template-columns: 1fr; } */
-    .email-action-container { flex-direction: column; align-items: stretch; } /* Stack email button/message */
-    /* Stack pagination controls on smaller screens */
+    .charts-grid-container { grid-template-columns: 1fr; }
+    .email-action-container { flex-direction: column; align-items: stretch; }
     .pagination-controls {
         flex-direction: column;
         gap: 0.8em;
         align-items: center;
+    }
+    /* Swap Simulation Modal Columns stack on smaller screens */
+    .simulation-columns {
+        flex-direction: column;
+    }
+    .modal-content.modal-lg {
+        max-width: 95%; /* Allow modal to be wider on tablets */
     }
 }
 
 @media (max-width: 768px) {
     body { padding-top: calc(var(--header-height) + 0.5em); }
     header.app-header { padding: 0 0.5em; }
-    header.app-header .header-left { gap: 1em; } /* Adjust gap for smaller screens */
+    header.app-header .header-left { gap: 1em; }
     header.app-header .header-right { gap: 0.5em; }
     header.app-header h1 { font-size: 1.2em; }
     header.app-header button, .header-link { padding: 0.4em 0.6em; font-size: 0.8em; }
-    /* Adjust nav link size */
     .header-left .header-nav-link { font-size: 0.9em; }
-    /* Controls section still stacks vertically */
-    .controls {
+
+    .controls { flex-direction: column; align-items: stretch; }
+    .filter-buttons-container {
         flex-direction: column;
         align-items: stretch;
     }
-    /* Ensure buttons in filter container take full width when stacked */
-    /* Make both left and right button groups take full width when stacked */
-    .filter-buttons-container {
-        flex-direction: column; /* Stack left and right groups */
-        align-items: stretch; /* Make groups take full width */
-    }
      .filter-buttons-left, .filter-buttons-right {
         width: 100%;
-        justify-content: center; /* Center buttons within their group */
+        justify-content: center;
     }
      .filter-buttons-left button, .filter-buttons-right button {
-        flex-grow: 1; /* Allow buttons to grow */
-        /* width: 100%; */ /* Optional: force full width per button */
+        flex-grow: 1;
     }
 
     .control-row { flex-direction: column; align-items: stretch; }
     select, input, button.filter-action-btn, button.control-action-btn { width: 100%; max-width: none; }
     th, td { font-size: 0.9em; padding: 0.5em 0.6em; }
     #muni-offerings-table th,
-    #muni-offerings-table td { font-size: 0.85em; padding: 0.4em 0.5em; } /* Further reduce for muni table */
+    #muni-offerings-table td { font-size: 0.85em; padding: 0.4em 0.5em; }
     .chart-container { height: 300px; }
-    .modal-content { width: 95%; padding: 1.5em; }
-    /* Ensure 2x2 grid still applies, even if overridden by 992px rule initially */
-    /* If you want stacking below 768px, add it here: */
-    .charts-grid-container { grid-template-columns: 1fr; } /* Stack below 768px */
+    .modal-content { width: 95%; padding: 1.5em; max-height: 85vh; } /* Adjust max-height for mobile */
 }
 
 @media (max-width: 480px) {
     header.app-header h1 { font-size: 1.0em; }
-    .header-left .header-nav-link { font-size: 0.8em; } /* Further adjust nav link */
+    .header-left .header-nav-link { font-size: 0.8em; }
     th, td { font-size: 0.85em; padding: 0.4em 0.5em; }
     #muni-offerings-table th,
-    #muni-offerings-table td { font-size: 0.8em; padding: 0.3em 0.4em; } /* Further reduce for muni table */
-    .pagination-controls .page-info { font-size: 0.8em; } /* Smaller page info text */
-    .pagination-controls button { font-size: 0.8em; padding: 0.4em 0.8em; } /* Smaller pagination buttons */
+    #muni-offerings-table td { font-size: 0.8em; padding: 0.3em 0.4em; }
+    .pagination-controls .page-info { font-size: 0.8em; }
+    .pagination-controls button { font-size: 0.8em; padding: 0.4em 0.8em; }
+    .modal-content { padding: 1em; } /* Reduce padding for very small screens */
+    .modal-header h3 { font-size: 1.1em; }
+    .simulation-list-item { font-size: 0.85em; }
+    .simulation-list-item input[type="number"].par-input { width: 80px; }
 }

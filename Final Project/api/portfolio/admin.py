@@ -1,4 +1,4 @@
-# portfolio/admin.py (Updated to display CPR)
+# portfolio/admin.py (Updated to display CPR and remove zip_code from CustomerAdmin)
 
 from django.contrib import admin
 # Import models from the current app, including the new ones
@@ -71,7 +71,8 @@ class CustomerAdmin(admin.ModelAdmin):
             'fields': ('customer_number', 'name', 'users')
         }),
         ('Contact Information', {
-            'fields': ('address', 'city', 'state', 'zip_code')
+            # CORRECTED: 'zip_code' removed from this tuple
+            'fields': ('address', 'city', 'state')
         }),
         ('Salesperson & Accounting', { # Modified Section
             'fields': ('salesperson', 'portfolio_accounting_code'),
@@ -241,3 +242,4 @@ class MunicipalOfferingAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
+
