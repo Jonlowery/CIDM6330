@@ -134,7 +134,7 @@ The following UML diagrams provide a visual representation of the system's archi
 
 ### Refined Problem Specification
 
-The system addresses mutiple needs facing managers of fixed-income investments, targeting:
+The system addresses multifaceted needs in managing fixed-income investments, targeting:
 
 1.  **Granular Portfolio Tracking**: Tracking detailed attributes of holdings (settlement date, book price, market valuation, coupon, yield, WAL, duration).
 2.  **Dynamic Data Management**: Robust import mechanism for periodic updates of security, customer, and holding data via Excel.
@@ -260,12 +260,12 @@ Feature: Scheduled Data Ingestion
     Then the import_securities_from_excel task runs
     And each row in the sheet is upserted into the Security table
     And the API returns the new list at GET /api/securities/
-```gherkin
+```
 
 ### Scenario 2: Swap Simulation
 
 ```gherkin
- Feature: Swap Simulation
+Feature: Swap Simulation
   As a Trader
   I want to propose replacing bonds in my portfolio
   So that I can see changes in yield, WAL, and net benefit
@@ -281,7 +281,7 @@ Feature: Scheduled Data Ingestion
       | before_total_face | 150 | after_total_face | 150 |
       | delta_wal         | …   | delta_net_benefit | … |
     And no actual holdings are modified
-```gherkin
+```
 
 ### Scenario 3: Portfolio Visualization
 
@@ -309,7 +309,8 @@ Feature: Portfolio Visualization
       | security_cusip | BBB |
       | original_face_amount | 50.00 |
     And each holding shows computed fields:
-```gherkin
       | book_price | … |
       | book_yield | … |
       | wal        | … |
+```
+
