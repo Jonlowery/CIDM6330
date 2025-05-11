@@ -31,6 +31,7 @@
   - [Scenario 1: Import Securities on Schedule](#scenario-1-import-securities-on-schedule)
   - [Scenario 2: Swap Simulation](#scenario-2-swap-simulation)
   - [Scenario 3: Portfolio Visualization](#scenario-3-portfolio-visualization)
+  - [Testing and Gherkin Scenario Validation](#testing-and-gherkin-scenario-validation)
 - [Future Enhancements](#future-enhancements)
 
 ## Getting Started
@@ -42,8 +43,8 @@ This section provides instructions on how to download, set up, and run the Portf
 To get started, clone the repository from GitHub:
 
 ```bash
-git clone https://github.com/Jonlowery/CIDM6330.git
-cd CIDM6330/Final_Project
+git clone [https://github.com/Jonlowery/CIDM6330.git](https://github.com/Jonlowery/CIDM6330.git)
+cd CIDM6330/Final Project
 ```
 
 ### Launch with Docker
@@ -75,14 +76,14 @@ Once the Docker containers are up and running:
     -   **Username**: `owner`
     -   **Password**: `test123!`
 
-This will give you access to the application's frontend interface. The backend API will be accessible at the URL `http://localhost:8000/api/`.
+This should give you access to the application's frontend interface. The backend API will be accessible, typically at a URL like `http://localhost:8000/api/`, as configured in your Django and Docker setup.
 
 ## Frontend Overview
 
 The frontend of the Portfolio Analysis System provides a user-friendly interface for interacting with the core functionalities of the application. It is designed to allow users to:
 
 -   **View Portfolio Data**: Users can visualize their portfolio holdings, including details about each security, current market values, and key analytical metrics.
--   **Analyze Securities**: The interface allows for the inspection of individual securities by filtering the available holdings, displaying their characteristics and calculated analytics like YTM, duration, and convexity.
+-   **Analyze Securities**: The interface allows for the inspection of individual securities, displaying their characteristics, historical data (if available), and calculated analytics like YTM, duration, and convexity.
 -   **Simulate Swaps**: A key feature is the ability to perform "what-if" scenarios by simulating the buying and selling of securities within a portfolio. The frontend will display the potential impact of these changes on the overall portfolio metrics.
 -   **Express Interest**: Allows users to select a bond and send an email notification to the relevant salesperson or trader to express interest in buying or selling that security.
 
@@ -402,6 +403,36 @@ Feature: Portfolio Visualization
       | wal        | … |
 ```
 
+### Testing and Gherkin Scenario Validation
+
+A comprehensive suite of tests has been developed to ensure the reliability and correctness of the Portfolio Analysis System. These tests leverage Django's testing framework, utilizing `APITestCase` for thorough testing of API views and `TestCase` for models, utility functions, Celery tasks, serializers, and admin configurations. The `unittest.mock` library is employed for patching external dependencies and isolating units of code during testing.
+
+The Gherkin scenarios outlined above are validated through these tests as follows:
+
+-   **Scenario 1: Import Securities on Schedule**
+    -   The core logic of data ingestion from Excel files is extensively tested in `test_tasks.py`. Tests such as `ImportTasksTest.test_import_securities_from_excel_success` and the overarching `OrchestrationTasksTest.test_import_all_from_excel_all_files_exist` (which mocks the individual import tasks) verify that data is correctly read, processed, and upserted into the `Security` table, as well as other relevant tables like `Salesperson`, `Customer`, etc.
+    -   Error handling during imports, such as dealing with missing files, incorrect headers, or bad data, is also covered (e.g., `ImportTasksTest.test_import_salespersons_from_excel_error_handling`).
+    -   While the Celery Beat scheduling mechanism itself is an infrastructure concern, the tasks that it triggers (e.g., `import_all_from_excel`) are unit-tested to ensure they perform as expected when called. The API's ability to return the new list of securities would be verified by API tests in `test_views.py` for the `SecurityViewSet`.
+
+-   **Scenario 2: Swap Simulation**
+    -   The `simulate_swap` action within the `PortfolioViewSet` is tested in `test_views.py` (e.g., `PortfolioViewSetTest.test_simulate_swap_action_offering_not_found` checks for error handling with invalid inputs).
+    -   Comprehensive tests for this endpoint would further validate:
+        -   Correct parsing of `add_security_id`, `face_amount`, `price`, and `remove_holding_id` from the POST request.
+        -   The internal logic for calculating "what-if" scenarios, including changes in yield, WAL, and net benefit (this might involve mocking the `calculate_bond_analytics` utility for focused unit tests).
+        -   The structure and accuracy of the response data, ensuring `before_total_face`, `after_total_face`, `delta_wal`, and `delta_net_benefit` are correctly reported.
+        -   Crucially, these tests confirm that no actual `CustomerHolding` records are modified in the database during a simulation, as per the scenario's requirement.
+    -   Serializer tests in `test_serializers.py` for `PortfolioSimulationSerializer`, `HoldingToRemoveSerializer`, and `OfferingToBuySerializer` ensure input validation for the swap simulation payload.
+
+-   **Scenario 3: Portfolio Visualization**
+    -   The ability for a customer to view their portfolio details is tested through the `PortfolioViewSet` in `test_views.py`. Tests for the `retrieve` action (e.g., `GET /api/portfolios/{id}/`) verify:
+        -   A `200 OK` status code is returned for authenticated users accessing their own portfolios.
+        -   The response JSON includes the correct portfolio `name` and `owner` information.
+        -   Associated `CustomerHolding` entries are correctly nested or linked within the portfolio data.
+    -   Tests for the `CustomerHoldingViewSet` (e.g., `CustomerHoldingViewSetTest.test_list_holdings_filtering_by_security_cusip`) ensure that holdings can be listed and filtered.
+    -   Serializer tests in `test_serializers.py` for `PortfolioSerializer` and `CustomerHoldingSerializer` (e.g., `CustomerHoldingSerializerTest.test_valid_holding_serialization` which checks for `par_value`) validate that all required fields, including computed ones like `book_price`, `book_yield`, and `wal` (which would be `holding_average_life` or `holding_duration` from the model/serializer), are present and correctly formatted in the API response. The `calculate_bond_analytics` function, tested in `test_utils.py`, underpins the calculation of these metrics.
+
+This testing strategy provides confidence that the system behaves as specified in the Gherkin scenarios and meets the defined requirements.
+
 ## Future Enhancements
 
 The following are planned enhancements for the Portfolio Analysis System:
@@ -410,4 +441,3 @@ The following are planned enhancements for the Portfolio Analysis System:
 -   **Enhance Cashflows for Factored Securities**: Improve the cash flow generation logic to accurately handle securities with factors (e.g., mortgage-backed securities), ensuring precise calculations for principal and interest payments over time.
 -   **Expand on Swap Simulation**: Develop the swap simulation feature further by adding more sophisticated analysis, such as multi-leg swaps, impact on various risk metrics, and optimization suggestions.
 -   **Prepare for Production Deployment**: Implement necessary configurations, security hardening, performance optimizations, and monitoring tools to make the system ready for a production environment. This includes robust logging, error handling, and potentially CI/CD pipelines.
-"""
