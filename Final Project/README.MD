@@ -260,6 +260,7 @@ Feature: Scheduled Data Ingestion
     Then the import_securities_from_excel task runs
     And each row in the sheet is upserted into the Security table
     And the API returns the new list at GET /api/securities/
+```gherkin
 
 ### Scenario 2: Swap Simulation
 
@@ -280,6 +281,7 @@ Feature: Scheduled Data Ingestion
       | before_total_face | 150 | after_total_face | 150 |
       | delta_wal         | …   | delta_net_benefit | … |
     And no actual holdings are modified
+```gherkin
 
 ### Scenario 3: Portfolio Visualization
 
@@ -307,6 +309,7 @@ Feature: Portfolio Visualization
       | security_cusip | BBB |
       | original_face_amount | 50.00 |
     And each holding shows computed fields:
+```gherkin
       | book_price | … |
       | book_yield | … |
       | wal        | … |
