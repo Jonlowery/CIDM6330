@@ -260,3 +260,53 @@ Feature: Scheduled Data Ingestion
     Then the import_securities_from_excel task runs
     And each row in the sheet is upserted into the Security table
     And the API returns the new list at GET /api/securities/
+
+### Scenario 2: Swap Simulation
+
+```gherkin
+ Feature: Swap Simulation
+  As a Trader
+  I want to propose replacing bonds in my portfolio
+  So that I can see changes in yield, WAL, and net benefit
+
+  Background:
+    Given a Portfolio "Pilot Portfolio" with holdings A (face=100), B (face=50)
+
+  Scenario: User runs a “what-if” swap
+    When I POST to /api/portfolios/{id}/simulate_swap/ with
+      | add_security_id   | 5     | face_amount | 80    | price | 101.5 |
+      | remove_holding_id | 2     |
+    Then the response contains
+      | before_total_face | 150 | after_total_face | 150 |
+      | delta_wal         | …   | delta_net_benefit | … |
+    And no actual holdings are modified
+
+### Scenario 3: Portfolio Visualization
+
+```gherkin
+Feature: Portfolio Visualization
+  As a Customer
+  I want to see my current bond holdings and key metrics
+  So that I can understand my risk and return
+
+  Background:
+    Given I am authenticated as Customer “CUST-100”
+    And I have a Portfolio “P1” with holdings:
+      | security | AAA | face_amount | 100 |
+      | security | BBB | face_amount | 50  |
+
+  Scenario: Customer views portfolio detail
+    When I GET /api/portfolios/1/
+    Then the response status is 200
+    And the JSON includes:
+      | name      | P1            |
+      | owner     | CUST-100      |
+    And under “holdings” I see two entries with:
+      | security_cusip | AAA |
+      | original_face_amount | 100.00 |
+      | security_cusip | BBB |
+      | original_face_amount | 50.00 |
+    And each holding shows computed fields:
+      | book_price | … |
+      | book_yield | … |
+      | wal        | … |
