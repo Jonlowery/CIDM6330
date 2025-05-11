@@ -30,6 +30,7 @@
   - [Scenario 1: Import Securities on Schedule](#scenario-1-import-securities-on-schedule)
   - [Scenario 2: Swap Simulation](#scenario-2-swap-simulation)
   - [Scenario 3: Portfolio Visualization](#scenario-3-portfolio-visualization)
+- [Future Enhancements](#future-enhancements)
 
 ## Getting Started
 
@@ -40,8 +41,8 @@ This section provides instructions on how to download, set up, and run the Portf
 To get started, clone the repository from GitHub:
 
 ```bash
-git clone <https://github.com/Jonlowery/CIDM6330.git>
-cd <CIDM6330/Final Project>
+git clone [https://github.com/Jonlowery/CIDM6330.git](https://github.com/Jonlowery/CIDM6330.git)
+cd CIDM6330/Final Project
 ```
 
 ### Launch with Docker
@@ -49,7 +50,7 @@ cd <CIDM6330/Final Project>
 The application is containerized using Docker and can be launched easily with Docker Compose. Ensure you have Docker and Docker Compose installed on your system.
 
 1.  **Navigate to the project directory**:
-    Make sure you are in the root directory of the cloned project where the `docker-compose.yml` file is located.
+    Make sure you are in the root directory of the cloned project where the `docker-compose.yml` file is located (i.e., inside `CIDM6330/Final Project`).
 
 2.  **Build and run the containers**:
     Execute the following command in your terminal:
@@ -107,7 +108,7 @@ The Portfolio Analysis System offers significant value by:
 
 ### UML Design Document
 
-The following UML diagrams provide a visual representation of the system's architecture, structure, and behavior.
+The following UML diagrams provide a visual representation of the system's architecture, structure, and behavior. (Ensure your `images` folder is in the same directory as this README.md for these links to work correctly on GitHub).
 
 #### 1. Activity Diagram
 
@@ -388,4 +389,14 @@ Feature: Portfolio Visualization
       | book_yield | … |
       | wal        | … |
 ```
+
+## Future Enhancements
+
+The following are planned enhancements for the Portfolio Analysis System:
+
+-   **Migrate from SQLite to Postgres**: Transition the database backend from SQLite to PostgreSQL for better scalability, performance, and feature set suitable for production environments.
+-   **Enhance Cashflows for Factored Securities**: Improve the cash flow generation logic to accurately handle securities with factors (e.g., mortgage-backed securities), ensuring precise calculations for principal and interest payments over time.
+-   **Expand on Swap Simulation**: Develop the swap simulation feature further by adding more sophisticated analysis, such as multi-leg swaps, impact on various risk metrics, and optimization suggestions.
+-   **Prepare for Production Deployment**: Implement necessary configurations, security hardening, performance optimizations, and monitoring tools to make the system ready for a production environment. This includes robust logging, error handling, and potentially CI/CD pipelines.
+"""
 
