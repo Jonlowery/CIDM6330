@@ -74,7 +74,7 @@ Once the Docker containers are up and running:
     -   **Username**: `owner`
     -   **Password**: `test123!`
 
-This should give you access to the application's frontend interface. The backend API will be accessible, typically at a URL like `http://localhost:8000/api/`, as configured in your Django and Docker setup.
+This should give you access to the application's frontend interface. The backend API will be accessible, typically at a URL `http://127.0.0.1:8000/admin/`.
 
 ## Evolution 0
 
