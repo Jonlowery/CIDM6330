@@ -6,8 +6,8 @@ FROM python:3.10-slim-bullseye
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
-# Set work directory
-WORKDIR /usr/src/app
+# Set work directory to /app, which will align with the volume mount
+WORKDIR /app
 
 # Install system dependencies
 # build-essential: for C/C++ compilers (needed for QuantLib if built from source by pip)
@@ -26,19 +26,15 @@ RUN apt-get update && \
 
 # Install Python dependencies
 # Copy requirements.txt first to leverage Docker cache if requirements haven't changed
-COPY ./requirements.txt /usr/src/app/requirements.txt
-# Pip will attempt to install QuantLib (C++) and QuantLib-Python.
-# The presence of build-essential and swig should allow pip to compile them if they are
-# fetched as source distributions from PyPI.
+# Assuming requirements.txt is at the root of your build context (same level as Dockerfile)
+COPY ./requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the Django project code into the container
-# This assumes your Django project (manage.py, project folder 'bondsystem', app folder 'portfolio', etc.)
-# is located in a subdirectory named 'api' in the same directory as this Dockerfile.
-COPY ./api /usr/src/app/
+# Copy the Django project code (contents of ./api directory) into the container's /app directory
+# The trailing slash on ./api/ is important to copy the contents.
+COPY ./api/ /app/
 
 # Expose the port the Django app runs on (defined in docker-compose.yml command)
 EXPOSE 8000
 
-# The command to run the application (e.g., runserver, gunicorn, celery commands)
-# will be specified in the docker-compose.yml file for each service.
+# The command to run the application will be specified in the docker-compose.yml file.

@@ -1,8 +1,9 @@
-# settings.py (Enable DEBUG Logging for 'portfolio' app and Add Celery Test Config)
+# settings.py
 
 from pathlib import Path
 import os
 import sys # Import sys to check for 'test' in command line arguments
+from celery.schedules import crontab # Ensure crontab is imported
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -32,8 +33,8 @@ INSTALLED_APPS = [
     'corsheaders',
     'django_filters',
     'portfolio.apps.PortfolioConfig', # Your app
-    'django_celery_beat',
-    'django_celery_results', # You have this installed, so 'django-db' is an option for results
+    'django_celery_beat',             # For periodic tasks (scheduler)
+    'django_celery_results',          # For storing task results in DB
 ]
 
 MIDDLEWARE = [
@@ -89,7 +90,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 # Internationalization
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'UTC' # Celery best practice: use UTC
 USE_I18N = True
 USE_TZ = True
 
@@ -136,8 +137,24 @@ CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://redis:6
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE = TIME_ZONE
+CELERY_TIMEZONE = TIME_ZONE # Use TIME_ZONE from Django settings (UTC)
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+
+# --- ADDED CELERY_BEAT_SCHEDULE ---
+CELERY_BEAT_SCHEDULE = {
+    'import-all-every-10-minutes': {
+        'task': 'portfolio.tasks.import_all_from_excel', # Ensure this task path is correct
+        'schedule': crontab(minute='*/10'), # Run every 10 minutes
+        # 'args': (16, 16), # Example arguments if your task needs them
+    },
+    # You can add more scheduled tasks here
+    # 'another-example-task': {
+    #     'task': 'myapp.tasks.another_task',
+    #     'schedule': 300.0, # Run every 5 minutes (300 seconds)
+    # },
+}
+# --- END ADDED CELERY_BEAT_SCHEDULE ---
+
 
 # --- Celery Test Configuration ---
 # This block checks if Django is running in test mode.
@@ -235,6 +252,11 @@ LOGGING = {
         'celery': { # Add logger for Celery itself if needed
             'handlers': ['console'],
             'level': 'INFO', # Or DEBUG for more verbose Celery logs
+            'propagate': False,
+        },
+        'django_celery_beat': { # Logger for django-celery-beat
+            'handlers': ['console'],
+            'level': 'INFO', # Use DEBUG for more verbose beat logs
             'propagate': False,
         },
     },

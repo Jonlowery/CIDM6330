@@ -1,4 +1,4 @@
-version: '3.8'
+version: '3.8' # This line is considered obsolete by newer Docker Compose versions but is kept for reference.
 
 services:
   redis:
@@ -6,54 +6,102 @@ services:
     container_name: redis
     ports:
       - "6379:6379"
+    # Optional: Add a healthcheck for Redis if needed
+    # healthcheck:
+    #   test: ["CMD", "redis-cli", "ping"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 5
 
   web:
-    build: .
+    build: . # Assumes Dockerfile is in the same directory as docker-compose.yml
     container_name: web
     command: >
       sh -c "
+        echo 'Applying database migrations...' &&
         python manage.py migrate --noinput &&
+        echo 'Database migrations complete.' &&
+        echo 'Creating superuser...' &&
+        python manage.py create_custom_superuser &&
+        echo 'Superuser creation attempt complete.' &&
+        echo 'Verifying configured database path:' &&
+        python manage.py shell -c \"from django.conf import settings; print('DATABASE_NAME_PATH:', settings.DATABASES['default']['NAME'])\" &&
+        echo 'Listing contents of /app/ after migrations:' &&
+        ls -la /app/ &&
+        echo 'Triggering initial data import task...' &&
+        python manage.py trigger_initial_import &&
+        echo 'Initial data import task triggered by web service.' &&
+        echo 'Starting Django development server...' &&
         python manage.py runserver 0.0.0.0:8000
       "
     volumes:
+      # Mounts the local 'api' directory to '/app' in the container.
+      # This includes your Django project, db.sqlite3, and the data/imports directory.
       - ./api:/app
+      # Explicitly mounting data/imports is somewhat redundant if ./api:/app is already there,
+      # but it doesn't hurt and makes the intent clear.
+      # It ensures that /app/data/imports inside the container reflects ./api/data/imports on the host.
       - ./api/data/imports:/app/data/imports
+      # Mount frontend files if your Django app serves them or if WhiteNoise needs them.
       - ./frontend:/app/frontend
     ports:
       - "8000:8000"
     environment:
+      # Django settings
       DJANGO_SETTINGS_MODULE: bondsystem.settings
+      # Celery settings
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
+      # Superuser credentials (defaults in command will be used if these are not set)
+      DJANGO_SUPERUSER_USERNAME: 'owner'
+      DJANGO_SUPERUSER_EMAIL: 'owner@example.com'
+      DJANGO_SUPERUSER_PASSWORD: 'test123!'
+      # PYTHONUNBUFFERED: 1 # Good for seeing logs immediately
+      # DJANGO_DEBUG: True # Or manage via .env file
     depends_on:
-      - redis
+      redis: # Ensures Redis is started before the web service
+        condition: service_started # Or service_healthy if healthcheck is defined for Redis
 
   worker:
     build: .
     container_name: worker
-    command: celery -A bondsystem worker --loglevel=info
+    # Updated command to set concurrency to 1 for SQLite compatibility
+    command: celery -A bondsystem worker --loglevel=info --concurrency=1
     volumes:
+      # Worker needs access to the Django project code.
       - ./api:/app
+      # Worker needs access to the Excel files for import.
       - ./api/data/imports:/app/data/imports
     environment:
       DJANGO_SETTINGS_MODULE: bondsystem.settings
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
+      # PYTHONUNBUFFERED: 1
     depends_on:
-      - redis
-      - web
+      redis:
+        condition: service_started
+      web: # Ensures web service (which runs migrations and triggers task) starts before worker fully processes tasks.
+           # While Celery tasks are asynchronous, this dependency helps with ordered startup.
+        condition: service_started
 
   beat:
     build: .
     container_name: beat
-    command: celery -A bondsystem beat --loglevel=info
+    command: celery -A bondsystem beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     volumes:
+      # Beat needs access to the Django project code if it uses Django models or settings.
       - ./api:/app
+      # Beat typically doesn't need access to data/imports unless a scheduled task directly reads from there.
+      # However, keeping it consistent with worker if tasks might be refactored.
       - ./api/data/imports:/app/data/imports
     environment:
       DJANGO_SETTINGS_MODULE: bondsystem.settings
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
+      # PYTHONUNBUFFERED: 1
     depends_on:
-      - redis
-      - web
+      redis:
+        condition: service_started
+      web: # Ensures web service (which runs migrations) starts before beat,
+           # as DatabaseScheduler relies on Django models.
+        condition: service_started
