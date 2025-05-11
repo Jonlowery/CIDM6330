@@ -6,6 +6,7 @@
   - [Download](#download)
   - [Launch with Docker](#launch-with-docker)
   - [Accessing the Frontend](#accessing-the-frontend)
+- [Frontend Overview](#frontend-overview)
 - [Evolution 0](#evolution-0)
   - [The Problem Domain](#the-problem-domain)
   - [Problem Addressed](#problem-addressed)
@@ -74,7 +75,18 @@ Once the Docker containers are up and running:
     -   **Username**: `owner`
     -   **Password**: `test123!`
 
-This should give you access to the application's frontend interface. The backend API will be accessible, typically at a URL `http://127.0.0.1:8000/admin/`.
+This should give you access to the application's frontend interface. The backend API will be accessible, typically at a URL like `http://localhost:8000/api/`, as configured in your Django and Docker setup.
+
+## Frontend Overview
+
+The frontend of the Portfolio Analysis System provides a user-friendly interface for interacting with the core functionalities of the application. It is designed to allow users to:
+
+-   **View Portfolio Data**: Users can visualize their portfolio holdings, including details about each security, current market values, and key analytical metrics.
+-   **Analyze Securities**: The interface allows for the inspection of individual securities, displaying their characteristics, historical data (if available), and calculated analytics like YTM, duration, and convexity.
+-   **Simulate Swaps**: A key feature is the ability to perform "what-if" scenarios by simulating the buying and selling of securities within a portfolio. The frontend will display the potential impact of these changes on the overall portfolio metrics.
+-   **Express Interest**: Allows users to select a bond and send an email notification to the relevant salesperson or trader to express interest in buying or selling that security.
+
+The frontend communicates with the backend via a RESTful API to fetch data and submit requests for calculations or data manipulation. This decoupled architecture ensures that the user interface remains responsive and can be updated independently of the backend logic.
 
 ## Evolution 0
 
@@ -108,14 +120,14 @@ The Portfolio Analysis System offers significant value by:
 
 ### UML Design Document
 
-The following UML diagrams provide a visual representation of the system's architecture, structure, and behavior. 
+The following UML diagrams provide a visual representation of the system's architecture, structure, and behavior. (Ensure your `images` folder is in the same directory as this README.md for these links to work correctly on GitHub).
 
 #### 1. Activity Diagram
 
 -   **Purpose and Key Elements**: The Activity Diagram illustrates the workflow for a key automated process within the system: the scheduled import of data from Excel files.
 -   It shows two main partitions: "Scheduler (Celery Beat)" and "Celery Worker."
 -   **Scheduler (Celery Beat)**: Initiates the import process at predefined intervals (e.g., every 10 minutes, as configured in celery.py). It triggers an `import_from_excel` task and enqueues it.
--   **Celery Worker**: Picks up the task from a message queue (e.g., Redis, as suggested by settings.py). It reads Excel files from `/data/imports/`, processes rows by transforming and validating data, then upserts the information into database models (like Customer, Security, Holding) using loader services (as seen in services.py). Finally, it logs a summary of the operation.
+-   **Celery Worker**: Picks up the task from a message queue (e.g., Redis, as suggested by settings.py). It reads Excel files from `/data/imports/`, processes rows by transforming and validating data, then upserts the information into database models (like Customer, Security, Holding) using loader services (as seen in services.py). Finally, it logs a summary of the operation. Additionally, the Celery Worker is responsible for offloading tasks like sending email notifications, ensuring these operations don't block the main application thread.
 
 ![Activity Diagram](images/Activity%20Diagram.png)
 
@@ -398,4 +410,4 @@ The following are planned enhancements for the Portfolio Analysis System:
 -   **Enhance Cashflows for Factored Securities**: Improve the cash flow generation logic to accurately handle securities with factors (e.g., mortgage-backed securities), ensuring precise calculations for principal and interest payments over time.
 -   **Expand on Swap Simulation**: Develop the swap simulation feature further by adding more sophisticated analysis, such as multi-leg swaps, impact on various risk metrics, and optimization suggestions.
 -   **Prepare for Production Deployment**: Implement necessary configurations, security hardening, performance optimizations, and monitoring tools to make the system ready for a production environment. This includes robust logging, error handling, and potentially CI/CD pipelines.
-
+"""
