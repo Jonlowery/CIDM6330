@@ -108,7 +108,7 @@ The Portfolio Analysis System offers significant value by:
 
 ### UML Design Document
 
-The following UML diagrams provide a visual representation of the system's architecture, structure, and behavior. (Ensure your `images` folder is in the same directory as this README.md for these links to work correctly on GitHub).
+The following UML diagrams provide a visual representation of the system's architecture, structure, and behavior. 
 
 #### 1. Activity Diagram
 
