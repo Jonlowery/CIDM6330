@@ -1,5 +1,81 @@
 # Portfolio Analysis System Documentation
 
+## Table of Contents
+
+- [Getting Started](#getting-started)
+  - [Download](#download)
+  - [Launch with Docker](#launch-with-docker)
+  - [Accessing the Frontend](#accessing-the-frontend)
+- [Evolution 0](#evolution-0)
+  - [The Problem Domain](#the-problem-domain)
+  - [Problem Addressed](#problem-addressed)
+  - [Software Solution's Value](#software-solutions-value)
+  - [UML Design Document](#uml-design-document)
+    - [1. Activity Diagram](#1-activity-diagram)
+    - [2. Class Diagram](#2-class-diagram)
+    - [3. Component Diagram](#3-component-diagram)
+    - [4. Sequence Diagram](#4-sequence-diagram)
+    - [5. State Machine Diagram](#5-state-machine-diagram)
+    - [6. Use Case Diagram](#6-use-case-diagram)
+- [Evolution 1](#evolution-1)
+  - [Refined Problem Specification](#refined-problem-specification)
+  - [Logical Organization of Solution into Features/Modules](#logical-organization-of-solution-into-featuresmodules)
+  - [Updated Per-Feature Diagrams](#updated-per-feature-diagrams)
+- [Evolution 2](#evolution-2)
+- [Evolution 4: Django Implementation](#evolution-4-django-implementation)
+  - [Django Project Structure](#django-project-structure)
+  - [API Implementation](#api-implementation)
+- [Evolution 5](#evolution-5)
+  - [Domain-Driven Design (DDD) Glossary](#domain-driven-design-ddd-glossary)
+  - [Scenario 1: Import Securities on Schedule](#scenario-1-import-securities-on-schedule)
+  - [Scenario 2: Swap Simulation](#scenario-2-swap-simulation)
+  - [Scenario 3: Portfolio Visualization](#scenario-3-portfolio-visualization)
+
+## Getting Started
+
+This section provides instructions on how to download, set up, and run the Portfolio Analysis System.
+
+### Download
+
+To get started, clone the repository from GitHub:
+
+```bash
+git clone <your-repository-url>
+cd <repository-name>
+```
+(Replace `<your-repository-url>` with the actual URL of your GitHub repository and `<repository-name>` with the name of the cloned directory).
+
+### Launch with Docker
+
+The application is containerized using Docker and can be launched easily with Docker Compose. Ensure you have Docker and Docker Compose installed on your system.
+
+1.  **Navigate to the project directory**:
+    Make sure you are in the root directory of the cloned project where the `docker-compose.yml` file is located.
+
+2.  **Build and run the containers**:
+    Execute the following command in your terminal:
+
+    ```bash
+    docker-compose up --build
+    ```
+    This command will build the images for the Django backend and any other services defined in the `docker-compose.yml` file (like PostgreSQL, Redis) and then start the containers. The `--build` flag ensures that images are rebuilt if there are any changes. For subsequent runs, you can omit `--build` if no code changes requiring a rebuild have been made.
+
+    Wait for the services to start up. You should see logs from the different containers in your terminal.
+
+### Accessing the Frontend
+
+Once the Docker containers are up and running:
+
+1.  **Open your web browser.**
+2.  **Navigate to the frontend URL**:
+    [http://localhost:3000](http://localhost:3000)
+
+3.  **Login with test credentials**:
+    -   **Username**: `owner`
+    -   **Password**: `test123!`
+
+This should give you access to the application's frontend interface. The backend API will be accessible, typically at a URL like `http://localhost:8000/api/`, as configured in your Django and Docker setup.
+
 ## Evolution 0
 
 Evolution 0 lays the groundwork for the Portfolio Analysis System by defining the problem domain, the software's purpose, and its high-level design through UML diagrams.
