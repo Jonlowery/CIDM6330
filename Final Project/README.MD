@@ -75,7 +75,7 @@ Once the Docker containers are up and running:
     -   **Username**: `owner`
     -   **Password**: `test123!`
 
-This should give you access to the application's frontend interface. The backend API will be accessible at the URL `http://localhost:8000/api/`.
+This will give you access to the application's frontend interface. The backend API will be accessible at the URL `http://localhost:8000/api/`.
 
 ## Frontend Overview
 
