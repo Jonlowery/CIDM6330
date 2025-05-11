@@ -460,7 +460,7 @@ class CustomerHolding(models.Model):
     # Map 'lc_xf1_cd'
     intention_code = models.CharField(
         max_length=1,
-        choices=[('A', 'Available for Sale'), ('M', 'Held to Maturity'), ('T', 'Held for Trading')],
+        choices=[('A', 'Available for Sale'), ('H', 'Held to Maturity'), ('T', 'Held for Trading')],
         help_text="Holding intention code (from Excel 'lc_xf1_cd'). Required.",
         # Making intention_code required
         blank=False, null=False

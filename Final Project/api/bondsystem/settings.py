@@ -1,7 +1,8 @@
-# settings.py (Enable DEBUG Logging for 'portfolio' app)
+# settings.py (Enable DEBUG Logging for 'portfolio' app and Add Celery Test Config)
 
 from pathlib import Path
 import os
+import sys # Import sys to check for 'test' in command line arguments
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -32,7 +33,7 @@ INSTALLED_APPS = [
     'django_filters',
     'portfolio.apps.PortfolioConfig', # Your app
     'django_celery_beat',
-    'django_celery_results',
+    'django_celery_results', # You have this installed, so 'django-db' is an option for results
 ]
 
 MIDDLEWARE = [
@@ -104,7 +105,7 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Session Settings
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
-SESSION_COOKIE_AGE = 900
+SESSION_COOKIE_AGE = 900 # 15 minutes
 SESSION_SAVE_EVERY_REQUEST = True
 
 
@@ -126,7 +127,7 @@ REST_FRAMEWORK = {
 
 
 # CORS
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = True # Be more restrictive in production
 
 
 # Celery configuration
@@ -138,14 +139,34 @@ CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 
+# --- Celery Test Configuration ---
+# This block checks if Django is running in test mode.
+# If so, it overrides Celery settings to run tasks synchronously and locally.
+TESTING_MODE = 'test' in sys.argv or 'pytest' in sys.modules
+
+if TESTING_MODE:
+    print("Applying Celery EAGER settings for testing.")
+    CELERY_TASK_ALWAYS_EAGER = True  # Tasks will be executed locally, synchronously.
+    CELERY_TASK_EAGER_PROPAGATES = True  # Exceptions from eager tasks will be raised.
+    
+    # Override the result backend for tests to prevent Redis connections
+    # Setting to None means results won't be stored, which is often fine for tests.
+    CELERY_RESULT_BACKEND = None # Or 'django-db' if you use django-celery-results and need to test results
+    print(f"Celery Result Backend for testing: {CELERY_RESULT_BACKEND}")
+
+    # Override the broker URL for tests to prevent Redis connections
+    # 'memory://' makes Celery use an in-memory broker, suitable for testing.
+    CELERY_BROKER_URL = 'memory://'
+    print(f"Celery Broker URL for testing: {CELERY_BROKER_URL}")
+
 
 # Email Settings
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'avionhwow@gmail.com'
-EMAIL_HOST_PASSWORD = 'jhvm vgog vwdv zlui'
+EMAIL_HOST_USER = 'avionhwow@gmail.com' 
+EMAIL_HOST_PASSWORD = 'jhvm vgog vwdv zlui' 
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 
@@ -211,8 +232,11 @@ LOGGING = {
             'level': 'DEBUG',       # <<< Set level to DEBUG
             'propagate': False,      # Optional: Set to False if you don't want portfolio logs appearing twice (via root)
         },
-         # You might need to add specific loggers if using different names
-         # e.g., 'portfolio.utils', 'portfolio.views'
+        'celery': { # Add logger for Celery itself if needed
+            'handlers': ['console'],
+            'level': 'INFO', # Or DEBUG for more verbose Celery logs
+            'propagate': False,
+        },
     },
 }
 
@@ -220,4 +244,3 @@ LOGGING = {
 # LOGS_DIR = BASE_DIR / 'logs'
 # LOGS_DIR.mkdir(exist_ok=True)
 # --- END LOGGING CONFIGURATION ---
-

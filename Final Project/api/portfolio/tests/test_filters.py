@@ -73,6 +73,8 @@ class BaseFilterTest(TestCase):
             market_price=D("101.5"), market_yield=D("2.2"), market_date=date(2023,1,15),
             holding_duration=D("5.1"), holding_average_life=D("5.3")
         )
+        # For holding2, ensure intention_code='H' is a valid choice in the CustomerHolding model's
+        # 'intention_code' field definition in models.py for test_filter_by_intention_code_H to pass.
         cls.holding2 = CustomerHolding.objects.create(
             external_ticket=90011, portfolio=cls.portfolio_x1, security=cls.security_corp,
             intention_code='H', original_face_amount=D("200000"), settlement_date=date(2023,2,20),
@@ -123,14 +125,36 @@ class CustomerHoldingFilterSetTest(BaseFilterTest):
         for holding in filterset.qs:
             self.assertEqual(holding.portfolio, self.portfolio_x1)
 
-    def test_filter_by_intention_code(self):
+    def test_filter_by_intention_code(self): # Existing test for 'A'
         data = {'intention_code': 'A'} # Available for Sale
         qs = CustomerHolding.objects.all()
         filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
-        self.assertTrue(filterset.is_valid())
+        self.assertTrue(filterset.is_valid(), filterset.errors)
         self.assertEqual(filterset.qs.count(), 2) # holding1 and holding4
         for holding in filterset.qs:
             self.assertEqual(holding.intention_code, 'A')
+
+    def test_filter_by_intention_code_H(self): # New test for 'H'
+        # NOTE: This test will FAIL if 'H' is not included in the 'choices'
+        # attribute of the 'intention_code' field in the CustomerHolding model (models.py).
+        # The error "Select a valid choice. H is not one of the available choices."
+        # indicates this is likely the case. To fix, update models.py.
+        data = {'intention_code': 'H'} # Held for Investment
+        qs = CustomerHolding.objects.all()
+        filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
+        self.assertTrue(filterset.is_valid(), filterset.errors) # Added filterset.errors for debugging
+        self.assertEqual(filterset.qs.count(), 1) # holding2
+        for holding in filterset.qs:
+            self.assertEqual(holding.intention_code, 'H')
+
+    def test_filter_by_intention_code_T(self): # New test for 'T'
+        data = {'intention_code': 'T'} # Trading
+        qs = CustomerHolding.objects.all()
+        filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
+        self.assertTrue(filterset.is_valid(), filterset.errors)
+        self.assertEqual(filterset.qs.count(), 1) # holding3
+        for holding in filterset.qs:
+            self.assertEqual(holding.intention_code, 'T')
 
     def test_filter_by_settlement_date_range(self):
         data = {
@@ -144,11 +168,28 @@ class CustomerHoldingFilterSetTest(BaseFilterTest):
         self.assertIn(self.holding2, filterset.qs)
         self.assertIn(self.holding3, filterset.qs)
 
+    def test_filter_by_settlement_date_only_after(self): # New test
+        data = {'settlement_date_after': date(2023, 3, 1).isoformat()} # holding3, holding4
+        qs = CustomerHolding.objects.all()
+        filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
+        self.assertTrue(filterset.is_valid(), filterset.errors)
+        self.assertEqual(filterset.qs.count(), 2)
+        self.assertIn(self.holding3, filterset.qs)
+        self.assertIn(self.holding4_no_market_vals, filterset.qs)
+
+    def test_filter_by_settlement_date_only_before(self): # New test
+        data = {'settlement_date_before': date(2023, 1, 31).isoformat()} # holding1
+        qs = CustomerHolding.objects.all()
+        filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
+        self.assertTrue(filterset.is_valid(), filterset.errors)
+        self.assertEqual(filterset.qs.count(), 1)
+        self.assertIn(self.holding1, filterset.qs)
+
     def test_filter_by_security_cusip_icontains(self):
         data = {'security_cusip': 'FILTER00'} # Should match all three securities used in holdings
         qs = CustomerHolding.objects.all()
         filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
-        self.assertTrue(filterset.is_valid())
+        self.assertTrue(filterset.is_valid(), filterset.errors)
         # holding1 (FILTER001), holding2 (FILTER002), holding3 (FILTER003), holding4 (FILTER001)
         self.assertEqual(filterset.qs.count(), 4)
 
@@ -156,7 +197,7 @@ class CustomerHoldingFilterSetTest(BaseFilterTest):
         data = {'security_cusip_exact': 'FILTER001'}
         qs = CustomerHolding.objects.all()
         filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
-        self.assertTrue(filterset.is_valid())
+        self.assertTrue(filterset.is_valid(), filterset.errors)
         self.assertEqual(filterset.qs.count(), 2) # holding1 and holding4
         for holding in filterset.qs:
             self.assertEqual(holding.security.cusip, 'FILTER001')
@@ -165,14 +206,14 @@ class CustomerHoldingFilterSetTest(BaseFilterTest):
         data = {'security_description': 'FNMA'}
         qs = CustomerHolding.objects.all()
         filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
-        self.assertTrue(filterset.is_valid())
+        self.assertTrue(filterset.is_valid(), filterset.errors)
         self.assertEqual(filterset.qs.count(), 2) # holding1 and holding4 (both are FNMA)
 
     def test_filter_by_security_type_id(self):
         data = {'security_type': self.sec_type_muni.type_id}
         qs = CustomerHolding.objects.all()
         filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
-        self.assertTrue(filterset.is_valid())
+        self.assertTrue(filterset.is_valid(), filterset.errors)
         self.assertEqual(filterset.qs.count(), 1) # holding3
         self.assertEqual(filterset.qs.first().security.security_type, self.sec_type_muni)
 
@@ -180,53 +221,85 @@ class CustomerHoldingFilterSetTest(BaseFilterTest):
         data = {'security_type_name': 'Corp'} # Matches "Corporate Bond"
         qs = CustomerHolding.objects.all()
         filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
-        self.assertTrue(filterset.is_valid())
-        self.assertEqual(filterset.qs.count(), 2) # holding1 (FNMA is Corp Bond type), holding2
+        self.assertTrue(filterset.is_valid(), filterset.errors)
+        # holding1 (FNMA is Corp Bond type), holding2, holding4 (FNMA is Corp Bond type)
+        self.assertEqual(filterset.qs.count(), 3) # CORRECTED from 2 to 3
         for holding in filterset.qs:
             self.assertIn("Corp", holding.security.security_type.name)
 
 
-    def test_filter_by_security_tax_code(self):
+    def test_filter_by_security_tax_code(self): # Existing test for 'e'
         data = {'security_tax_code': 'e'} # Tax-exempt
         qs = CustomerHolding.objects.all()
         filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
-        self.assertTrue(filterset.is_valid())
+        self.assertTrue(filterset.is_valid(), filterset.errors)
         self.assertEqual(filterset.qs.count(), 1) # holding3 (muni)
         self.assertEqual(filterset.qs.first().security.tax_code, 'e')
+
+    def test_filter_by_security_tax_code_t(self): # New test for 't'
+        data = {'security_tax_code': 't'} # Taxable
+        qs = CustomerHolding.objects.all()
+        filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
+        self.assertTrue(filterset.is_valid(), filterset.errors)
+        self.assertEqual(filterset.qs.count(), 3) # holding1, holding2, holding4
+        for holding in filterset.qs:
+            self.assertEqual(holding.security.tax_code, 't')
 
     def test_filter_by_security_allows_paydown_true(self):
         data = {'security_allows_paydown': 'true'} # or True
         qs = CustomerHolding.objects.all()
         filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
-        self.assertTrue(filterset.is_valid())
+        self.assertTrue(filterset.is_valid(), filterset.errors)
         self.assertEqual(filterset.qs.count(), 1) # holding2 (security_corp)
         self.assertTrue(filterset.qs.first().security.allows_paydown)
+
+    def test_filter_by_security_allows_paydown_false(self): # New test
+        data = {'security_allows_paydown': 'false'} # or False
+        qs = CustomerHolding.objects.all()
+        filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
+        self.assertTrue(filterset.is_valid(), filterset.errors)
+        # security_fnma (False), security_muni (False)
+        # holding1 (FNMA), holding3 (Muni), holding4 (FNMA)
+        self.assertEqual(filterset.qs.count(), 3)
+        for holding in filterset.qs:
+            self.assertFalse(holding.security.allows_paydown)
 
     def test_filter_by_security_maturity_date_range(self):
         data = {'security_maturity_date_after': date(2029,1,1).isoformat()} # Matures in or after 2029
         qs = CustomerHolding.objects.all()
         filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
-        self.assertTrue(filterset.is_valid())
+        self.assertTrue(filterset.is_valid(), filterset.errors)
         # security_fnma (2030), security_muni (2035)
         self.assertEqual(filterset.qs.count(), 3) # holding1, holding3, holding4
+
+    def test_filter_by_security_maturity_date_only_before(self): # New test
+        # Assuming DateFromToRangeFilter's '_before' is inclusive (<=),
+        # to get strictly before 2030-01-01, we use 2029-12-31.
+        data = {'security_maturity_date_before': date(2029,12,31).isoformat()} # Matures on or before 2029-12-31
+        qs = CustomerHolding.objects.all()
+        filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
+        self.assertTrue(filterset.is_valid(), filterset.errors)
+        # security_corp (2028-06-01) should match.
+        self.assertEqual(filterset.qs.count(), 1) # Should be 1 (holding2)
+        self.assertEqual(filterset.qs.first(), self.holding2)
 
     def test_filter_by_security_sector_icontains(self):
         data = {'security_sector': 'Agency'}
         qs = CustomerHolding.objects.all()
         filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
-        self.assertTrue(filterset.is_valid())
+        self.assertTrue(filterset.is_valid(), filterset.errors)
         self.assertEqual(filterset.qs.count(), 2) # holding1, holding4
 
     def test_filter_by_security_state_of_issuer_exact(self):
         data = {'security_state_of_issuer': 'NY'}
         qs = CustomerHolding.objects.all()
         filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
-        self.assertTrue(filterset.is_valid())
+        self.assertTrue(filterset.is_valid(), filterset.errors)
         self.assertEqual(filterset.qs.count(), 1) # holding2
 
     # --- Numeric Field Filters ---
     def test_filter_by_book_price_exact(self):
-        data = {'book_price': "100.50"}
+        data = {'book_price': "100.50"} # This uses NumberFilter, not RangeFilter, so param name is direct
         qs = CustomerHolding.objects.all()
         filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
         self.assertTrue(filterset.is_valid(), filterset.errors)
@@ -234,7 +307,8 @@ class CustomerHoldingFilterSetTest(BaseFilterTest):
         self.assertEqual(filterset.qs.first(), self.holding1)
 
     def test_filter_by_book_price_range(self):
-        data = {'book_price_min': "99.0", 'book_price_max': "100.0"}
+        # CORRECTED query param names for RangeFilter
+        data = {'book_price_range_min': "99.0", 'book_price_range_max': "100.0"}
         qs = CustomerHolding.objects.all()
         filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
         self.assertTrue(filterset.is_valid(), filterset.errors)
@@ -242,15 +316,42 @@ class CustomerHoldingFilterSetTest(BaseFilterTest):
         self.assertIn(self.holding2, filterset.qs)
         self.assertIn(self.holding4_no_market_vals, filterset.qs)
 
+    def test_filter_by_book_price_only_min(self): # New test
+        # CORRECTED query param name
+        data = {'book_price_range_min': "104.0"} # holding3 (104.0)
+        qs = CustomerHolding.objects.all()
+        filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
+        self.assertTrue(filterset.is_valid(), filterset.errors)
+        self.assertEqual(filterset.qs.count(), 1)
+        self.assertIn(self.holding3, filterset.qs)
+
+    def test_filter_by_book_price_only_max(self): # New test
+        # CORRECTED query param name
+        data = {'book_price_range_max': "99.5"} # holding2 (99.5)
+        qs = CustomerHolding.objects.all()
+        filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
+        self.assertTrue(filterset.is_valid(), filterset.errors)
+        self.assertEqual(filterset.qs.count(), 1)
+        self.assertIn(self.holding2, filterset.qs)
 
     def test_filter_by_book_yield_range(self):
+        # For RangeFilter book_yield, params are book_yield_min, book_yield_max
         data = {'book_yield_min': "2.0", 'book_yield_max': "2.5"}
         qs = CustomerHolding.objects.all()
         filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
         self.assertTrue(filterset.is_valid(), filterset.errors)
         self.assertEqual(filterset.qs.count(), 2) # holding1 (2.3), holding4 (2.5)
 
+    def test_filter_by_book_yield_only_min(self): # New test
+        data = {'book_yield_min': "4.0"} # holding2 (4.1)
+        qs = CustomerHolding.objects.all()
+        filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
+        self.assertTrue(filterset.is_valid(), filterset.errors)
+        self.assertEqual(filterset.qs.count(), 1)
+        self.assertIn(self.holding2, filterset.qs)
+
     def test_filter_by_market_price_exact(self):
+        # This uses NumberFilter, not RangeFilter, so param name is direct
         data = {'market_price': "98.00"}
         qs = CustomerHolding.objects.all() # holding4 has no market price
         filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
@@ -259,15 +360,25 @@ class CustomerHoldingFilterSetTest(BaseFilterTest):
         self.assertEqual(filterset.qs.first(), self.holding2)
 
     def test_filter_by_market_price_range_handles_nulls(self):
-        # Ensure holdings with null market_price are excluded by range filters
-        data = {'market_price_min': "0", 'market_price_max': "200"}
+        # CORRECTED query param names for RangeFilter
+        data = {'market_price_range_min': "0", 'market_price_range_max': "200"}
         qs = CustomerHolding.objects.all()
         filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
         self.assertTrue(filterset.is_valid(), filterset.errors)
         self.assertEqual(filterset.qs.count(), 3) # holding1, holding2, holding3 (holding4 is excluded)
         self.assertNotIn(self.holding4_no_market_vals, filterset.qs)
 
+    def test_filter_by_market_price_only_min(self): # New test
+        # CORRECTED query param name
+        data = {'market_price_range_min': "105.0"} # holding3 (105.5)
+        qs = CustomerHolding.objects.all()
+        filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
+        self.assertTrue(filterset.is_valid(), filterset.errors)
+        self.assertEqual(filterset.qs.count(), 1)
+        self.assertIn(self.holding3, filterset.qs)
+
     def test_filter_by_market_yield_range(self):
+        # For RangeFilter market_yield, params are market_yield_min, market_yield_max
         data = {'market_yield_min': "4.0"} # holding2 (4.3)
         qs = CustomerHolding.objects.all()
         filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
@@ -275,39 +386,83 @@ class CustomerHoldingFilterSetTest(BaseFilterTest):
         self.assertEqual(filterset.qs.count(), 1)
         self.assertEqual(filterset.qs.first(), self.holding2)
 
+    def test_filter_by_market_yield_only_max(self): # New test
+        data = {'market_yield_max': "2.5"} # holding1 (2.2)
+        qs = CustomerHolding.objects.all()
+        filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
+        self.assertTrue(filterset.is_valid(), filterset.errors)
+        self.assertEqual(filterset.qs.count(), 1)
+        self.assertIn(self.holding1, filterset.qs)
+
     def test_filter_by_holding_average_life_range(self): # 'wal' in frontend maps to this
+        # For RangeFilter holding_average_life, params are holding_average_life_min, holding_average_life_max
         data = {'holding_average_life_min': "5.0", 'holding_average_life_max': "6.0"}
         qs = CustomerHolding.objects.all()
         filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
         self.assertTrue(filterset.is_valid(), filterset.errors)
         self.assertEqual(filterset.qs.count(), 1) # holding1 (5.3)
 
+    def test_filter_by_holding_average_life_only_max(self): # New test
+        data = {'holding_average_life_max': "3.5"} # holding2 (3.1)
+        qs = CustomerHolding.objects.all()
+        filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
+        self.assertTrue(filterset.is_valid(), filterset.errors)
+        self.assertEqual(filterset.qs.count(), 1)
+        self.assertIn(self.holding2, filterset.qs)
+
     def test_filter_by_holding_duration_range(self):
+        # For RangeFilter holding_duration, params are holding_duration_min, holding_duration_max
         data = {'holding_duration_min': "7.0"}
         qs = CustomerHolding.objects.all()
         filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
         self.assertTrue(filterset.is_valid(), filterset.errors)
         self.assertEqual(filterset.qs.count(), 1) # holding3 (7.5)
 
+    def test_filter_by_holding_duration_only_min(self): # New test
+        data = {'holding_duration_min': "5.0"} # holding1 (5.1), holding3 (7.5)
+        qs = CustomerHolding.objects.all()
+        filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
+        self.assertTrue(filterset.is_valid(), filterset.errors)
+        self.assertEqual(filterset.qs.count(), 2)
+        self.assertIn(self.holding1, filterset.qs)
+        self.assertIn(self.holding3, filterset.qs)
+
     def test_filter_by_security_wal_range(self):
+        # For RangeFilter security_wal, params are security_wal_min, security_wal_max
         data = {'security_wal_min': "5.0"} # security_fnma (5.5)
         qs = CustomerHolding.objects.all()
         filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
         self.assertTrue(filterset.is_valid(), filterset.errors)
         self.assertEqual(filterset.qs.count(), 2) # holding1, holding4
 
+    def test_filter_by_security_wal_only_max(self): # New test
+        data = {'security_wal_max': "4.0"} # security_corp (3.2)
+        qs = CustomerHolding.objects.all()
+        filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
+        self.assertTrue(filterset.is_valid(), filterset.errors)
+        self.assertEqual(filterset.qs.count(), 1) # holding2
+        self.assertIn(self.holding2, filterset.qs)
+
     def test_filter_by_security_cpr_range(self):
+        # For RangeFilter security_cpr, params are security_cpr_min, security_cpr_max
         data = {'security_cpr_min': "5.0", 'security_cpr_max': "7.0"} # security_fnma (6.0)
         qs = CustomerHolding.objects.all()
         filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
         self.assertTrue(filterset.is_valid(), filterset.errors)
         self.assertEqual(filterset.qs.count(), 2) # holding1, holding4
 
+    def test_filter_by_security_cpr_no_match(self): # New test
+        data = {'security_cpr_min': "10.0"} # No security has CPR >= 10.0
+        qs = CustomerHolding.objects.all()
+        filterset = CustomerHoldingFilterSet(data=data, queryset=qs)
+        self.assertTrue(filterset.is_valid(), filterset.errors)
+        self.assertEqual(filterset.qs.count(), 0)
+
     def test_filter_combination(self):
         data = {
             'portfolio': self.portfolio_x1.id,
             'security_tax_code': 't',
-            'market_price_min': "100"
+            'market_price_range_min': "100" # CORRECTED query param name
         } # Portfolio X, Taxable, Market Price >= 100
           # Holding1: portfolio_x1, tax_code='t' (FNMA), market_price=101.5 -> MATCH
           # Holding2: portfolio_x1, tax_code='t' (Corp), market_price=98.0 -> NO MATCH (price too low)
@@ -368,7 +523,16 @@ class MuniOfferingFilterSetTest(BaseFilterTest):
         self.assertEqual(filterset.qs.count(), 1)
         self.assertEqual(filterset.qs.first(), self.muni_offering1)
 
+    def test_filter_muni_by_insurance_no_match(self): # New test
+        data = {'insurance': 'NonExistentInsurer'}
+        qs = MunicipalOffering.objects.all()
+        filterset = MuniOfferingFilterSet(data=data, queryset=qs)
+        self.assertTrue(filterset.is_valid(), filterset.errors)
+        self.assertEqual(filterset.qs.count(), 0)
+
     # --- Range and DateRange filters for MuniOffering ---
+    # For MuniOfferingFilterSet, the fields are directly named in Meta,
+    # so RangeFilter params are <field_name>_min and <field_name>_max
     def test_filter_muni_by_amount_range(self):
         data = {'amount_min': "1000000", 'amount_max': "3000000"} # muni_offering2 (2M)
         qs = MunicipalOffering.objects.all()
@@ -376,6 +540,14 @@ class MuniOfferingFilterSetTest(BaseFilterTest):
         self.assertTrue(filterset.is_valid(), filterset.errors)
         self.assertEqual(filterset.qs.count(), 1)
         self.assertEqual(filterset.qs.first(), self.muni_offering2)
+
+    def test_filter_muni_by_amount_only_min(self): # New test
+        data = {'amount_min': "6000000"} # muni_offering3 (10M)
+        qs = MunicipalOffering.objects.all()
+        filterset = MuniOfferingFilterSet(data=data, queryset=qs)
+        self.assertTrue(filterset.is_valid(), filterset.errors)
+        self.assertEqual(filterset.qs.count(), 1)
+        self.assertEqual(filterset.qs.first(), self.muni_offering3)
 
     def test_filter_muni_by_coupon_range(self):
         data = {'coupon_min': "3.0", 'coupon_max': "3.2"} # muni_offering1 (3.125)
@@ -385,12 +557,40 @@ class MuniOfferingFilterSetTest(BaseFilterTest):
         self.assertEqual(filterset.qs.count(), 1)
         self.assertEqual(filterset.qs.first(), self.muni_offering1)
 
-    def test_filter_muni_by_maturity_date_range(self):
-        data = {'maturity_date_after': date(2039,1,1).isoformat()} # muni_offering1 (2040), muni_offering3 (2045)
+    def test_filter_muni_by_coupon_only_max(self): # New test
+        data = {'coupon_max': "3.0"} # muni_offering2 (2.75)
         qs = MunicipalOffering.objects.all()
         filterset = MuniOfferingFilterSet(data=data, queryset=qs)
         self.assertTrue(filterset.is_valid(), filterset.errors)
-        self.assertEqual(filterset.qs.count(), 2)
+        self.assertEqual(filterset.qs.count(), 1)
+        self.assertEqual(filterset.qs.first(), self.muni_offering2)
+
+    def test_filter_muni_by_maturity_date_range(self):
+        # DateFromToRangeFilter uses <field_name>_after, <field_name>_before
+        data = {'maturity_date_after': date(2039,1,1).isoformat(), 'maturity_date_before': date(2045,1,1).isoformat()}
+        qs = MunicipalOffering.objects.all()
+        filterset = MuniOfferingFilterSet(data=data, queryset=qs)
+        self.assertTrue(filterset.is_valid(), filterset.errors)
+        self.assertEqual(filterset.qs.count(), 2) # muni_offering1 (2040), muni_offering3 (2045-01-01)
+        self.assertIn(self.muni_offering1, filterset.qs)
+        self.assertIn(self.muni_offering3, filterset.qs)
+
+
+    def test_filter_muni_by_maturity_date_only_after(self): # New test
+        data = {'maturity_date_after': date(2042,1,1).isoformat()} # muni_offering3 (2045)
+        qs = MunicipalOffering.objects.all()
+        filterset = MuniOfferingFilterSet(data=data, queryset=qs)
+        self.assertTrue(filterset.is_valid(), filterset.errors)
+        self.assertEqual(filterset.qs.count(), 1)
+        self.assertEqual(filterset.qs.first(), self.muni_offering3)
+
+    def test_filter_muni_by_maturity_date_only_before(self): # New test
+        data = {'maturity_date_before': date(2036,1,1).isoformat()} # muni_offering2 (2035)
+        qs = MunicipalOffering.objects.all()
+        filterset = MuniOfferingFilterSet(data=data, queryset=qs)
+        self.assertTrue(filterset.is_valid(), filterset.errors)
+        self.assertEqual(filterset.qs.count(), 1)
+        self.assertEqual(filterset.qs.first(), self.muni_offering2)
 
     def test_filter_muni_by_yield_rate_range(self): # 'yield' in frontend
         data = {'yield_rate_min': "3.5"} # muni_offering3 (3.60)
@@ -400,13 +600,29 @@ class MuniOfferingFilterSetTest(BaseFilterTest):
         self.assertEqual(filterset.qs.count(), 1)
         self.assertEqual(filterset.qs.first(), self.muni_offering3)
 
+    def test_filter_muni_by_yield_rate_only_max(self): # New test
+        data = {'yield_rate_max': "3.0"} # muni_offering2 (2.85)
+        qs = MunicipalOffering.objects.all()
+        filterset = MuniOfferingFilterSet(data=data, queryset=qs)
+        self.assertTrue(filterset.is_valid(), filterset.errors)
+        self.assertEqual(filterset.qs.count(), 1)
+        self.assertEqual(filterset.qs.first(), self.muni_offering2)
+
     def test_filter_muni_by_price_range(self):
-        data = {'price_max': "100.00"} # muni_offering3 (99.75)
+        data = {'price_min': D("99.0"), 'price_max': "100.00"} # muni_offering3 (99.75)
         qs = MunicipalOffering.objects.all()
         filterset = MuniOfferingFilterSet(data=data, queryset=qs)
         self.assertTrue(filterset.is_valid(), filterset.errors)
         self.assertEqual(filterset.qs.count(), 1)
         self.assertEqual(filterset.qs.first(), self.muni_offering3)
+
+    def test_filter_muni_by_price_only_min(self): # New test
+        data = {'price_min': "101.00"} # muni_offering1 (101.5)
+        qs = MunicipalOffering.objects.all()
+        filterset = MuniOfferingFilterSet(data=data, queryset=qs)
+        self.assertTrue(filterset.is_valid(), filterset.errors)
+        self.assertEqual(filterset.qs.count(), 1)
+        self.assertEqual(filterset.qs.first(), self.muni_offering1)
 
     def test_filter_muni_by_call_date_range(self):
         # Only muni_offering2 has a call_date (2030-06-01)
@@ -417,9 +633,49 @@ class MuniOfferingFilterSetTest(BaseFilterTest):
         self.assertEqual(filterset.qs.count(), 1)
         self.assertEqual(filterset.qs.first(), self.muni_offering2)
 
+    def test_filter_muni_by_call_date_only_after(self): # New test
+        # Only muni_offering2 has a call_date (2030-06-01)
+        data = {'call_date_after': date(2030,6,1).isoformat()}
+        qs = MunicipalOffering.objects.all()
+        filterset = MuniOfferingFilterSet(data=data, queryset=qs)
+        self.assertTrue(filterset.is_valid(), filterset.errors)
+        self.assertEqual(filterset.qs.count(), 1)
+        self.assertEqual(filterset.qs.first(), self.muni_offering2)
+
+    def test_filter_muni_by_call_date_only_before(self): # New test
+        # Only muni_offering2 has a call_date (2030-06-01)
+        data = {'call_date_before': date(2030,6,1).isoformat()}
+        qs = MunicipalOffering.objects.all()
+        filterset = MuniOfferingFilterSet(data=data, queryset=qs)
+        self.assertTrue(filterset.is_valid(), filterset.errors)
+        self.assertEqual(filterset.qs.count(), 1)
+        self.assertEqual(filterset.qs.first(), self.muni_offering2)
+
+    def test_filter_muni_by_call_date_no_call_date_excluded(self): # New test
+        # This test ensures that items with NULL call_date are not matched by a range filter.
+        # muni_offering1 and muni_offering3 have no call_date.
+        data = {'call_date_after': date(2000,1,1).isoformat()} # A very early date
+        qs = MunicipalOffering.objects.all()
+        filterset = MuniOfferingFilterSet(data=data, queryset=qs)
+        self.assertTrue(filterset.is_valid(), filterset.errors)
+        self.assertEqual(filterset.qs.count(), 1) # Only muni_offering2 which has a call_date
+        self.assertIn(self.muni_offering2, filterset.qs)
+        self.assertNotIn(self.muni_offering1, filterset.qs)
+        self.assertNotIn(self.muni_offering3, filterset.qs)
+
+
     def test_filter_muni_by_call_price_range(self):
         # Only muni_offering2 has a call_price (100)
         data = {'call_price_min': "99.0", 'call_price_max': "101.0"}
+        qs = MunicipalOffering.objects.all()
+        filterset = MuniOfferingFilterSet(data=data, queryset=qs)
+        self.assertTrue(filterset.is_valid(), filterset.errors)
+        self.assertEqual(filterset.qs.count(), 1)
+        self.assertEqual(filterset.qs.first(), self.muni_offering2)
+
+    def test_filter_muni_by_call_price_only_min(self): # New test
+        # Only muni_offering2 has a call_price (100)
+        data = {'call_price_min': "100.0"}
         qs = MunicipalOffering.objects.all()
         filterset = MuniOfferingFilterSet(data=data, queryset=qs)
         self.assertTrue(filterset.is_valid(), filterset.errors)
