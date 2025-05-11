@@ -169,7 +169,7 @@ The system addresses multifaceted needs in managing fixed-income investments, ta
 
 ## Evolution 2
 
-*(Note: Limited information provided; includes a screenshot reference not detailed here.)*
+LINK TO ERD
 
 ## Evolution 4: Django Implementation
 
