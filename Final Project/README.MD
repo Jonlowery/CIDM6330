@@ -42,7 +42,7 @@ This section provides instructions on how to download, set up, and run the Portf
 To get started, clone the repository from GitHub:
 
 ```bash
-git clone [https://github.com/Jonlowery/CIDM6330.git](https://github.com/Jonlowery/CIDM6330.git)
+git clone https://github.com/Jonlowery/CIDM6330.git
 cd CIDM6330/Final Project
 ```
 
