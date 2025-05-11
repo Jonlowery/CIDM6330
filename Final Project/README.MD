@@ -40,10 +40,9 @@ This section provides instructions on how to download, set up, and run the Portf
 To get started, clone the repository from GitHub:
 
 ```bash
-git clone <your-repository-url>
-cd <repository-name>
+git clone <https://github.com/Jonlowery/CIDM6330.git>
+cd <CIDM6330/Final Project>
 ```
-(Replace `<your-repository-url>` with the actual URL of your GitHub repository and `<repository-name>` with the name of the cloned directory).
 
 ### Launch with Docker
 
@@ -58,7 +57,7 @@ The application is containerized using Docker and can be launched easily with Do
     ```bash
     docker-compose up --build
     ```
-    This command will build the images for the Django backend and any other services defined in the `docker-compose.yml` file (like PostgreSQL, Redis) and then start the containers. The `--build` flag ensures that images are rebuilt if there are any changes. For subsequent runs, you can omit `--build` if no code changes requiring a rebuild have been made.
+    This command will build the images for the Django backend and any other services defined in the `docker-compose.yml` file (like SQL, Redis) and then start the containers. The `--build` flag ensures that images are rebuilt if there are any changes. For subsequent runs, you can omit `--build` if no code changes requiring a rebuild have been made.
 
     Wait for the services to start up. You should see logs from the different containers in your terminal.
 
@@ -68,7 +67,7 @@ Once the Docker containers are up and running:
 
 1.  **Open your web browser.**
 2.  **Navigate to the frontend URL**:
-    [http://localhost:3000](http://localhost:3000)
+    [http://localhost:8000](http://localhost:8000)
 
 3.  **Login with test credentials**:
     -   **Username**: `owner`
