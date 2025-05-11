@@ -134,7 +134,7 @@ The following UML diagrams provide a visual representation of the system's archi
 
 ### Refined Problem Specification
 
-The system addresses multifaceted needs in managing fixed-income investments, targeting:
+The system addresses mutiple needs facing managers of fixed-income investments, targeting:
 
 1.  **Granular Portfolio Tracking**: Tracking detailed attributes of holdings (settlement date, book price, market valuation, coupon, yield, WAL, duration).
 2.  **Dynamic Data Management**: Robust import mechanism for periodic updates of security, customer, and holding data via Excel.
