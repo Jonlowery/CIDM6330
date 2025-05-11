@@ -43,7 +43,7 @@ To get started, clone the repository from GitHub:
 
 ```bash
 git clone https://github.com/Jonlowery/CIDM6330.git
-cd CIDM6330/Final Project
+cd CIDM6330/Final_Project
 ```
 
 ### Launch with Docker
