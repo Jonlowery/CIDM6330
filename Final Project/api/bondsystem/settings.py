@@ -160,7 +160,7 @@ if TESTING_MODE:
     print(f"Celery Broker URL for testing: {CELERY_BROKER_URL}")
 
 
-# Email Settings
+# Email Settings Fake Email address made for school project. In production, will use env variable file
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
