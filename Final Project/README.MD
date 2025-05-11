@@ -75,14 +75,14 @@ Once the Docker containers are up and running:
     -   **Username**: `owner`
     -   **Password**: `test123!`
 
-This should give you access to the application's frontend interface. The backend API will be accessible, typically at a URL like `http://localhost:8000/api/`, as configured in your Django and Docker setup.
+This should give you access to the application's frontend interface. The backend API will be accessible at the URL `http://localhost:8000/api/`.
 
 ## Frontend Overview
 
 The frontend of the Portfolio Analysis System provides a user-friendly interface for interacting with the core functionalities of the application. It is designed to allow users to:
 
 -   **View Portfolio Data**: Users can visualize their portfolio holdings, including details about each security, current market values, and key analytical metrics.
--   **Analyze Securities**: The interface allows for the inspection of individual securities, displaying their characteristics, historical data (if available), and calculated analytics like YTM, duration, and convexity.
+-   **Analyze Securities**: The interface allows for the inspection of individual securities by filtering the available holdings, displaying their characteristics and calculated analytics like YTM, duration, and convexity.
 -   **Simulate Swaps**: A key feature is the ability to perform "what-if" scenarios by simulating the buying and selling of securities within a portfolio. The frontend will display the potential impact of these changes on the overall portfolio metrics.
 -   **Express Interest**: Allows users to select a bond and send an email notification to the relevant salesperson or trader to express interest in buying or selling that security.
 
